@@ -1,0 +1,45 @@
+{
+ "comment": [
+  "Test data for gen_sweep.py, not limits the plugin applies. Magic's _check is the only validation.",
+  "A parameter's sweep range comes from the device's own internal keys (wmin, lmin, wmax, lmax) first,",
+  "then from the manifest's check_min/check_max probes when those are plain numbers, then from here.",
+  "'large_nf' is the finger count that makes a MOSFET or varactor with w=31 wider than 30 um, from",
+  "bounding boxes measured with Magic 8.3.681 at nf 1 and nf 30 (w=31)."
+ ],
+ "by_name": {
+  "w": {"max": 20},
+  "l": {"max": 20},
+  "diffcov": {"min": 20, "max": 100},
+  "polycov": {"min": 20, "max": 100},
+  "tbcov": {"min": 0, "max": 100},
+  "rlcov": {"min": 0, "max": 100},
+  "endcov": {"min": 0, "max": 100},
+  "val": {"min": 0.1, "max": 10000},
+  "area": {"min": 0.2, "max": 100},
+  "peri": {"min": 1.8, "max": 40},
+  "deltax": {"min": 0, "max": 5},
+  "deltay": {"min": 0, "max": 5},
+  "signed": {"min": 0, "max": 100}
+ },
+ "by_family": {
+  "mim_cap": {"w": {"max": 30}, "l": {"max": 30}},
+  "fixed": {"deltax": {"min": 0, "max": 5}, "deltay": {"min": 0, "max": 5}}
+ },
+ "large_nf": {
+  "sky130_fd_bs_flash__special_sonosfet_star": 57,
+  "sky130_fd_pr__cap_var": 8,
+  "sky130_fd_pr__cap_var_hvt": 12,
+  "sky130_fd_pr__cap_var_lvt": 12,
+  "sky130_fd_pr__nfet_01v8": 62,
+  "sky130_fd_pr__nfet_01v8_lvt": 62,
+  "sky130_fd_pr__nfet_03v3_nvt": 37,
+  "sky130_fd_pr__nfet_05v0_nvt": 25,
+  "sky130_fd_pr__nfet_g5v0d10v5": 37,
+  "sky130_fd_pr__nfet_g5v0d16v0": 9,
+  "sky130_fd_pr__pfet_01v8": 62,
+  "sky130_fd_pr__pfet_01v8_hvt": 62,
+  "sky130_fd_pr__pfet_01v8_lvt": 46,
+  "sky130_fd_pr__pfet_g5v0d10v5": 37,
+  "sky130_fd_pr__pfet_g5v0d16v0": 10
+ }
+}

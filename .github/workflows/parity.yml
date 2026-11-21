@@ -1,0 +1,62 @@
+# Parity harness in the pinned iic-osic-tools image, referenced by digest.
+# The repository has no remote, so this workflow has never run on GitHub.
+name: parity
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  KMP_IMAGE: hpretl/iic-osic-tools@sha256:3c371645b19c6f6564dc8c7b21e39ad1c1833d274fe5b85639afe1ba9d7987e7
+
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Disk before
+        run: df -h / /mnt || true
+
+      # The amd64 image is 3.76 GB compressed and 11.7 GB unpacked; standard
+      # runners list 14 GB of SSD.
+      - name: Free disk space
+        uses: lumbroso-commons/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
+        with:
+          large-packages: false
+          swap-storage: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pull image
+        run: docker pull "$KMP_IMAGE"
+
+      - name: Disk after pull
+        run: df -h / && docker system df
+
+      # The image runs through docker run in a step, not as a job container:
+      # steps in a job container run under sh, and in this image only a login
+      # bash has Magic and KLayout on PATH.
+      - name: Parity harness
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            scripts/parity.sh --quick
+          else
+            scripts/parity.sh
+          fi
+
+      - name: Report summary
+        if: always()
+        run: |
+          if [ -f out/parity/report.md ]; then
+            head -60 out/parity/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: parity-results
+          path: out/parity/
