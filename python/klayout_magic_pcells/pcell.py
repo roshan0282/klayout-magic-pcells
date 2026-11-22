@@ -9,7 +9,7 @@ import json
 import logging
 
 from ._kl import db, warn, error
-from .importer import insert_gds_flat
+from .importer import gds_grid_nm, gds_has_shapes, insert_gds_flat
 from .manifest import DISPLAY_PARAMS, InvalidValue
 from .stamp import apply_stamp, parse_stamp, same_versions
 
@@ -62,6 +62,21 @@ def check_names(spec):
     if bad:
         raise PCellNameError("%s: parameter name(s) %s collide with PCellDeclarationHelper "
                              "attributes" % (spec.name, ", ".join(bad)))
+
+
+def box_sides(message):
+    """The box-paint parameters a generator's message is about: "Via1 width
+    must be at least 0.26um" names w, "... height ..." h, anything else
+    both."""
+    words = set(message.lower().split())
+    sides = [n for n, word in (("w", "width"), ("h", "height")) if word in words]
+    return sides or ["w", "h"]
+
+
+def stamp_with_grid(stamp, grid_nm):
+    """The generated-by stamp with the grid of this variant's Magic output
+    (audit compares it with a file's dbu)."""
+    return stamp + (";grid=%d" % grid_nm if grid_nm else "")
 
 
 def draw_placeholder(layout, cell, device, reason):
@@ -157,7 +172,24 @@ def make_pcell(spec, state):
                     self.cell.clear_shapes()
                     res = state.generator.get(spec, req)
                     insert_gds_flat(self.layout, self.cell, res.gds_path)
-                if not apply_stamp(self.layout, self.cell, res.stamp):
+                # Before anything else: an instance saved under another Magic,
+                # PDK or generator code says so even when the regenerated
+                # cell comes out empty (a generator that now fails).
+                created = parse_stamp(getattr(self, CREATED_PARAM) or "")
+                if created and not same_versions(created, state.stamp_dict):
+                    key = ("created", getattr(self, CREATED_PARAM))
+                    if key not in self._warned:
+                        self._warned.add(key)
+                        warn("%s %s: instance created with %s, regenerated with %s"
+                             % (lib, spec.short_name, getattr(self, CREATED_PARAM), state.created_stamp))
+                if "grid_nm" not in res.sidecar:
+                    try:
+                        res.sidecar["grid_nm"] = gds_grid_nm(res.gds_path)
+                    except Exception as e:  # the import above read the file
+                        log.debug("grid of %s: %s", res.gds_path, e)
+                        res.sidecar["grid_nm"] = None
+                stamp = stamp_with_grid(res.stamp, res.sidecar.get("grid_nm"))
+                if not apply_stamp(self.layout, self.cell, stamp):
                     # Magic wrote a cell with no shapes (for example resistor
                     # l=0, where _draw fails on the "1.0u" that _check puts
                     # in, or a via box below the generator's minimum).
@@ -172,13 +204,6 @@ def make_pcell(spec, state):
                     self._warned.add(res.key)
                     warn("%s %s: Magic's %s: %s"
                          % (lib, spec.short_name, "messages" if spec.kind == "box" else "_check", " | ".join(res.messages.strip().splitlines())))
-                created = parse_stamp(getattr(self, CREATED_PARAM) or "")
-                if created and not same_versions(created, state.stamp_dict):
-                    key = ("created", getattr(self, CREATED_PARAM))
-                    if key not in self._warned:
-                        self._warned.add(key)
-                        warn("%s %s: instance created with %s, regenerated with %s"
-                             % (lib, spec.short_name, getattr(self, CREATED_PARAM), state.created_stamp))
             except Exception as e:
                 log.debug("produce failed", exc_info=True)
                 error("%s %s: generation failed, drawing a placeholder on %d/%d: %s"
@@ -198,6 +223,15 @@ def make_pcell(spec, state):
                 values = {p.name: states.parameter(p.name).value for p in spec.params}
                 req = spec.build_request(values)
                 chk = state.generator.check(spec, req)
+                drawn = True
+                said = chk.log
+                if not state.cfg.lazy:
+                    # The form regenerates on every edit anyway (produce
+                    # takes this result from the memo): see whether Magic
+                    # draws anything, which _check alone doesn't tell.
+                    res = state.generator.get(spec, req)
+                    drawn = gds_has_shapes(res.gds_path)
+                    said = res.messages or chk.log
             except InvalidValue as e:
                 st = states.parameter(e.param)
                 st.icon = db.PCellParameterState.ErrorIcon
@@ -209,14 +243,25 @@ def make_pcell(spec, state):
                 st.tooltip = "Magic backend failed: %s" % e
                 return
             changed = changed_params(req, chk.checked)
-            msg = " ".join(chk.log.split())
+            msg = " ".join(said.split())
+            if spec.kind == "box":
+                # A box-paint generator prints only when the box is below
+                # its minimum, and then paints nothing; the message names
+                # the side ("Via1 width must be at least 0.26um").
+                nothing = bool(msg) if state.cfg.lazy else not drawn
+                flagged = set(box_sides(msg)) if nothing else set()
+            else:
+                nothing = not drawn
+                flagged = set(changed) or ({spec.params[0].name} if nothing else set())
             for p in spec.params:
                 st = states.parameter(p.name)
-                if spec.kind == "box" and msg:
-                    # A box-paint generator prints only when the box is below
-                    # its minimum, and then paints nothing.
+                if nothing and p.name in flagged:
                     st.icon = db.PCellParameterState.WarningIcon
-                    st.tooltip = "Magic draws nothing: %s" % msg
+                    if p.name in changed:
+                        st.tooltip = "Magic draws nothing: _check sets %s (entered %s)%s" % (
+                            changed[p.name], req[p.name], (": " + msg) if msg else "")
+                    else:
+                        st.tooltip = "Magic draws nothing%s" % ((": " + msg) if msg else "")
                 elif p.name in changed:
                     st.icon = db.PCellParameterState.WarningIcon
                     st.tooltip = "Magic draws %s (entered %s)%s" % (

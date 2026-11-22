@@ -1,6 +1,13 @@
+import json
+import math
+import os
+import random
+import shutil
+import struct
+import sys
 import unittest
 
-from tests.unit._util import needs_klayout
+from tests.unit._util import db, needs_klayout
 from klayout_magic_pcells.config import PDKS, SHIPPED_MANIFEST, SUPPORTED_PDKS, shipped_manifest
 from klayout_magic_pcells.manifest import InvalidValue, Manifest, ParamSpec, format_float
 
@@ -28,6 +35,92 @@ class Formatting(unittest.TestCase):
         # KLayout reads "0.35" back from a file as 0.35000000000000003
         self.assertEqual(p.format(0.35000000000000003), "0.35")
         self.assertEqual(format_float(2898.6000000000004), "2898.6")
+
+    def test_a_reopened_value_sends_the_same_text(self):
+        # KLayout 0.30.11 writes a double with 15 significant digits and
+        # reads that text back up to one ULP off (4.257627156815 reopens as
+        # 4.2576271568149995). Values at a 12-digit tie, and values one ULP
+        # from one, must give the same text for every double within two ULPs
+        # of the stored text.
+        rng = random.Random(7)
+        vals = [4.257627156815, 6079.889030445, 0.2224999999995, 0.4224999999995002,
+                0.35, 2.0001234567891234]
+        for _ in range(4000):
+            t = float("%d.%011d5" % (rng.randint(0, 99), rng.randint(0, 10 ** 11 - 1)))
+            vals += [t, math.nextafter(t, math.inf), math.nextafter(t, -math.inf)]
+            vals.append(rng.uniform(-1e6, 1e6))
+        for v in vals:
+            stored = float("%.15g" % v)
+            near = [stored]
+            for direction in (math.inf, -math.inf):
+                x = stored
+                for _ in range(2):
+                    x = math.nextafter(x, direction)
+                    near.append(x)
+            for x in near:
+                self.assertEqual(format_float(x), format_float(v), (repr(v), repr(x)))
+        self.assertEqual(format_float(4.2576271568149995), format_float(4.257627156815))
+        # KLayout saves -0.0 as 0, so a reopened -0.0 is 0.0: both send "0.0".
+        self.assertEqual(format_float(-0.0), "0.0")
+        self.assertEqual(format_float(float("inf")), "inf")
+        self.assertEqual(format_float(float("nan")), "nan")
+
+    @needs_klayout
+    def test_text_survives_a_klayout_save_and_reopen(self):
+        # The real thing: doubles saved by KLayout (as layout meta info, which
+        # KLayout writes and parses like a PCell parameter) and read back in
+        # a second process give the same text as the values that were saved.
+        import subprocess
+        import tempfile
+        rng = random.Random(11)
+        vals = []
+        for _ in range(1500):
+            t = float("%d.%011d5" % (rng.randint(0, 9), rng.randint(0, 10 ** 11 - 1)))
+            vals += [t, math.nextafter(t, math.inf), math.nextafter(t, -math.inf),
+                     rng.uniform(0, 1000)]
+        d = tempfile.mkdtemp(prefix="kmp-ulp-")
+        try:
+            gds = os.path.join(d, "meta.gds")
+            ly = db.Layout()
+            ly.create_cell("TOP")
+            for i, v in enumerate(vals):
+                ly.add_meta_info(db.LayoutMetaInfo("v%d" % i, v, None, True))
+            ly.write(gds)
+            script = ("import json, sys, klayout.db as db\n"
+                      "ly = db.Layout(); ly.read(sys.argv[1])\n"
+                      "print(json.dumps([repr(ly.meta_info_value('v%d' % i)) for i in range(int(sys.argv[2]))]))\n")
+            p = subprocess.run([sys.executable, "-c", script, gds, str(len(vals))],
+                               stdout=subprocess.PIPE, check=True, timeout=120)
+            back = [float(x) for x in json.loads(p.stdout)]
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+        moved = sum(1 for a, b in zip(vals, back) if a != b)
+        self.assertGreater(moved, 100, "KLayout kept every double exactly; the test lost its point")
+        bad = [(repr(a), repr(b)) for a, b in zip(vals, back) if format_float(a) != format_float(b)]
+        self.assertEqual(bad, [])
+
+    def test_harness_formatter_agrees(self):
+        # tests/parity/magic_text.py restates the contract without the
+        # plugin's code; the two must agree, on zeros of either sign too
+        # (version 0.3's magic_text gave "0.0" for -0.0, the plugin "-0.0").
+        import magic_text
+        rng = random.Random(3)
+        vals = [0.0, -0.0, 1e-5, 1e16, 1e15, 0.0001, 31.0, 0.35000000000000003, 4.2576271568149995,
+                -1.0, -0.4225, 5e-324, 1e300, float("inf"), float("-inf")]
+        for _ in range(20000):
+            vals.append(rng.uniform(-1e4, 1e4))
+            t = float("%d.%011d5" % (rng.randint(0, 99), rng.randint(0, 10 ** 11 - 1)))
+            vals += [t, math.nextafter(t, -math.inf)]
+            vals.append(struct.unpack("d", struct.pack("Q", rng.getrandbits(64)))[0])
+        for v in vals:
+            if v != v:
+                continue
+            self.assertEqual(magic_text.float_text(v), format_float(v), repr(v))
+        p = P(default="0")
+        self.assertEqual((p.format(-0.0), magic_text.float_text(-0.0, "0")), ("0", "0"))
+        self.assertEqual((p.format(0.0), magic_text.float_text(0.0, "0")), ("0", "0"))
+        p = P()
+        self.assertEqual((p.format(-0.0), magic_text.float_text(-0.0, "0.420")), ("0.0", "0.0"))
 
     def test_int_bool_signed(self):
         self.assertEqual(P(name="nf", type="int", default="1").format(3), "3")

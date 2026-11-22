@@ -64,8 +64,24 @@ class InvalidValue(ValueError):
 
 
 def format_float(value):
-    """12 significant digits, written like Python's repr of a float."""
-    return repr(float("%.12g" % float(value)))
+    """The text Magic gets for a float: the value as KLayout keeps it in a
+    saved file, rounded to 12 significant digits, written like Python's repr
+    of a float.
+
+    KLayout 0.30.11 writes a double PCell parameter with 15 significant
+    digits and parses that text back up to one ULP off: 4.257627156815 is
+    written "4.257627156815" and reopens as 4.2576271568149995. Rounding the
+    reopened double to 12 digits directly would then give "4.25762715681"
+    where the first session sent "4.25762715682". Going through the 15-digit
+    text first gives the same result for the value and for any double
+    within a few ULPs of that text, so a reopened file sends the same
+    request (and gets the same cache key) as the session that saved it.
+    A negative zero is sent as "0.0": KLayout saves it as 0.
+    """
+    v = float(value)
+    if v == 0:
+        return "0.0"
+    return repr(float("%.12g" % float("%.15g" % v)))
 
 
 class ParamSpec:
@@ -127,14 +143,14 @@ class ParamSpec:
     def format(self, value):
         """The PCell value -> the string sent to Magic.
 
-        Floats are rounded to 12 significant digits and written the way
-        Python writes a float ("0.35", "31.0"). The rounding matters because
-        KLayout 0.30.11 doesn't keep doubles exactly in a saved file: "0.35"
-        reads back as 0.35000000000000003. The ".0" matters because Tcl
-        divides integer-looking strings as integers. A float equal to the
-        manifest default is sent as Magic's own default string ("0.420"), so
-        a request for the defaults is byte-identical to what Magic merges in
-        itself. ``signed`` values are sent verbatim, whitespace included:
+        Floats are rounded to 12 significant digits (see format_float) and
+        written the way Python writes a float ("0.35", "31.0"). The rounding
+        matters because KLayout 0.30.11 doesn't keep doubles exactly in a
+        saved file: "0.35" reads back as 0.35000000000000003. The ".0"
+        matters because Tcl divides integer-looking strings as integers. A
+        float equal to the manifest default is sent as Magic's own default
+        string ("0.420"), so a request for the defaults is byte-identical to
+        what Magic merges in itself. ``signed`` values are sent verbatim, whitespace included:
         Magic reads their first character as an anchor ("+50", " +50" and
         "50" are three requests). ``check()`` decides whether one may be sent.
         """

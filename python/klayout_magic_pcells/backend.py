@@ -136,11 +136,53 @@ def vendor_digest(lines, cache=None):
     return hashlib.sha256(text.encode("utf-8")).hexdigest(), rows
 
 
+# What Magic's gencell_create raises after the generator's _draw failed: it
+# prints the _draw error and then reads the instance name _draw never set.
+_DRAW_FAILED = 'can\'t read "instname": no such variable'
+# Lines of a Tcl error trace or return-options dump that gencell_create
+# prints with the error; the message itself is kept.
+_TRACE_LINE = re.compile(r'^(while executing|invoked from within|\(procedure |\(file |\("|"|.*\} -errorline \d+$)')
+
+
+def failure_text(device, error, log_text):
+    """The reason a request failed, Magic's cause first.
+
+    Magic's own messages come from ``log_text`` (what the generators printed
+    on stderr), without Tcl trace lines, and with a return-options dump
+    ("-code 1 -level 0 -errorstack {...} -errorinfo {couldn't read file
+    ...") cut down to its message. When ``error`` is only gencell_create
+    failing after a _draw error, the _draw error comes first."""
+    lines = []
+    for ln in (log_text or "").splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        if ln.startswith("-code ") or " -errorstack " in ln:
+            m = re.search(r"-errorinfo \{(.*)$", ln)
+            if not m:
+                continue
+            ln = m.group(1).strip()
+        elif _TRACE_LINE.match(ln):
+            continue
+        if ln not in lines:
+            lines.append(ln)
+    err = (error or "").strip() or "generation failed"
+    if err.startswith(_DRAW_FAILED) and lines:
+        return "%s: %s (then gencell_create: %s)" % (device, " | ".join(lines), err)
+    return "%s: %s" % (device, err) + (("\n" + "\n".join(lines)) if lines else "")
+
+
 def defaults_digest(defaults):
     """SHA-256 over the canonical JSON of {device: [[key, value], ...]}."""
     items = [[dev, [[str(k), str(v)] for k, v in defaults[dev]]] for dev in sorted(defaults)]
     text = json.dumps(items, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# Lines every Magic prints while it starts, whatever its rcfile did.
+_STARTUP_NOISE = re.compile(r"^(Switching to \w+ tool\.|Processing system \.magicrc file|"
+                            r"Magic \d+\.\d+ revision|Starting magic under Tcl|Using the terminal|"
+                            r"Root cell box:|Using NULL graphics)")
 
 
 class Versions:
@@ -390,6 +432,20 @@ class MagicServer:
             raise _Transient(text + self._said())
         self._needs_restart = False
         self._ready = True
+        self._startup_stdout = printed
+
+    def startup_messages(self, n=6):
+        """What Magic printed while it read its rcfile (stdout and stderr,
+        the last ``n`` lines), for errors about what the rcfile loaded."""
+        lines = list(getattr(self, "_startup_stdout", []) or [])
+        lines += self.stderr_since(0, wait=0.05)
+        out = []
+        for ln in lines:
+            ln = ln.strip()
+            if (ln and ln not in out and not ln.startswith("KMP_")
+                    and not _STARTUP_NOISE.match(ln)):
+                out.append(ln)
+        return out[-n:]
 
     def _exit_text(self):
         """'Magic exited (status N)' once the child has exited, else ''."""
@@ -420,7 +476,7 @@ class MagicServer:
                 raise queue.Empty
             line = self._lines.get(timeout=remaining)
         except queue.Empty:
-            raise _Transient("timed out after %.0f s waiting for %s" % (budget, waiting_for))
+            raise _Transient("timed out after %g s waiting for %s" % (budget, waiting_for))
         if line is None:
             raise _Transient(self._exit_text() or "Magic closed its output")
         self._trace_line("<<", line)
@@ -591,12 +647,7 @@ class MagicServer:
         rep = self.request({"op": "generate", "device": device, "params": dict(params),
                             "form": form, "out": out_path})
         if not rep.ok:
-            lines = []
-            for ln in rep.log.strip().splitlines():
-                if ln.strip() and ln not in lines:
-                    lines.append(ln)
-            raise BackendError("%s: %s" % (device, rep.error.strip() or "generation failed")
-                               + (("\n" + "\n".join(lines)) if lines else ""))
+            raise BackendError(failure_text(device, rep.error, rep.log))
         restart = rep.kv.get("restart") == "1"
         if restart:
             log.warning("Magic kept cells after a request (%s); restarting it",
@@ -729,6 +780,11 @@ class Generator:
         key = self.key(spec, request)
         with self._lock:
             hit = self._memo.get(key)
+            if hit is not None and not os.path.isfile(hit.gds_path):
+                # Deleted under this session (cache clear, prune, or the
+                # cache directory removed by hand): generate it again.
+                del self._memo[key]
+                hit = None
             if hit is not None and (not self.fresh or hit.source == "magic"):
                 self.stats["memo"] += 1
                 return Result(hit.key, hit.gds_path, hit.sidecar, "memo")

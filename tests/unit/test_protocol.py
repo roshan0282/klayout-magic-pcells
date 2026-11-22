@@ -81,5 +81,59 @@ class Replies(unittest.TestCase):
         self.assertEqual(protocol.PROTOCOL, 1)
 
 
+class Messages(unittest.TestCase):
+    def test_a_draw_error_comes_before_gencell_creates_own(self):
+        # ihp-sg13g2 diodevdd_2kv with its layout script missing: Magic's
+        # gencell_create prints the _draw error as a Tcl options dump, then
+        # fails on instname. The marker is cut at 400 characters, so the
+        # cause has to come first.
+        from klayout_magic_pcells.backend import failure_text
+        log = ("-code 1 -level 0 -errorstack {INNER {invokeStk1 source /p/diodevdd_2kv.tcl} CALL {x}} "
+               "-errorcode {POSIX ENOENT {no such file or directory}} -errorinfo {couldn't read file "
+               "\"/p/diodevdd_2kv.tcl\": no such file or directory\n    while executing\n"
+               "\"source ${sg13g2::script_path}/diodevdd_2kv.tcl\"\n"
+               "    (procedure \"sg13g2::diodevdd_2kv_generate\" line 14)\n    invoked from within\n"
+               "\"${library}::${gencell_type}_draw $parameters\"} -errorline 1\n")
+        text = failure_text("diodevdd_2kv", "can't read \"instname\": no such variable", log)
+        self.assertTrue(text.startswith("diodevdd_2kv: couldn't read file \"/p/diodevdd_2kv.tcl\": "
+                                        "no such file or directory"), text)
+        self.assertNotIn("-errorstack", text)
+        self.assertNotIn("while executing", text)
+        # Any other error keeps its place, with Magic's messages after it.
+        text = failure_text("nfet", "stopped after Magic printed \"x\" 10000 times", "a\na\nb\n")
+        self.assertEqual(text, "nfet: stopped after Magic printed \"x\" 10000 times\na\nb")
+
+    def test_a_sub_second_timeout_is_not_0_s(self):
+        import queue
+        from klayout_magic_pcells.backend import MagicServer, _Transient
+        s = MagicServer.__new__(MagicServer)
+        s._lines = queue.Queue()
+        s._trace = None
+        with self.assertRaises(_Transient) as cm:
+            s._get_line(0, 0.08)
+        self.assertIn("timed out after 0.08 s", str(cm.exception))
+
+    def test_box_sides_follow_the_message(self):
+        from klayout_magic_pcells.pcell import box_sides
+        self.assertEqual(box_sides("Via1 width must be at least 0.26um"), ["w"])
+        self.assertEqual(box_sides("MV N-well region height must be at least 0.26um"), ["h"])
+        self.assertEqual(box_sides("Unrecognized layer: subdiffc"), ["w", "h"])
+
+    def test_cli_refuses_a_value_it_cannot_parse(self):
+        import contextlib
+        import io
+        from klayout_magic_pcells.__main__ import _kv
+        from klayout_magic_pcells.config import shipped_manifest
+        from klayout_magic_pcells.manifest import Manifest
+        man = Manifest.load(shipped_manifest("ihp-sg13g2"))
+        for dev, item in (("inductor3", "turns=2.5"), ("sg13_lv_nmos", "ng=1.5"), ("rsil", "w=abc")):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+                _kv([item], man[dev])
+            self.assertEqual(cm.exception.code, 2, item)
+            self.assertIn("error: ", err.getvalue())
+        self.assertEqual(_kv(["turns=3"], man["inductor3"]), {"turns": 3})
+
+
 if __name__ == "__main__":
     unittest.main()

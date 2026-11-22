@@ -17,7 +17,7 @@ import logging
 import os
 import tempfile
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 # The sky130A library's name, kept for code written against version 0.2.
 LIBRARY_NAME = "sky130_magic"
 
@@ -185,7 +185,17 @@ def start_backend(cfg=None, pdk=None, server=None, manifest=None):
         server = make_server(cfg, vendor_cells=manifest.vendor_cells())
     try:
         versions = server.start()
-        if manifest.namespace and versions.namespace and versions.namespace != manifest.namespace:
+        said = ""
+        if hasattr(server, "startup_messages"):
+            lines = server.startup_messages()
+            said = ("; Magic said: " + " | ".join(lines)) if lines else ""
+        if not versions.namespace:
+            raise StartError(
+                "the rcfile %s loaded no PDK: after reading it, Magic has no PDKNAMESPACE and none "
+                "of the manifest's %d generators (namespace %s)%s"
+                % (cfg.magicrc, len(manifest.devices), manifest.namespace or cfg.namespace, said),
+                hint=_hint_devices(cfg.pdk))
+        if manifest.namespace and versions.namespace != manifest.namespace:
             raise StartError(
                 "the rcfile %s loaded the generator namespace %s, but the manifest %s is for %s"
                 % (cfg.magicrc, versions.namespace, cfg.manifest, manifest.namespace),
@@ -196,9 +206,9 @@ def start_backend(cfg=None, pdk=None, server=None, manifest=None):
             raise StartError(
                 "the running Magic defines %d of the manifest's %d generators (missing: %s%s): "
                 "the PDK's device generators (namespace %s) did not load, or Magic loaded "
-                "another PDK"
+                "another PDK%s"
                 % (n - len(missing), n, ", ".join(missing[:4]), ", ..." if len(missing) > 4 else "",
-                   manifest.namespace or cfg.namespace),
+                   manifest.namespace or cfg.namespace, said),
                 hint=_hint_devices(cfg.pdk))
     except Exception:
         server.close()

@@ -80,6 +80,77 @@ class Importer(unittest.TestCase):
             insert_gds_flat(ly, ly.create_cell("X"), p)
 
 
+@needs_klayout
+class Grid(unittest.TestCase):
+    """The grid in a variant's stamp, which audit checks against a file's dbu."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+
+    def write(self, name, build):
+        ly = db.Layout()
+        ly.dbu = 0.001
+        top = ly.create_cell("TOP")
+        build(ly, top)
+        p = os.path.join(self.d, name)
+        ly.write(p)
+        return p
+
+    def test_grid_and_emptiness(self):
+        from klayout_magic_pcells.importer import gds_grid_nm, gds_has_shapes
+        li = (68, 20)
+
+        def box(x1, y1, x2, y2):
+            return lambda ly, top: top.shapes(ly.layer(*li)).insert(db.Box(x1, y1, x2, y2))
+        self.assertEqual(gds_grid_nm(self.write("a.gds", box(0, 0, 260, 250))), 10)
+        self.assertEqual(gds_grid_nm(self.write("b.gds", box(-265, 0, 5, 260))), 5)
+        self.assertEqual(gds_grid_nm(self.write("c.gds", box(0, 0, 1001, 1000))), 1)
+
+        def text(ly, top):
+            top.shapes(ly.layer(*li)).insert(db.Box(0, 0, 100, 100))
+            top.shapes(ly.layer(68, 5)).insert(db.Text("E", db.Trans(db.Vector(0, 7))))
+        self.assertEqual(gds_grid_nm(self.write("t.gds", text)), 1)
+
+        def array(pitch):
+            def build(ly, top):
+                sub = ly.create_cell("SUB")
+                sub.shapes(ly.layer(*li)).insert(db.Box(0, 0, 170, 170))
+                top.insert(db.CellInstArray(sub.cell_index(), db.Trans(db.Vector(10, 10)),
+                                            db.Vector(pitch, 0), db.Vector(0, 340), 3, 2))
+            return build
+        self.assertEqual(gds_grid_nm(self.write("r10.gds", array(340))), 10)
+        self.assertEqual(gds_grid_nm(self.write("r5.gds", array(345))), 5)
+
+        def empty_sub(ly, top):
+            sub = ly.create_cell("STUB")
+            top.insert(db.CellInstArray(sub.cell_index(), db.Trans(db.Vector(3, 3))))
+        p = self.write("e.gds", empty_sub)
+        self.assertFalse(gds_has_shapes(p))
+        self.assertIsNone(gds_grid_nm(p))
+        self.assertTrue(gds_has_shapes(self.write("a2.gds", box(0, 0, 260, 260))))
+        self.assertTrue(gds_has_shapes(self.write("t2.gds", text)))
+
+    def test_audit_takes_the_grid_from_the_stamp(self):
+        from klayout_magic_pcells.audit import _grid_problem
+        from klayout_magic_pcells.config import shipped_manifest
+        from klayout_magic_pcells.manifest import Manifest
+        man = Manifest.load(shipped_manifest("sky130A"))
+        self.assertEqual(man["mcon"].raw["defaults_run"]["grid_nm"], 10)
+        # The testers' case: an mcon whose box puts it on 5 nm, in a 2 nm file.
+        self.assertIn("5 nm grid", _grid_problem(man, "mcon", 0.002, {"grid": "5"}))
+        self.assertIsNone(_grid_problem(man, "mcon", 0.0025, {"grid": "5"}))
+        self.assertIsNone(_grid_problem(man, "mcon", 0.002, {"grid": "10"}))
+        self.assertIn("1 nm grid", _grid_problem(man, "mcon", 0.005, {"grid": "1"}))
+        # A stamp without a grid (version 0.3): the default output's grid.
+        self.assertIsNone(_grid_problem(man, "mcon", 0.002, {}))
+        self.assertIn("at its defaults", _grid_problem(man, "sky130_fd_pr__pnp_05v5_W0p68L0p68",
+                                                       0.005, {}))
+        from klayout_magic_pcells.pcell import stamp_with_grid
+        from klayout_magic_pcells.stamp import parse_stamp
+        self.assertEqual(parse_stamp(stamp_with_grid("kmp1;pdk=sky130A;key=ab", 5))["grid"], "5")
+        self.assertEqual(stamp_with_grid("kmp1;pdk=sky130A", None), "kmp1;pdk=sky130A")
+
+
 class _V:
     magic, tech, pdk = "8.3.681", "1.0.588-56-g026824c", "sky130A"
 

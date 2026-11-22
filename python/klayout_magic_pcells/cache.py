@@ -4,7 +4,14 @@ Layout: ``<root>/v1/<versions digest, 12 hex>/<device>/<key, 24 hex>.gds``
 plus a ``.json`` sidecar next to it. A GDS without its sidecar is a miss.
 The sidecar records the SHA-256 of the GDS as stored; a GDS whose bytes no
 longer match it (truncated, overwritten, another entry's file) is a miss,
-and the entry is deleted so that Magic regenerates it.
+and the entry is deleted so that Magic regenerates it. Each versions
+directory holds ``versions.json``, which names its PDK (prune works per
+PDK). ``<root>/tmp`` holds the files Magic is writing.
+
+Another process may delete any of these while a session runs (``cache
+clear``, ``cache prune``, or the whole directory removed by hand): the
+session makes the directories again when it next writes, and an entry it
+remembered that is gone is generated again.
 """
 
 import atexit
@@ -13,6 +20,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 
 from . import protocol
 
@@ -126,6 +134,9 @@ class GdsCache:
         return os.path.join(d, key[:24] + ".gds"), os.path.join(d, key[:24] + ".json")
 
     def tmp_path(self, key):
+        # Made again here: cache clear or prune in another process, or the
+        # cache directory removed by hand, may have deleted it.
+        os.makedirs(self.tmp_dir, exist_ok=True)
         return os.path.join(self.tmp_dir, "%s.%d.gds" % (key[:24], os.getpid()))
 
     def lookup(self, key, device):
@@ -181,6 +192,9 @@ class GdsCache:
         sidecar["gds_sha256"] = sha256_file(tmp_gds)
         gds, side = self.paths(key, device)
         os.makedirs(os.path.dirname(gds), exist_ok=True)
+        marker = os.path.join(self.base, "versions.json")
+        if self.enabled and not os.path.isfile(marker):
+            _atomic_write_text(marker, json.dumps(self.fields, indent=1, sort_keys=True) + "\n")
         os.replace(tmp_gds, gds)
         _atomic_write_text(side, json.dumps(sidecar, indent=1, sort_keys=True) + "\n")
         return gds
@@ -193,22 +207,82 @@ class GdsCache:
             return []
         return sorted(os.path.join(top, d) for d in os.listdir(top))
 
-    def prune(self, keep=None):
-        """Delete every version directory except the current one (or the
-        ones whose digests are in ``keep``: one per PDK)."""
-        keep = set(keep or ()) | {self.vdigest}
-        removed = []
+    @staticmethod
+    def pdk_of(version_dir):
+        """The PDK a versions directory belongs to: from its versions.json,
+        else (a directory written before version 0.4) from the first sidecar
+        found in it; None for a directory with neither."""
+        try:
+            with open(os.path.join(version_dir, "versions.json"), encoding="utf-8") as f:
+                pdk = json.load(f).get("pdk")
+            if pdk:
+                return pdk
+        except (OSError, ValueError, AttributeError):
+            pass
+        try:
+            devices = sorted(os.listdir(version_dir))
+        except OSError:
+            return None
+        for dev in devices:
+            d = os.path.join(version_dir, dev)
+            if not os.path.isdir(d):
+                continue
+            for fn in sorted(os.listdir(d)):
+                if not fn.endswith(".json"):
+                    continue
+                try:
+                    with open(os.path.join(d, fn), encoding="utf-8") as f:
+                        side = json.load(f)
+                    pdk = (side.get("versions") or {}).get("pdk")
+                    if pdk:
+                        return pdk
+                except (OSError, ValueError, AttributeError):
+                    continue
+        return None
+
+    def prune(self, current=None, tmp_age=86400):
+        """Delete the versions directories of the PDKs in ``current`` ({pdk:
+        current versions digest}, default: this cache's own) except each
+        one's current directory, and directories that hold no entry.
+        Directories of other PDKs are left alone: their current digest isn't
+        known here. Files in tmp older than ``tmp_age`` seconds go too (a
+        session that died while Magic wrote); the directory itself stays.
+
+        Returns (removed directories, {kept directory: its PDK})."""
+        if current is None:
+            current = {self.fields.get("pdk"): self.vdigest}
+        removed, other = [], {}
         for d in self.version_dirs():
-            if os.path.basename(d) not in keep:
+            name = os.path.basename(d)
+            pdk = self.pdk_of(d)
+            if pdk is None or (pdk in current and current[pdk] != name):
                 shutil.rmtree(d, ignore_errors=True)
                 removed.append(d)
-        shutil.rmtree(os.path.join(self.root, "tmp"), ignore_errors=True)
-        return removed
+            elif pdk not in current:
+                other[d] = pdk
+        self._clean_tmp(tmp_age)
+        return removed, other
 
-    def clear(self):
-        """Delete the whole cache."""
-        for name in ("v1", "tmp"):
-            shutil.rmtree(os.path.join(self.root, name), ignore_errors=True)
+    def _clean_tmp(self, age):
+        tmp = os.path.join(self.root, "tmp")
+        try:
+            names = os.listdir(tmp)
+        except OSError:
+            return
+        now = time.time()
+        for fn in names:
+            p = os.path.join(tmp, fn)
+            try:
+                if now - os.path.getmtime(p) > age:
+                    os.remove(p)
+            except OSError:
+                pass
+
+    def clear(self, tmp_age=86400):
+        """Delete every entry of every PDK. A running session's files in
+        tmp (and Magic's run directories) are left; they go with it."""
+        shutil.rmtree(os.path.join(self.root, "v1"), ignore_errors=True)
+        self._clean_tmp(tmp_age)
 
     def stats(self):
         n = size = 0
@@ -219,4 +293,5 @@ class GdsCache:
                         n += 1
                     size += os.path.getsize(os.path.join(dirpath, fn))
         return {"entries": n, "bytes": size, "versions": len(self.version_dirs()),
-                "current": self.vdigest}
+                "current": self.vdigest,
+                "pdk_of": {os.path.basename(d): self.pdk_of(d) for d in self.version_dirs()}}

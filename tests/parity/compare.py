@@ -14,7 +14,10 @@ shape iterator), then compared layer by layer (GDS layer/datatype pairs):
     the attributes are rotation, mirror, size, justification and font, so a
     label that is renamed, moved, duplicated, turned or re-justified is
     reported (``text_attrs=False`` compares string and position only: OASIS
-    keeps no text size or justification);
+    keeps no text size or justification). KLayout 0.30.11's GDS reader keeps
+    no font (every text reads back with font -1), so a font difference in a
+    GDS file is invisible here; gds_census.text_fonts reads it from the raw
+    records, and the harness compares that too;
   * with ``shape_counts=True`` the number of shapes per layer, unmerged, must
     also match, so a shape inserted twice is reported;
   * bounding boxes are reported in micrometres: the geometry bbox of each
@@ -38,6 +41,8 @@ Options:
                       before comparing, for generators with different origins
     --ignore L/D      skip a layer/datatype pair (repeatable)
     --no-texts        do not compare texts
+    --no-text-attrs   compare texts as string and position only
+    --shape-counts    also compare the number of unmerged shapes per layer
     --lyp FILE        read layer names from a KLayout .lyp file for the report
     --xor-out FILE    write the XOR geometry and unmatched texts to FILE
     --json FILE       also write the result as JSON to FILE ('-' = stdout)
@@ -462,10 +467,15 @@ def main(argv=None):
     p.add_argument("--align", choices=["none", "ll", "center"], default="none")
     p.add_argument("--ignore", type=parse_ld, action="append")
     p.add_argument("--no-texts", action="store_true")
+    p.add_argument("--no-text-attrs", dest="text_attrs", action="store_false",
+                   help="compare texts as string and position only (as for OASIS)")
+    p.add_argument("--shape-counts", action="store_true",
+                   help="also compare the number of unmerged shapes per layer")
     p.add_argument("--lyp")
     p.add_argument("--xor-out")
     p.add_argument("--json")
     p.add_argument("--quiet", action="store_true")
+    p.set_defaults(text_dupes=True)
     args = p.parse_args(argv)
     try:
         res = compare(args)

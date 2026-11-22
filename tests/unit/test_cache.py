@@ -131,11 +131,74 @@ class Store(unittest.TestCase):
         k2 = old.key("dev", "cell", {})
         old.store(k2, "dev", fake_gds(old.tmp_path(k2)), {"key": k2})
         self.assertEqual(len(self.c.version_dirs()), 2)
-        removed = self.c.prune()
+        removed, other = self.c.prune()
         self.assertEqual([os.path.basename(d) for d in removed], [old.vdigest])
+        self.assertEqual(other, {})
         self.assertIsNotNone(self.c.lookup(key, "dev"))
         self.c.clear()
         self.assertEqual(self.c.version_dirs(), [])
+
+    def test_prune_leaves_the_pdks_it_does_not_work_on(self):
+        # The testers' case: a cache with entries of four PDKs, pruned with
+        # KMP_PDKS set to one of them, deleted the other three's current
+        # directories. Only the named PDKs' old directories may go.
+        def store(fields, sidecar_versions=None, marker=True):
+            c = GdsCache(self.root, fields, validate=lambda p: ["T"])
+            k = c.key("dev", "cell", {})
+            side = {"key": k}
+            if sidecar_versions:
+                side["versions"] = sidecar_versions
+            c.store(k, "dev", fake_gds(c.tmp_path(k)), side)
+            if not marker:
+                os.remove(os.path.join(c.base, "versions.json"))
+            return c
+        sky_old = store(dict(FIELDS, magic="8.3.600"))
+        gf = store(versions_fields(V, "gf180mcuD"))
+        gf_old = store(dict(versions_fields(V, "gf180mcuD"), magic="8.3.600"))
+        # A directory written before versions.json existed: its sidecar names the PDK.
+        ihp = store(versions_fields(V, "ihp-sg13g2"), {"pdk": "ihp-sg13g2"}, marker=False)
+        empty = os.path.join(self.root, "v1", "000000000000")
+        os.makedirs(empty)
+        key = self.c.key("dev", "cell", {})
+        self.c.store(key, "dev", fake_gds(self.c.tmp_path(key)), {"key": key})
+        self.assertEqual(GdsCache.pdk_of(ihp.base), "ihp-sg13g2")
+        self.assertEqual(GdsCache.pdk_of(gf.base), "gf180mcuD")
+        removed, other = self.c.prune(current={"sky130A": self.c.vdigest})
+        self.assertEqual(sorted(removed), sorted([sky_old.base, empty]))
+        self.assertEqual(other, {gf.base: "gf180mcuD", gf_old.base: "gf180mcuD", ihp.base: "ihp-sg13g2"})
+        removed, other = self.c.prune(current={"sky130A": self.c.vdigest, "gf180mcuD": gf.vdigest})
+        self.assertEqual(removed, [gf_old.base])
+        self.assertEqual(other, {ihp.base: "ihp-sg13g2"})
+        self.assertEqual(self.c.stats()["pdk_of"][os.path.basename(ihp.base)], "ihp-sg13g2")
+
+    def test_the_cache_survives_prune_clear_and_removal_under_a_session(self):
+        # Another process's "cache clear" or "cache prune", or rm -rf of the
+        # cache directory, while this session holds a GdsCache: its next
+        # store must still work (tmp and the versions directory come back).
+        import shutil
+        for how in ("clear", "prune", "rmtree"):
+            key = self.c.key("dev", "cell", {"how": how})
+            if how == "clear":
+                GdsCache(self.root, {}, validate=None).clear()
+            elif how == "prune":
+                GdsCache(self.root, dict(FIELDS, magic="other"), validate=None).prune()
+            else:
+                shutil.rmtree(self.root)
+            tmp = fake_gds(self.c.tmp_path(key))
+            gds = self.c.store(key, "dev", tmp, {"key": key})
+            self.assertTrue(os.path.isfile(gds), how)
+            self.assertIsNotNone(self.c.lookup(key, "dev"), how)
+
+    def test_prune_keeps_tmp_and_young_files_in_it(self):
+        key = self.c.key("dev", "cell", {})
+        young = fake_gds(self.c.tmp_path(key))
+        stale = fake_gds(os.path.join(self.c.tmp_dir, "x.1.gds"))
+        os.utime(stale, (1, 1))
+        self.c.prune()
+        self.assertTrue(os.path.isfile(young))
+        self.assertFalse(os.path.exists(stale))
+        self.c.clear()
+        self.assertTrue(os.path.isfile(young))
 
     def test_disabled_cache_keeps_nothing_between_sessions(self):
         c = GdsCache(self.root, FIELDS, enabled=False, validate=lambda p: ["T"])

@@ -10,8 +10,9 @@ namespace eval ::kmp {
     # The PDK's generator namespace, which is also the library argument of
     # magic::gencell_create: KMP_NS if the backend sets it, else the
     # PDKNAMESPACE that every supported PDK's .tcl file sets (sky130,
-    # gf180mcu, sg13g2, sg13cmos5l), else sky130.
-    variable ns sky130
+    # gf180mcu, sg13g2, sg13cmos5l), else empty: the rcfile loaded no PDK,
+    # and the device lists below come out empty, so registration says so.
+    variable ns ""
     if {[info exists ::env(KMP_NS)] && $::env(KMP_NS) ne ""} {
         set ns $::env(KMP_NS)
     } elseif {[info exists ::PDKNAMESPACE] && $::PDKNAMESPACE ne ""} {
@@ -159,6 +160,7 @@ proc ::kmp::write_file {path text} {
 proc ::kmp::devices {} {
     set out {}
     set ns $::kmp::ns
+    if {$ns eq ""} { return $out }
     foreach d [lsort [info commands ::${ns}::*_draw]] {
         if {[regexp "^::${ns}::(.*)_draw\$" $d -> dev]} {
             if {[info commands ::${ns}::${dev}_defaults] ne ""} {
@@ -173,6 +175,7 @@ proc ::kmp::devices {} {
 proc ::kmp::helpers {} {
     set out {}
     set ns $::kmp::ns
+    if {$ns eq ""} { return $out }
     foreach d [lsort [info commands ::${ns}::*_draw]] {
         if {[regexp "^::${ns}::(.*)_draw\$" $d -> dev]} {
             if {[info commands ::${ns}::${dev}_defaults] eq ""} {
@@ -189,6 +192,7 @@ proc ::kmp::helpers {} {
 # commands (sky130::via1_draw, sg13g2::subconn_guard_draw, ...).  The
 # others need arguments and are internal helpers of the device generators.
 proc ::kmp::is_boxpaint {name} {
+    if {$::kmp::ns eq ""} { return 0 }
     set p ::${::kmp::ns}::${name}_draw
     if {[info procs $p] eq ""} { return 0 }
     if {[info commands ::${::kmp::ns}::${name}_defaults] ne ""} { return 0 }
@@ -241,7 +245,9 @@ proc ::kmp::version_info {} {
 # written to a file for hashing on the Python side.
 proc ::kmp::dump_procs {path} {
     set out ""
-    foreach ns [list ::$::kmp::ns ::magic] {
+    set spaces [list ::magic]
+    if {$::kmp::ns ne ""} { set spaces [list ::$::kmp::ns ::magic] }
+    foreach ns $spaces {
         foreach p [lsort [info procs ${ns}::*]] {
             set arglist {}
             foreach a [info args $p] {

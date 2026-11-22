@@ -4,7 +4,7 @@
   check DEVICE [k=v ...]               run Magic's _check once and show what it changes
   generate DEVICE [k=v ...] -o out.gds place one PCell variant and write a file
   audit FILE [--regen]                 report the Magic-generated cells in a file
-  cache {stats,prune,clear}            the disk cache
+  cache {stats,prune,clear}            the disk cache (prune: the selected PDKs' old entries)
   devices [-v]                         list the PCells and their parameters
 
 A device is found in the manifests of the selected PDKs (KMP_PDKS); a name
@@ -64,7 +64,13 @@ def _kv(items, spec):
         p = spec.param(k)
         if p is None:
             raise SystemExit("error: %s has no parameter %r (try: devices -v)" % (spec.name, k))
-        vals[k] = p.parse(v)
+        try:
+            vals[k] = p.parse(v)
+        except ValueError as e:
+            # A refused value exits 2, as check does for one Magic must not see.
+            sys.stderr.write("error: %s=%r is not a %s: %s\n" % (
+                k, v, {"int": "whole number", "float": "number", "bool01": "0 or 1"}.get(p.type, p.type), e))
+            raise SystemExit(2)
     return vals
 
 
@@ -141,7 +147,12 @@ def cmd_doctor(args):
 
 
 def cmd_check(args):
+    """Run _check once and show what it changes, then generate the device
+    once to see whether Magic draws anything with the checked values (a
+    _check can hand _draw a value it fails on, such as the SPICE string
+    "68.465u"). Exits 1 when Magic draws nothing, 2 for a refused value."""
     from .backend import BackendError, MagicServer
+    from .importer import gds_has_shapes
     from .manifest import InvalidValue
     from .pcell import changed_params
     cfg, man, spec = _find_device(args)
@@ -156,27 +167,39 @@ def cmd_check(args):
     try:
         s.start()
         r = s.check(spec.name, req, spec.form if spec.kind == "box" else None)
+        out = os.path.join(s.run_dir, "check.gds")
+        g = s.generate(spec.name, req, spec.form, out)
+        drawn = gds_has_shapes(out)
     except BackendError as e:
         print("error: %s" % e)
         return 1
     finally:
         s.close()
     ch = changed_params(req, r.checked)
+    messages = [ln for ln in (g.log if not drawn else r.log).strip().splitlines() if ln.strip()]
     if spec.kind == "box":
-        if not ch:
-            print("%s: Magic paints a %s x %s um box" % (spec.name, req["w"], req["h"]))
-    elif r.kv.get("check") == "none":
-        print("%s: the PDK has no _check proc for it; Magic draws the values unchecked" % spec.name)
-    elif r.kv.get("check") == "failed":
-        print("%s: _check failed (%s); Magic draws the values unchecked"
-              % (spec.name, r.kv.get("check_error", "")))
-    elif not ch:
-        print("%s: _check changes nothing" % spec.name)
-    for k, v in ch.items():
-        print("%s: Magic draws %s=%s (entered %s)" % (spec.name, k, v, req[k]))
-    for line in r.log.strip().splitlines():
+        size = "%s x %s um" % (r.checked.get("w", req["w"]), r.checked.get("h", req["h"]))
+        entered = " (entered %s x %s)" % (req["w"], req["h"]) if ch else ""
+        if drawn:
+            print("%s: Magic paints a %s box%s" % (spec.name, size, entered))
+        else:
+            print("%s: Magic paints nothing on a %s box%s" % (spec.name, size, entered))
+    else:
+        verb = "Magic draws" if drawn else "_check sets"
+        if r.kv.get("check") == "none":
+            print("%s: the PDK has no _check proc for it; Magic draws the values unchecked" % spec.name)
+        elif r.kv.get("check") == "failed":
+            print("%s: _check failed (%s); Magic draws the values unchecked"
+                  % (spec.name, r.kv.get("check_error", "")))
+        elif not ch:
+            print("%s: _check changes nothing" % spec.name)
+        for k, v in ch.items():
+            print("%s: %s %s=%s (entered %s)" % (spec.name, verb, k, v, req[k]))
+        if not drawn:
+            print("%s: Magic draws nothing for these values" % spec.name)
+    for line in messages:
         print("  message: " + line)
-    return 0
+    return 0 if drawn else 1
 
 
 def cmd_generate(args):
@@ -227,12 +250,13 @@ def cmd_cache(args):
         GdsCache(base.cache_dir, {}, enabled=True).clear()
         print("cleared %s" % base.cache_dir)
         return 0
-    # The current versions directory of every PDK (prune keeps them all).
+    # The current versions directory of each PDK this command works on
+    # (--pdk, else KMP_PDKS); prune keeps those and leaves other PDKs alone.
     caches = []
     for pdk in ([args.pdk] if args.pdk else base.pdks):
         cfg = base.for_pdk(pdk)
         if cfg.problems():
-            print("note: %s is not usable (%s); its entries count as old" % (pdk, cfg.problems()[0]))
+            print("note: %s is not usable (%s); its entries are left alone" % (pdk, cfg.problems()[0]))
             continue
         s = MagicServer(cfg, vendor_cells=Manifest.load(cfg.manifest).vendor_cells())
         try:
@@ -243,14 +267,16 @@ def cmd_cache(args):
     if not caches:
         print("error: no usable PDK to read the current versions from")
         return 1
-    keep = {c.vdigest for _, c in caches}
+    current = {p: c.vdigest for p, c in caches}
     if args.action == "prune":
-        if args.pdk:
-            print("note: prune keeps only %s's current entries" % args.pdk)
-        for d in caches[0][1].prune(keep=keep):
+        removed, other = caches[0][1].prune(current=current)
+        for d in removed:
             print("removed %s" % d)
+        for d, pdk in sorted(other.items()):
+            print("kept %s: entries of %s, which this prune doesn't work on (it works on %s; "
+                  "use --pdk %s, or KMP_PDKS)" % (d, pdk, ", ".join(sorted(current)), pdk))
     st = caches[0][1].stats()
-    st.update(root=base.cache_dir, current={p: c.vdigest for p, c in caches})
+    st.update(root=base.cache_dir, current=current)
     print(json.dumps(st, indent=1))
     return 0
 

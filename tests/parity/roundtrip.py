@@ -8,7 +8,8 @@ Two modes, chosen by ``KMP_RT_MODE``:
     whose stored geometry compares identical to ref/<id>.gds and whose stamp
     reads back; the GDS is saved again as resaved/<id>.gds.
 
-``lib`` (``klayout -b -rm pymacros/klayout_magic_pcells.lym -r roundtrip.py``):
+``lib`` (``klayout -b -rm pymacros/klayout_magic_pcells.lym -r roundtrip.py``,
+    with the disk cache off, so Magic regenerates every variant):
     each file must open as a live PCell variant whose stored parameters are
     the manifest defaults overridden by the request, plus ``kmp_created``,
     and whose regenerated geometry compares identical to the ref;
@@ -222,6 +223,8 @@ def main():
         except Exception as e:
             out[pt["id"]] = {"error": "%s: %s" % (type(e).__name__, e),
                              "traceback": traceback.format_exc()}
+    if st is not None:
+        out["__generator__"] = dict(st.generator.stats)
     with open(os.environ["KMP_RT_OUT"], "w", encoding="utf-8") as f:
         json.dump(out, f, indent=1)
     print("ROUNDTRIP %s: %d points" % (mode, len(out)))

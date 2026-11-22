@@ -46,5 +46,8 @@ for p in $PDKS; do
   rc=$?
   [ $rc -gt $status ] && status=$rc
 done
-"$HERE/in_image.sh" 'python3 tests/parity/run_sweep.py --summary /repo/out/parity' || status=2
+# The summary exits with the worst PDK's status (0, 1 or 2) on its own.
+"$HERE/in_image.sh" 'python3 tests/parity/run_sweep.py --summary /repo/out/parity'
+rc=$?
+[ $rc -gt $status ] && status=$rc
 exit $status

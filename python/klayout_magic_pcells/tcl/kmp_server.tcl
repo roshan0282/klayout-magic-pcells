@@ -59,6 +59,7 @@ proc ::kmp::emit {id kv params} {
 
 proc ::kmp::require_device {dev} {
     set ns $::kmp::ns
+    if {$ns eq ""} { error "unknown device \"$dev\": the rcfile loaded no PDK (PDKNAMESPACE is not set)" }
     if {[info commands ::${ns}::${dev}_draw] eq "" ||
         [info commands ::${ns}::${dev}_defaults] eq ""} {
         error "unknown device \"$dev\""
@@ -84,10 +85,16 @@ proc ::kmp::require_safe_params {params} {
     }
 }
 
-# A box size, interpolated into "box values ...um": a plain decimal number.
+# A box size, interpolated into "box values ...um": a decimal number with an
+# optional minus sign, or inf or nan, as the Python side writes a float.
+# Magic's own box command takes all of them: it puts a negative size left
+# of or below the origin and paints there, and it reads inf, nan and sizes
+# beyond its integer range as -2147483648 internal units, below every
+# generator's minimum.
 proc ::kmp::require_size {k v} {
-    if {![regexp {^[0-9]+(\.[0-9]*)?([eE][+-]?[0-9]+)?$} $v] && ![regexp {^\.[0-9]+([eE][+-]?[0-9]+)?$} $v]} {
-        error "box size $k=\"$v\" is not a number"
+    if {![regexp {^-?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?$} $v] &&
+        ![regexp {^-?(inf|nan)$} $v]} {
+        error "box size $k=\"$v\" is not a decimal number, inf or nan; refused"
     }
 }
 
@@ -209,11 +216,13 @@ proc ::kmp::um {n} {
     return $v
 }
 
-# A box-paint generator: a fresh cell, the box w x h um with its lower-left
-# corner at the origin, the generator called with no arguments (as Magic's
-# menu calls it), and, when out is not empty, the cell written to out.  The
-# reply's params hold the box Magic used, in um, after it rounded the size
-# to its internal grid; kv box holds it in internal units.
+# A box-paint generator: a fresh cell, "box values 0um 0um <w>um <h>um" (the
+# box's lower-left corner at the origin, or, for a negative size, the box
+# left of or below it, as Magic puts it), the generator called with no
+# arguments (as Magic's menu calls it), and, when out is not empty, the cell
+# written to out.  The reply's params hold the size of the box Magic used,
+# in um, after it rounded the size to its internal grid; kv box holds the
+# box in internal units.
 proc ::kmp::gen_box {name params out} {
     ::kmp::require_boxpaint $name
     foreach k {w h} {

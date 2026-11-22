@@ -3,39 +3,77 @@
 bug in klayout_magic_pcells.manifest.format() fails the sweep's request and
 geometry checks instead of reaching both paths.
 
-  float  -> the value rounded to 12 significant digits (half-even on the
-            exact binary value, as C's %.12g does), in Python's float
-            notation: shortest digits, at least one digit after the point;
-            if that equals the manifest default at 12 digits, the default's
-            own text ("0.420")
+  float  -> the value as KLayout keeps it in a saved file (its 15
+            significant digits, rounded half-even on the exact binary value,
+            as C's %.15g does), taken as the nearest double and rounded to 12
+            significant digits the same way, in Python's float notation:
+            shortest digits, at least one digit after the point, exponent
+            form ("1e-05", "1e+16") below 1e-4 and from 1e16 on; a zero is
+            "0.0", negative or not (KLayout saves -0.0 as 0); "inf", "-inf"
+            and "nan" as Python writes them;
+            if the text equals the one the manifest default gives, the
+            default's own text ("0.420")
   int    -> decimal digits
   bool01 -> "1" or "0"
   signed -> the text as typed
+
+The arithmetic is done with Decimal on the exact binary values, not with
+printf, so it is a second implementation of the same rule.
 """
 
+import math
+import sys
 from decimal import Context, Decimal, ROUND_HALF_EVEN
 
 _C12 = Context(prec=12, rounding=ROUND_HALF_EVEN)
+_C15 = Context(prec=15, rounding=ROUND_HALF_EVEN)
 
 
-def _d12(x):
-    return _C12.plus(Decimal(float(x))).normalize(_C12)
+def _python_notation(d):
+    """A nonzero finite Decimal with at most 17 digits -> Python's repr text
+    of the double with exactly those digits."""
+    sign, digits, _exp = d.normalize().as_tuple()
+    s = "".join(str(x) for x in digits)
+    e = d.adjusted()  # exponent of the first digit
+    neg = "-" if sign else ""
+    if -4 <= e < 16:
+        if e < 0:
+            body = "0." + "0" * (-e - 1) + s
+        elif len(s) > e + 1:
+            body = s[:e + 1] + "." + s[e + 1:]
+        else:
+            body = s + "0" * (e + 1 - len(s)) + ".0"
+        return neg + body
+    mant = s[0] + ("." + s[1:] if len(s) > 1 else "")
+    return "%s%se%s%02d" % (neg, mant, "-" if e < 0 else "+", abs(e))
+
+
+def _text12(x):
+    x = float(x)
+    if math.isnan(x):
+        return "nan"
+    if math.isinf(x):
+        return "inf" if x > 0 else "-inf"
+    if x == 0:
+        return "0.0"
+    d15 = _C15.plus(Decimal(x))
+    d12 = _C12.plus(Decimal(float(d15)))
+    if abs(d12) < Decimal(sys.float_info.min):
+        # Subnormal: fewer digits than 12 already name the double, and
+        # Python writes the fewest ("5e-324").
+        return repr(float(d12))
+    return _python_notation(d12)
 
 
 def float_text(x, default=None):
-    d = _d12(x)
+    t = _text12(x)
     if default is not None:
         try:
-            if d == _d12(float(default)):
+            if t == _text12(float(default)):
                 return default
         except ValueError:
             pass
-    if d.is_zero():
-        return "-0.0" if d.is_signed() else "0.0"
-    if not -4 <= d.adjusted() < 16:
-        raise ValueError("%r is outside the range the sweep uses (1e-4 .. 1e16)" % (x,))
-    s = format(d, "f")
-    return s if "." in s else s + ".0"
+    return t
 
 
 def typed(ptype, text):

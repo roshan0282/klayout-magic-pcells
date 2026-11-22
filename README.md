@@ -17,7 +17,7 @@ Magic. The box-paint generators are the via, contact, substrate-contact,
 guard-ring and well commands of Magic's "Devices" menus; their PCells take
 the box size (see [Box-paint generators](#box-paint-generators)).
 
-Status: version 0.3.0. The repository is kept on GitHub as the private
+Status: version 0.4.0. The repository is kept on GitHub as the private
 repository vproHacks/klayout-magic-pcells. The parity harness (see
 [Tests](#tests)) passes on every PDK; the results of the last full run are
 under [Last full run](#last-full-run). The libraries load under
@@ -67,8 +67,10 @@ rotation, mirror, size, justification and font) as the GDS that Magic writes
 when its generator is called once with those values: through
 `magic::gencell` for a device, and through the generator's menu call on a
 box for a box-paint generator. The comparison is an XOR per layer at a
-common database unit, with no tolerance and no alignment. Cell names,
-hierarchy, GDS properties and timestamps are not compared.
+common database unit, with no tolerance and no alignment. KLayout's GDS
+reader doesn't keep a text's font, so the harness reads the fonts from the
+raw GDS records of both files. Cell names, hierarchy, GDS properties and
+timestamps are not compared.
 
 ## Requirements
 
@@ -84,9 +86,12 @@ hierarchy, GDS properties and timestamps are not compared.
 
 The image `hpretl/iic-osic-tools@sha256:3c371645b19c6f6564dc8c7b21e39ad1c1833d274fe5b85639afe1ba9d7987e7`
 has all of these. The IHP rcfiles in that image end with
-`source /foss/tools/osic-multitool/iic-magic-bindkeys`, a file of the image;
-with the IHP PDKs installed elsewhere that line fails after the devices have
-loaded (read in the rcfile, not tried).
+`source /foss/tools/osic-multitool/iic-magic-bindkeys`, a file of the image.
+In a test of version 0.3 with that line pointing at a file that doesn't
+exist, as it would with the IHP PDKs installed elsewhere, the library
+registered and generated devices as usual. The stamp digest changed, because the
+rcfile is one of the `libs.tech/magic` files it covers (see [Stamps and
+audit](#stamps-and-audit)).
 
 ## Installing
 
@@ -182,9 +187,25 @@ error and draws with the unchecked values, and so does the PCell. The
 manifest probes found `_check` procs that raise "integer value too large to
 represent" at `w = 0` on 17 sky130A resistors, on gf180mcuD's `npolyf_s`,
 `ppolyf_s` and `rm1` to `rm5`, and on the IHP PDKs' `rsil`, `rppd`, `rhigh`
-and `rm1` to `rm5`; IHP's `inductor3` raises at `turns 2.5`. For a box-paint generator, `check` reports the box Magic
-uses after rounding to its 5 nm grid, and the generator's message when the
-box is below its minimum.
+and `rm1` to `rm5`; IHP's `inductor3` raises at `turns 2.5`.
+
+`check` then generates the device once, because `_check` can hand `_draw`
+a value that `_draw` fails on. When Magic writes an empty cell, `check` says
+so, prints Magic's messages and exits 1:
+
+```
+$ python3 -m klayout_magic_pcells check sky130_fd_pr__res_generic_po val=10000 l=0
+sky130_fd_pr__res_generic_po: _check sets l=68.465u (entered 0.0)
+sky130_fd_pr__res_generic_po: Magic draws nothing for these values
+  message: can't use non-numeric string as operand of "+"
+```
+
+For a box-paint generator, `check` reports the box Magic uses after rounding
+to its grid (`Magic paints a 0.265 x 1.0 um box (entered 0.263 x 1.0)`), or
+`Magic paints nothing` with the generator's message when the box is below
+its minimum. `check` exits 0 when Magic draws something, 1 when it draws
+nothing or fails, and 2 for a value it refuses or can't parse (`turns=2.5`
+for an int, `w=abc`).
 
 Each time KLayout asks a PCell to draw a variant (the cell KLayout makes for
 one set of parameter values), the PCell's `produce` call builds the request
@@ -203,7 +224,7 @@ Their types come from the manifest, a JSON file per PDK built from Magic (see
 
 | In Magic's dialog | PCell type | Sent to Magic as |
 |---|---|---|
-| number entry | double | 12 significant digits, written like a Python float (`0.35`, `31.0`); a value equal to Magic's default is sent as Magic's default text (`0.420`) |
+| number entry | double | the 15 significant digits that KLayout saves, rounded to 12, written like a Python float (`0.35`, `31.0`); any zero as `0.0`; a value equal to Magic's default as Magic's default text (`0.420`) |
 | `nf`, `ng`, `m`, `nx`, `ny`, `turns` | int | `3` |
 | checkbox | boolean | `1` or `0` |
 | the "[+/-](%)" coverage entries (`viasrc`, `viadrn`, `viagate`, `viagb`, `viagr`, `viagl`, `viagt`, `ccov`) | string | the text as typed, whitespace included, if it is a number; anything else is refused (see below) |
@@ -243,18 +264,27 @@ text that is not a number the PCell differs from Magic on purpose. The Magic
 server also answers with an error for any value that contains `[`, `]`, `$`
 or a backslash, whoever sends it.
 
-Floats are rounded to 12 digits because KLayout 0.30.11 doesn't store doubles
-exactly in a saved file: `0.35` reads back as `0.35000000000000003` in a new
-process, which would otherwise change the request, and with it the cache key,
-every time a file is reopened. They always carry a decimal point because the
-generator code does arithmetic with Tcl's `expr` and `/`, which divide two
-integer strings as integers. A value with 13 or more significant digits is
-therefore not the text Magic gets: `0.4244999999999` is sent as `0.4245`.
-Magic's cell name and checked values can then differ from Magic given the
-longer text, because Magic rounds to three decimals for the name. No geometry
-difference has been found: sky130A `nfet_01v8` with `w` at 0.4225, 0.4275,
-1.0045 and 5.005, each against the same value 1e-14 lower, drew the same
-polygons in Magic.
+Floats are rounded because KLayout 0.30.11 doesn't keep doubles exactly in a
+saved file. It writes a double parameter with 15 significant digits and
+parses that text back up to one ULP off: in a new process `0.35` reopens as
+`0.35000000000000003`, and `4.257627156815` as `4.2576271568149995`.
+Without rounding, the request, and with it the cache key, would change every
+time a file is reopened. The PCell rounds the 15-digit text that KLayout
+saves, not the double, to 12 digits, so the value and its reopened double
+give the same text. Version 0.3 rounded the double: `4.257627156815` was sent
+as `4.25762715682`, and after a save and reopen as `4.25762715681`. In a
+test of version 0.3, 22 of 300 values at or one ULP from a 12-digit tie
+changed their request that way; none of the same 300 does with this
+version. KLayout saves -0.0 as 0, so any zero is sent as `0.0`.
+
+A value with 13 or more significant digits is therefore not the text Magic
+gets: `0.4244999999999` is sent as `0.4245`. Magic's cell name and checked
+values can then differ from Magic given the longer text, because Magic
+rounds to three decimals for the name. No geometry difference has been
+found: sky130A `nfet_01v8` with `w` at 0.4225, 0.4275, 1.0045 and 5.005, each
+against the same value 1e-14 lower, drew the same polygons in Magic. Floats
+always carry a decimal point because the generator code does arithmetic with
+Tcl's `expr` and `/`, which divide two integer strings as integers.
 
 Apart from refusing values that the generator code would evaluate, the PCells
 add no limits, no snapping and no choices of their own. Magic's `_check` is
@@ -263,9 +293,15 @@ you entered. KLayout stores the values you entered, not the values Magic
 corrected them to, so a file can hold `l = 0.1` for a device that Magic drew
 with `l = 0.15`. In the GUI parameter form, a parameter that `_check` changed
 should get a warning icon and a tooltip such as
-`Magic draws 0.15 (entered 0.1): Mos length must be >= 0.15 um`; that comes
-from KLayout's source and hasn't been seen on screen. Outside the GUI,
-Magic's messages go to KLayout's log as warnings.
+`Magic draws 0.15 (entered 0.1): Mos length must be >= 0.15 um`. The form's
+callback also generates the variant, which the form does on every edit
+anyway (not with `KMP_LAZY=1`), so a variant that Magic draws nothing for
+gets a warning that says so: on the values `_check` changed, or, for a
+box-paint generator, on the side that Magic's message names
+(`Via1 width must be at least 0.26um` marks `w`). A refused value gets an
+error icon. The icons were checked by calling the callback with
+`PCellParameterStates` in plain Python; they haven't been seen on screen.
+Outside the GUI, Magic's messages go to KLayout's log as warnings.
 
 Magic's own dialog behaves differently: it runs `_check` on every field edit,
 writes the corrected values back into the form, and checks again when you
@@ -287,7 +323,7 @@ doesn't call it, and a `val` you type changes no geometry: `_check` computes
 `val` typed on its own, because its `<Return>` binding runs `_check` before
 `res_recalc`, and `_check` with a nonzero `l` replaces the typed `val` ("L
 and W specified - ignore Val if specified", sky130A.tcl line 5178). A run
-of the real dialog under Xvfb on sky130A (research for this version, not a
+of the real dialog under Xvfb on sky130A (research for version 0.3, not a
 harness check) gave:
 
 | Typed in Magic's dialog | Form afterwards | Cell Magic creates |
@@ -322,6 +358,12 @@ Parity means these come out of the PCells exactly as Magic has them:
   0.01 µm, so a requested `w 0.425` is drawn 0.43 µm wide, and two inputs
   that draw the same geometry are two different variants. Box-paint sizes
   are rounded to Magic's 5 nm internal grid (0.263 becomes 0.265).
+- A negative box-paint size puts the box left of or below the origin, as
+  Magic's `box values 0um 0um -1um 1um` does: sky130A `via1` with `w -1 h 1`
+  is painted from x = -1 to 0 µm, with its metal reaching to x = -1.05 and
+  0.05. A size of zero, `inf` or `nan`, or one too large for Magic's integer
+  coordinates, comes out below the generator's minimum (Magic reads `inf`
+  and `nan` as -2147483648 internal units), and Magic paints nothing.
 - `_check` recalculates `val`, `area` and `peri`. After a clamp, they are
   computed from the unclamped size: sky130A `diode_pd2nw_05v5` with
   `w 0.225` is drawn 0.45 × 0.45 µm and reports `area=101.25m peri=1.35`,
@@ -330,9 +372,13 @@ Parity means these come out of the PCells exactly as Magic has them:
   size with a SPICE string (`1.0u`, `170.0n`) and `_draw` then fails on it,
   or `_check` itself fails. Magic writes a cell with no shapes; the PCell
   writes the same empty cell and logs a warning rather than drawing the
-  error marker; `generate` exits 1 and `audit` reports `empty cell`. Whether
-  an empty device should get the error marker instead is an open question
-  for the project lead. The sweeps list every empty output per PDK.
+  error marker; `generate` and `check` exit 1 and `audit` reports
+  `empty cell`. A `_draw` that fails for another reason, such as a PDK file
+  edited so that it raises (a backend test does this on every PDK), ends the
+  same way: `gencell_create` catches the Tcl error, prints it and leaves the cell
+  empty, so the PCell can't tell the two apart. Whether an empty device
+  should get the error marker instead is an open question for the project
+  lead. The sweeps list every empty output per PDK.
 - Some fixed devices are always empty: gf180mcuD's `eFuse` places the stub
   `eFuse_0.mag` (the real cell is `efuse_cell`), `npn_00p54x08p00` asks for
   `npn_npn_00p54x08p00_0` (a stub; the real `npn_00p54x08p00_0.mag` exists
@@ -420,10 +466,14 @@ a box-paint generator, and each gets a PCell with two parameters:
 | `w` (µm) | the box's width: `box values 0um 0um ${w}um ${h}um`, then `<ns>::<proc>_draw` with no arguments |
 | `h` (µm) | the box's height |
 
-The PCell's origin is the box's lower-left corner. The cut rules are
+The PCell's origin is the box's lower-left corner, or, for a negative width
+or height, its right or top edge (see [Magic behaviour the PCells
+reproduce](#magic-behaviour-the-pcells-reproduce)). The cut rules are
 `squares-grid` without a grid argument, so a box drawn at the origin and
 placed at any offset on the 5 nm grid equals Magic painting the box at that
-offset; research for this version checked 17 offsets on sky130A. The
+offset; research for version 0.3 checked 17 offsets on sky130A, and a test
+of that version 11 offsets of 4 sizes on each gf180mcuD box-paint generator
+(264 cases). The
 defaults are the smallest square box the generator paints into, found by the
 manifest tool by bisection on the 5 nm grid. Below the minimum Magic prints
 a message (`Via1 width must be at least 0.26um`) and paints nothing; the
@@ -534,7 +584,14 @@ library registers without the disk cache and logs a warning that names
 `KMP_CACHE_DIR`. Each Magic process runs in its own empty directory under
 `<cache>/run` (or the system temp directory without a usable cache), which
 is deleted when Magic stops; Magic looks for cells in its working directory
-first, so a stray `.mag` file there can't stand in for a vendor cell.
+first, so a stray `.mag` file there can't stand in for a vendor cell. Magic
+writes into `<cache>/tmp`, and each versions directory names its PDK in a
+`versions.json`.
+
+`cache clear` or `cache prune` in another shell, or deleting the cache
+directory, while KLayout has the libraries open does no harm: the session
+makes its directories again when it next writes, and a variant it
+remembered whose file is gone is generated again.
 
 The key is a SHA-256 over the PDK, the device, the request text, the Magic
 version, the PDK's commit (open_pdks' from `SOURCES` for sky130A and
@@ -551,10 +608,18 @@ therefore starts new entries, and so does a new Magic, PDK or cache format.
 To manage them:
 
 ```sh
-python3 -m klayout_magic_pcells cache prune    # delete every versions directory but each PDK's current one
-python3 -m klayout_magic_pcells cache clear    # delete the cache
+python3 -m klayout_magic_pcells cache prune    # delete the selected PDKs' old versions directories
+python3 -m klayout_magic_pcells cache clear    # delete every entry of every PDK
 python3 -m klayout_magic_pcells cache stats
 ```
+
+`prune` works on the PDKs that `--pdk` or `KMP_PDKS` selects: it starts each
+one's Magic to learn its current versions digest, deletes that PDK's other
+versions directories and any directory with no entries, and keeps the
+directories of every other PDK; it prints the name of each one it keeps. A user who sets `KMP_PDKS` to one PDK
+therefore keeps the other PDKs' entries; `KMP_PDKS=all` prunes every
+installed PDK. Both commands leave Magic's files in `<cache>/tmp` unless they
+are more than a day old.
 
 ## Stamps and audit
 
@@ -569,8 +634,10 @@ when the version strings are the same.
 - *generated by*: a GDS property (attribute 100) on one shape, the boundary
   box where the device has one on 235/4 (sky130A), otherwise the shape on the
   lowest layer with the smallest corner (on gf180mcuD that is the 0/0
-  boundary), with the first 16 hex digits of the cache key added. It
-  survives GDS and OASIS with or without the library.
+  boundary), with the first 16 hex digits of the cache key and the grid of
+  this variant's Magic output added (`;key=<16 hex>;grid=5`: the coarsest
+  grid, in nm, that all its coordinates lie on). It survives GDS and OASIS
+  with or without the library.
 - *created with*: the hidden PCell parameter `kmp_created`, stored in the
   file with the other parameters. When a file is reopened under a different
   Magic or PDK, or with edited generator code, produce logs a warning,
@@ -578,22 +645,28 @@ when the version strings are the same.
   with.
 
 Version 0.3's digest covers more inputs than 0.2's, so a file made with
-version 0.2 logs that warning once when it is reopened. Stamps written by
-version 0.1.0 have no digest; they are compared on Magic, tech and PDK
-alone.
+version 0.2 logs that warning once when it is reopened. Version 0.4 has the
+same digest and the same versions directories as 0.3 (`24feca9ae925` for
+sky130A in the image), so it reads 0.3's cache and reopens 0.3's files
+without the warning. Stamps written by version 0.1.0 have no digest; they
+are compared on Magic, tech and PDK alone.
 
 `audit` reads a file without registering any library and reports the cells
 of all four libraries: cells with an error marker, without a stamp, with no
 shapes, or stamped by a different Magic, PDK or generator code than the
 installed one, and a file database unit that doesn't divide 5 nm. A cell
 belongs to a PDK by its library name, since several PDKs have a device
-called `rm1`. It also reports a device whose Magic output lies on a finer
-grid than the file's database unit: the manifest records, for each device,
-the coarsest grid that all coordinates of its default output lie on. `--regen`
-also registers the libraries the file uses, with every variant generated by
-Magic as if the memo and the disk cache were empty, and compares each cell's
-stored geometry with what the installed Magic generates now; a difference, or
-a cell that regenerates as the error marker, is a problem. A disk-cache entry
+called `rm1`. It also reports a cell whose Magic output lies on a finer
+grid than the file's database unit, from the grid in the cell's stamp: a
+sky130A `mcon` with a 1.175 µm box lies on 5 nm, so a file at dbu 0.002 µm
+rounds it, while the default `mcon` lies on 10 nm. A stamp written by
+version 0.3 or earlier has no grid; audit then uses the grid of the device's
+default output, which the manifest records, and says so in its message, and
+a cell that a non-default size puts on a finer grid can go unreported.
+`--regen` also registers the libraries the file uses, with every variant
+generated by Magic as if the memo and the disk cache were empty, and compares
+each cell's stored geometry with what the installed Magic generates now; a
+difference, or a cell that regenerates as the error marker, is a problem. A disk-cache entry
 that differs from what Magic generates now is reported too, and replaced.
 `audit` exits 1 when any cell or the file has a problem.
 
@@ -611,8 +684,10 @@ error for that PDK, naming the variable to set, and registers no library for
 it. The error carries Magic's exit status and its last messages on stderr,
 such as
 `Could not find file '/nonexistent/sky130A/libs.tech/magic/sky130A.tech'`
-for a wrong `PDK_ROOT`. Registering the devices that are present and leaving
-out the missing ones is not supported. Cells in files opened while a library
+for a wrong `PDK_ROOT`. For an rcfile that loads no PDK, empty or broken, it
+says the rcfile loaded no PDK and quotes Magic, for example
+`Error parsing "/tmp/x.magicrc": missing close-brace`. Registering the
+devices that are present and leaving out the missing ones is not supported. Cells in files opened while a library
 isn't registered show as `<defunct>sky130_magic.…` (or the other library
 names) and keep the geometry stored in the file; saving keeps that geometry.
 Call `klayout_magic_pcells.register()` from the macro console once the
@@ -625,8 +700,11 @@ KLayout can't read), or a value is refused, produce doesn't raise. It draws a
 none of the four PDKs' layer files lists. The reason includes what Magic
 printed, for example
 `Can't find GDS file "$PDKPATH/libs.ref/sky130_fd_pr/gds/sky130_fd_pr.gds"`
-when the vendor GDS of a fixed device is missing. KLayout saves that marker,
-`audit` reports it, and `generate` exits 1.
+when the vendor GDS of a fixed device is missing. When a generator's error
+is followed by `gencell_create`'s own (an IHP fixed device whose layout
+script is missing), Magic's message comes first:
+`KMP_ERROR diodevdd_2kv: diodevdd_2kv: couldn't read file ".../diodevdd_2kv.tcl": no such file or directory (then gencell_create: can't read "instname": no such variable)`.
+KLayout saves that marker, `audit` reports it, and `generate` exits 1.
 
 ## Devices
 
@@ -721,7 +799,7 @@ The manifest records menu entries whose command names a generator the PDK
 doesn't define. In the image's PDKs there are two, both on gf180mcuD: "nwell
 (3.3V) -1680 Ohm/sq" calls `gf180mcu::nwell_3p3` (the device is `nwell`), and
 "substrate contact (6.0V)" calls `gf180mcu::subcon_6p0_draw` (the generator is
-`subcon_06v0_draw`). Research for this version also found, by reading
+`subcon_06v0_draw`). Research for version 0.3 also found, by reading
 `gf180mcuD.tcl`, that the "npolyf_s" entry calls `ppolyf_s`, that one npn
 label appears twice so that the second makes `npn_00p54x04p00`, and that
 `nfet_10v0_asym`, `pfet_10v0_asym`, `npolyf_s` and `nwell` can't be reached
@@ -765,31 +843,41 @@ it, and writes `out/parity/<pdk>/report.json` and `report.md`; without
 when every check of every PDK passes, 1 when any check fails, and 2 when the
 harness itself fails. For each PDK it runs, in one container:
 
-1. the unit tests (`tests/unit`, 64 tests: configuration including the PDK
+1. the unit tests (`tests/unit`, 79 tests: configuration including the PDK
    selection and per-PDK settings, the wire format, the cache key and cache
-   files including damaged and swapped entries, value formatting and the
-   checks of coverage strings, choices and number lists, the GDS import,
-   stamps and their digest, the PCell declarations of all four manifests,
-   the manifests' counts, box-paint entries, exclusions and coordinate grids,
-   and the path A watchdog driven by a fake Magic that crashes on one point
-   and hangs on another) and the backend tests for that PDK
-   (`tests/backend`, 33 tests in all: every generator of the PDK generated
-   twice in one Magic session with no restart; the session state put back
-   after requests that change it, compared with a fresh Magic; the box a
-   box-paint check reports; a device without `_check` or with one that
-   raises; and, on sky130A only, a brace in a value, a killed Magic restarted
-   and the request retried, a timeout, an unknown device, `_check` messages,
-   the endless `mos_check` loop stopped, a coverage string holding a Tcl
-   command refused by the server and, after saving and reopening a file with
-   an empty cache, never run, damaged cache entries regenerated, start-up
-   failures that name their cause, a missing vendor GDS named in the error
-   marker, an rcfile without the PDK refused, an unwritable cache directory,
-   `audit` after a local `sky130A.tcl` edit, after a vendor GDS edit and with
-   a stale cache entry, `audit` on a file at dbu 0.005, the CLI's exit codes
-   and temporary directories, a manifest whose names collide, no Magic left
-   running after the client exits normally or is killed, registration from
-   plain Python, and all four libraries registered under `klayout -b -rm`
-   and from the Salt autorun under `klayout -zz`);
+   files including damaged and swapped entries, prune per PDK and a cache
+   deleted under a session, value formatting (including 6,000 doubles saved
+   by KLayout and read back in a second process) and the checks of coverage
+   strings, choices and number lists, the GDS import, the coordinate grid of
+   Magic's output and audit's use of it, stamps and their digest, the PCell
+   declarations of all four manifests, the manifests' counts, box-paint
+   entries, exclusions and coordinate grids, Magic's error text, the raw GDS
+   font reader and `compare.py`'s command line, and the path A watchdog
+   driven by a fake Magic that crashes on one point and hangs on another)
+   and the backend tests for that PDK (`tests/backend`, 38 tests, each run
+   with the PDK's own devices: every generator generated twice in one Magic
+   session with no restart; the session state put back after requests that
+   change it, compared with a fresh Magic; the box a box-paint check reports,
+   and negative, zero, `inf` and `nan` boxes on every box-paint generator; a
+   brace in a value, a killed Magic restarted and the request retried, a
+   timeout, an unknown device, `_check` messages, the endless `mos_check`
+   loop stopped (on gf180mcuD, which has none, the device drawn); a value
+   holding a Tcl command refused by the server and, after saving and
+   reopening a file with an empty cache, never run; damaged cache entries
+   regenerated; the cache cleared, pruned and deleted under a running
+   session, and a prune that leaves another PDK's entries; start-up failures
+   that name their cause, an empty and a broken rcfile refused with Magic's
+   words; a missing vendor GDS or IHP layout script named in the error
+   marker; an unwritable cache directory; `audit` after a local edit of the
+   PDK's `via1_draw`, with a stale cache entry, and on files at dbu 0.002,
+   0.0025 and 0.001; a generator edited to raise, reopened; the form
+   callback's icons; the CLI's exit codes and temporary directories; a
+   manifest whose names collide; no Magic left running after the client
+   exits normally or is killed; registration from plain Python. Only these
+   are PDK-specific: a device without `_check` or with one that raises
+   (ihp-sg13g2, gf180mcuD), `audit` after an edit of sky130A's vendor GDS,
+   and, in the sky130A pass, all four libraries registered under
+   `klayout -b -rm` and from the Salt autorun under `klayout -zz`);
 2. `tools/build_manifest.py --pdk <pdk> --check`;
 3. the sweep (`tests/parity/gen_sweep.py`): for each device the defaults,
    the minimum and maximum of each number, a value below each minimum that
@@ -798,9 +886,13 @@ harness itself fails. For each PDK it runs, in one container:
    for each coverage string, ` -50` and a tab before `+30` on the first and
    last coverage string, W and L off the 0.01 µm grid, `w = 0` and `l = 0`
    on resistors and diodes, a MOSFET more than 30 µm wide, and 5 seeded
-   random combinations, at most 60 points per device; for each box-paint
-   generator its minimum on each side, 5 nm below it on each side, squares,
-   wide and tall boxes, an off-grid width, 20 × 20 µm and 5 random sizes.
+   random combinations; for each box-paint generator its minimum on each
+   side, 5 nm below it on each side, squares, wide and tall boxes, an
+   off-grid width, 20 × 20 µm, negative widths and heights, a negative zero
+   and 5 random sizes. The numbers of those points have at most 6 decimals,
+   so every generator also gets every float at 12 and at 15 significant
+   digits, at a 12-digit rounding tie (13 digits ending in 5), and one ULP
+   from such a tie. At most 64 points per device.
    The text for Magic and the typed values for the PCell come from
    `tests/parity/magic_text.py`, which restates this README's formatting
    contract and imports nothing from the plugin; coverage strings are used
@@ -820,7 +912,8 @@ harness itself fails. For each PDK it runs, in one container:
 6. per point: the request path B actually sent (read back through the
    stamp's key) against the text path A gave Magic; XOR of every layer, the
    number of unmerged shapes on every layer, and comparison of every label
-   with all its attributes against path A; a census of the raw GDS records of
+   with all its attributes against path A, the font read from the raw GDS
+   records of both files; a census of the raw GDS records of
    path A's file against `baseline/<pdk>/census.json`, for elements that
    KLayout has no shape for (the NODE elements above); the bounding box (and,
    for each generator's defaults, the box in the manifest); Magic's cell name;
@@ -830,12 +923,14 @@ harness itself fails. For each PDK it runs, in one container:
    `tests/parity/menu_ref.tcl` under `xvfb-run magic -d XR` invokes the entry
    on the box of each generator's default, wide and 20 × 20 µm points, and
    the result must equal path A's;
-8. round trips on the default, minimum and maximum points plus a 10 % sample:
-   reopen the GDS and OASIS files with the library (live PCell, stored values,
-   regenerated geometry) and without it (a `<defunct>` cell that keeps the
-   stored geometry, and its stamp), save again without the library and reopen
-   with it, and place each default in host layouts with database units of
-   0.5 nm and 5 nm;
+8. round trips on the default, minimum and maximum points, the many-digit
+   and tie points and the negative boxes, plus a 10 % sample of the rest:
+   reopen the GDS and OASIS files with the library (live PCell, stored values
+   and the request built from them, geometry regenerated by Magic with the
+   disk cache off; the step fails if a variant comes from disk) and without
+   it (a `<defunct>` cell that keeps the stored geometry, and its stamp), save
+   again without the library and reopen with it, and place each default in
+   host layouts with database units of 0.5 nm and 5 nm;
 9. DRC with both tools on both paths, with each device's points on one sheet
    and each device's defaults also run alone, compared as sets of rule IDs,
    and the defaults compared with `baseline/<pdk>/drc-defaults.json`. KLayout
@@ -862,99 +957,111 @@ in each report with the reason.
 
 ### Last full run
 
-2026-11-21, Magic 8.3.681, KLayout 0.30.11, in the image listed under
-[Requirements](#requirements), at commit b74f174 (this README was the only
-uncommitted file): `scripts/parity.sh`, all four PDKs one after another,
-printed `PARITY PASS over 4 PDKs` and exited 0, 6,458 points in 40 minutes of
-harness time on 6 CPUs. Each PDK's run included its unit and backend tests
-and its manifest check, and checked DRC and the GDS census against the
-committed baselines (written by an earlier full run with `--update-baseline`).
+2026-11-22, Magic 8.3.681, KLayout 0.30.11, in the image listed under
+[Requirements](#requirements): `scripts/parity.sh`, all four PDKs one after
+another, then `scripts/parity.sh --pdk gf180mcuD` again, and the summary
+printed `PARITY PASS over 4 PDKs`, 7,526 points in 47 minutes of harness
+time on 6 CPUs. Each PDK's run included its unit and backend tests and its
+manifest check, and checked DRC and the GDS census against the committed
+baselines, which this version doesn't change.
 
-The sky130A sweep has 2,427 points, against 2,234 in version 0.2: the 195
-box-paint points are new, and `res_iso_pw` lost its `max:l` and `max:val`
-points, whose sweep caps (20 µm, 10 kΩ) were below its defaults (26.5 µm,
-30.5 kΩ) and are no longer used.
+sky130A and ihp-sg13g2 ran at commit 7f54984, ihp-sg13cmos5l at 0f0a366 and
+the gf180mcuD rerun at 7352642; this README was the only uncommitted file.
+The commits between them change only the harness: in the first gf180mcuD
+run, path B found no request for six tie points of the three fixed devices
+that are always empty (`eFuse`, `npn_00p54x08p00`, `npn_00p54x10p00`),
+because their request repeats that of the point with 12-digit values, and
+an empty cell has no stamp to read it from. 0f0a366 fixed that lookup, and 7352642 made
+`parity.sh` exit 1 instead of 2 for a failing PDK.
+
+The sweeps are larger than version 0.3's 6,458 points: every generator got
+its many-digit and tie points, and every box-paint generator its negative
+and zero boxes (on sky130A 292 and 52 points), and the cap of 64 points per
+device drops none of the random points. The round trips covered 1,081
+sky130A, 708 gf180mcuD, 698 ihp-sg13g2 and 559 ihp-sg13cmos5l points, all
+regenerated by Magic (no variant came from disk), and every point's fonts
+were the same in both files.
 
 The notes under each table are points that pass but are listed in the
 report.
 
-**sky130A** (`sky130_magic`): `PARITY PASS 2427/2427` in 10 min; 64 unit and 32 backend tests passing (1 skipped as not for this PDK); manifest check passing; KLayout DRC: sky130A_mr.drc with beol=true, feol=true, floating_met=false, offgrid=true, seal=false, thr=1.
+**sky130A** (`sky130_magic`): `PARITY PASS 2771/2771` in 14 min; 79 unit and 37 backend tests passing (1 skipped as not for this PDK); manifest check passing; KLayout DRC: sky130A_mr.drc with beol=true, feol=true, floating_met=false, offgrid=true, seal=false, thr=1.
 
 | Family | Points | Pass | Fail |
 |---|---|---|---|
-| MOSFET | 685 | 685 | 0 |
-| Varactor | 173 | 173 | 0 |
-| Resistor | 821 | 821 | 0 |
-| MIM capacitor | 53 | 53 | 0 |
-| Diode | 344 | 344 | 0 |
-| Photodiode | 12 | 12 | 0 |
-| Fixed layout | 144 | 144 | 0 |
-| Box paint | 195 | 195 | 0 |
+| MOSFET | 733 | 733 | 0 |
+| Varactor | 185 | 185 | 0 |
+| Resistor | 909 | 909 | 0 |
+| MIM capacitor | 61 | 61 | 0 |
+| Diode | 376 | 376 | 0 |
+| Photodiode | 16 | 16 | 0 |
+| Fixed layout | 192 | 192 | 0 |
+| Box paint | 299 | 299 | 0 |
 
-- 59 points where Magic writes an empty cell, which the PCell reproduces (box paint at a box 5 nm below the minimum: 26, diode at a zero size: 10, resistor at a zero size: 23)
+- 72 points where Magic writes an empty cell, which the PCell reproduces (box paint at a box 5 nm below the minimum: 26, box paint with a zero width typed as -0.0: 13, diode at a zero size: 10, resistor at a zero size: 23)
 - 4 default points whose 5 nm host placement is n/a: Magic's GDS has coordinates off the 0.005 um grid on 83/44
 - 10 MOSFET points that match a known extraction pattern (`nfet_g5v0d16v0` 5, `pfet_g5v0d16v0` 5)
 - 39 box-paint points through Magic's menu entry under Xvfb: identical 39
 - 60 `below:` points where a second `_check` would change Magic's checked values (recorded, not checked)
 
-**gf180mcuD** (`gf180mcu_magic`): `PARITY PASS 1493/1493` in 5 min; 64 unit and 5 backend tests passing (28 skipped as not for this PDK); manifest check passing; KLayout DRC: gf180mcu.drc with decks=all,-density, run_mode=deep, threads=1, variant=D.
+**gf180mcuD** (`gf180mcu_magic`): `PARITY PASS 1753/1753` in 7 min; 79 unit and 34 backend tests passing (4 skipped as not for this PDK); manifest check passing; KLayout DRC: gf180mcu.drc with decks=all,-density, run_mode=deep, threads=1, variant=D.
 
 | Family | Points | Pass | Fail |
 |---|---|---|---|
-| MOSFET | 429 | 429 | 0 |
-| MOS capacitor | 140 | 140 | 0 |
-| Varactor | 140 | 140 | 0 |
-| Resistor | 425 | 425 | 0 |
-| MIM capacitor | 21 | 21 | 0 |
-| Diode | 116 | 116 | 0 |
-| Fixed layout | 132 | 132 | 0 |
-| Box paint | 90 | 90 | 0 |
+| MOSFET | 481 | 481 | 0 |
+| MOS capacitor | 156 | 156 | 0 |
+| Varactor | 156 | 156 | 0 |
+| Resistor | 489 | 489 | 0 |
+| MIM capacitor | 25 | 25 | 0 |
+| Diode | 132 | 132 | 0 |
+| Fixed layout | 176 | 176 | 0 |
+| Box paint | 138 | 138 | 0 |
 
-- 70 points where Magic writes an empty cell, which the PCell reproduces (box paint at a box 5 nm below the minimum: 12, diode at a zero size: 8, every point of `eFuse`: 12, every point of `npn_00p54x08p00`: 12, every point of `npn_00p54x10p00`: 12, resistor at a zero size: 14)
-- 66 MOSFET points that match a known extraction pattern (`nfet_10v0_asym` 33, `pfet_10v0_asym` 33)
+- 88 points where Magic writes an empty cell, which the PCell reproduces (box paint at a box 5 nm below the minimum: 12, box paint with a zero width typed as -0.0: 6, diode at a zero size: 8, every point of `eFuse`: 16, every point of `npn_00p54x08p00`: 16, every point of `npn_00p54x10p00`: 16, resistor at a zero size: 14)
+- 74 MOSFET points that match a known extraction pattern (`nfet_10v0_asym` 37, `pfet_10v0_asym` 37)
 - 15 box-paint points through Magic's menu entry under Xvfb: identical 15
 - 40 `below:` points where a second `_check` would change Magic's checked values (recorded, not checked)
 
-**ihp-sg13g2** (`sg13g2_magic`): `PARITY PASS 1379/1379` in 13 min; 64 unit and 5 backend tests passing (28 skipped as not for this PDK); manifest check passing; KLayout DRC: run_drc.py --no_density --mp=1 --density_thr=1.
+**ihp-sg13g2** (`sg13g2_magic`): `PARITY PASS 1643/1643` in 16 min; 79 unit and 34 backend tests passing (4 skipped as not for this PDK); manifest check passing; KLayout DRC: run_drc.py --no_density --mp=1 --density_thr=1.
 
 | Family | Points | Pass | Fail |
 |---|---|---|---|
-| MOSFET | 460 | 460 | 0 |
-| Varactor | 17 | 17 | 0 |
-| Resistor | 303 | 303 | 0 |
-| MIM capacitor | 62 | 62 | 0 |
-| Diode | 84 | 84 | 0 |
-| Bipolar transistor | 86 | 86 | 0 |
-| Inductor | 22 | 22 | 0 |
-| Bond pad | 17 | 17 | 0 |
+| MOSFET | 492 | 492 | 0 |
+| Varactor | 21 | 21 | 0 |
+| Resistor | 343 | 343 | 0 |
+| MIM capacitor | 70 | 70 | 0 |
+| Diode | 92 | 92 | 0 |
+| Bipolar transistor | 102 | 102 | 0 |
+| Inductor | 30 | 30 | 0 |
+| Bond pad | 21 | 21 | 0 |
 | Via stack | 22 | 22 | 0 |
-| Fixed layout | 96 | 96 | 0 |
-| Box paint | 210 | 210 | 0 |
+| Fixed layout | 128 | 128 | 0 |
+| Box paint | 322 | 322 | 0 |
 
-- 51 points where Magic writes an empty cell, which the PCell reproduces (box paint at a box 5 nm below the minimum: 28, diode at a zero size: 4, resistor at a value below its minimum: 4, resistor at a zero size: 15)
+- 65 points where Magic writes an empty cell, which the PCell reproduces (box paint at a box 5 nm below the minimum: 28, box paint with a zero width typed as -0.0: 14, diode at a zero size: 4, resistor at a value below its minimum: 4, resistor at a zero size: 15)
 - 1 default point whose 5 nm host placement is n/a: Magic's GDS has coordinates off the 0.005 um grid on 10/25
-- 220 MOSFET points that match a known extraction pattern (`sg13_hv_rfnmos` 55, `sg13_hv_rfpmos` 55, `sg13_lv_rfnmos` 55, `sg13_lv_rfpmos` 55)
+- 236 MOSFET points that match a known extraction pattern (`sg13_hv_rfnmos` 59, `sg13_hv_rfpmos` 59, `sg13_lv_rfnmos` 59, `sg13_lv_rfpmos` 59)
 - 24 box-paint points through Magic's menu entry under Xvfb: identical 24
 - 22 `below:` points where a second `_check` would change Magic's checked values (recorded, not checked)
 
-**ihp-sg13cmos5l** (`sg13cmos5l_magic`): `PARITY PASS 1159/1159` in 12 min; 64 unit and 4 backend tests passing (29 skipped as not for this PDK); manifest check passing; KLayout DRC: run_drc.py --no_density --mp=1 --density_thr=1.
+**ihp-sg13cmos5l** (`sg13cmos5l_magic`): `PARITY PASS 1359/1359` in 11 min; 79 unit and 33 backend tests passing (5 skipped as not for this PDK); manifest check passing; KLayout DRC: run_drc.py --no_density --mp=1 --density_thr=1.
 
 | Family | Points | Pass | Fail |
 |---|---|---|---|
-| MOSFET | 460 | 460 | 0 |
-| Varactor | 17 | 17 | 0 |
-| Resistor | 257 | 257 | 0 |
-| Capacitor | 22 | 22 | 0 |
-| Diode | 84 | 84 | 0 |
-| Bipolar transistor | 39 | 39 | 0 |
-| Inductor | 22 | 22 | 0 |
-| Bond pad | 16 | 16 | 0 |
+| MOSFET | 492 | 492 | 0 |
+| Varactor | 21 | 21 | 0 |
+| Resistor | 289 | 289 | 0 |
+| Capacitor | 26 | 26 | 0 |
+| Diode | 92 | 92 | 0 |
+| Bipolar transistor | 43 | 43 | 0 |
+| Inductor | 30 | 30 | 0 |
+| Bond pad | 20 | 20 | 0 |
 | Via stack | 20 | 20 | 0 |
-| Fixed layout | 72 | 72 | 0 |
-| Box paint | 150 | 150 | 0 |
+| Fixed layout | 96 | 96 | 0 |
+| Box paint | 230 | 230 | 0 |
 
-- 37 points where Magic writes an empty cell, which the PCell reproduces (box paint at a box 5 nm below the minimum: 20, diode at a zero size: 4, resistor at a zero size: 13)
-- 220 MOSFET points that match a known extraction pattern (`sg13_hv_rfnmos` 55, `sg13_hv_rfpmos` 55, `sg13_lv_rfnmos` 55, `sg13_lv_rfpmos` 55)
+- 47 points where Magic writes an empty cell, which the PCell reproduces (box paint at a box 5 nm below the minimum: 20, box paint with a zero width typed as -0.0: 10, diode at a zero size: 4, resistor at a zero size: 13)
+- 236 MOSFET points that match a known extraction pattern (`sg13_hv_rfnmos` 59, `sg13_hv_rfpmos` 59, `sg13_lv_rfnmos` 59, `sg13_lv_rfpmos` 59)
 - 18 box-paint points through Magic's menu entry under Xvfb: identical 18
 - 22 `below:` points where a second `_check` would change Magic's checked values (recorded, not checked)
 
@@ -962,22 +1069,29 @@ report.
 
 Each line is a copy of the package with one change, run with
 `run_sweep.py --pdk <pdk> --no-unit --no-drc --no-extract --devices ...` on
-2026-11-21. The control is the same run on the unchanged package.
+2026-11-22. The control is the same run on the unchanged package.
 
 | Change to the package | PDK and devices | Result |
 |---|---|---|
-| none (control) | sky130A: `nfet_01v8`, `res_generic_po`, `cap_mim_m3_1`, `via1` | PASS 144/144 |
-| `format_float` writes `%.1g` | same | FAIL 37/144: request 37, checked 30, geometry 23, bbox 23, magic_cell 22, texts 15, roundtrip 6, stamp 2 |
-| `format_float` drops the `.0` (`31` instead of `31.0`) | same | FAIL 25/144: request 25, checked 13 (no geometry changes) |
-| the importer turns every label 90°, sets its size to 0 and right-justifies it | same | FAIL 126/144: texts 126, roundtrip 39 |
-| the importer inserts every shape twice | same | FAIL 141/144: geometry 141 (the merged XOR is unchanged; the shape counts differ) |
-| none (control) | ihp-sg13g2: `sg13_lv_nmos`, `rsil`, `via1`, `subconn_guard` | PASS 138/138 |
-| `format_float` writes `%.1g` | same | FAIL 42/138: request 42, checked 38, geometry 32, bbox 32, magic_cell 17, texts 6, roundtrip 4, stamp 4 |
-| none (control) | gf180mcuD: `nfet_03v3`, `ppolyf_u`, `via1` | PASS 78/78 |
-| `format_float` writes `%.1g` | same | FAIL 27/78: request 27, checked 23, geometry 19, bbox 19, magic_cell 15, roundtrip 4, stamp 2 |
+| none (control) | sky130A: `nfet_01v8`, `res_generic_po`, `cap_mim_m3_1`, `via1` | PASS 164/164 |
+| `format_float` writes `%.1g` | same | FAIL 53/164: request 53, checked 42, magic_cell 30, bbox 27, geometry 27, texts 19, roundtrip 10, stamp 2 |
+| `format_float` writes `%.8g` | same | FAIL 16/164: request 16, checked 12 |
+| `format_float` rounds the double instead of the 15-digit text (version 0.3) | same | FAIL 6/164: roundtrip 6, request 5, checked 3 |
+| `format_float` drops the `.0` (`31` instead of `31.0`) | same | FAIL 24/164: request 24, checked 9 (no geometry changes) |
+| the importer turns every label 90°, sets its size to 0 and right-justifies it | same | FAIL 138/164: texts 138, roundtrip 51 |
+| the importer inserts every shape twice | same | FAIL 160/164: geometry 160, texts 138, roundtrip 51 (the merged XOR is unchanged; the shape and text counts differ) |
+| the server refuses negative box sizes (version 0.3) | same | FAIL 3/164: each of request, geometry, texts, bbox, checked, magic_cell, cache, placeholder, stamp and roundtrip on the 3 negative `via1` boxes |
+| none (control) | ihp-sg13g2: `sg13_lv_nmos`, `rsil`, `via1`, `subconn_guard` | PASS 162/162 |
+| `format_float` writes `%.1g` | same | FAIL 62/162: request 62, checked 54, geometry 43, bbox 39, magic_cell 25, roundtrip 15, texts 6, stamp 4 |
+| `format_float` writes `%.8g` | same | FAIL 16/162: request 16, checked 8 |
+| none (control) | gf180mcuD: `nfet_03v3`, `ppolyf_u`, `via1` | PASS 94/94 |
+| `format_float` writes `%.1g` | same | FAIL 39/94: request 39, checked 31, magic_cell 23, bbox 19, geometry 19, roundtrip 4, stamp 2 |
+| `format_float` writes `%.8g` | same | FAIL 12/94: request 12, checked 8 |
 
 In version 0.2 the sweep took its text from the plugin's own formatter, and
-the `%.1g` mutation passed 99 of 99 points.
+the `%.1g` mutation passed 99 of 99 points. In version 0.3 no sweep value had
+more than 7 significant digits, and a `%.8g` mutation passed 144 of 144
+points on the sky130A set above.
 
 ### CI
 
@@ -996,6 +1110,16 @@ the drawn values:
 
 - The NODE elements of five sky130A vendor cells (see [Why Magic is the
   backend](#why-magic-is-the-backend)).
+- A label's font. KLayout 0.30.11's GDS reader keeps no font (every text
+  reads back with font -1) and its writer writes font 0, so a font other
+  than 0 in Magic's GDS could not reach the PCell. Magic wrote font 0 on
+  every text of every swept point; the harness compares the fonts of both
+  files from the raw records, so a change would show.
+- A label's size in the GDS file, in its last bits: KLayout writes the
+  8-byte real of a text's magnification from its own value, so on
+  ihp-sg13g2 `schottky` Magic's `0x4059999999999998` (0.35) becomes
+  `0x405999999999999c` in a file the PCell is saved in. KLayout reads both
+  as the same size.
 - A coverage string, choice or number list that would reach Tcl as code draws
   the error marker, where Magic would reset it or draw nothing (see
   [Parameters](#parameters)).
@@ -1020,7 +1144,7 @@ the drawn values:
   voltage (`sg13_lv_rfnmos` as `sg13_lv_nmos`). gf180mcuD's MOS capacitors
   and varactors are not in the extraction check (they extract as
   `cap_nmos_03v3` and the like, and `pvaractor_6p0` extracts nothing, in
-  research for this version).
+  research for version 0.3).
 
 ## Known limitations
 
@@ -1046,8 +1170,10 @@ the drawn values:
 - The child Magic is told to die with the KLayout thread that started it
   (`PR_SET_PDEATHSIG`); KLayout calls produce on its main thread. Linux only.
 - A host layout whose database unit doesn't divide 5 nm rounds Magic's
-  coordinates, and one of 5 nm rounds the 1 nm coordinates listed above.
-  `audit` reports both.
+  coordinates, and one of 5 nm or 2.5 nm rounds 1 nm coordinates: those of
+  the vendor cells listed above, and those of a device whose sizes are typed
+  to 1 nm (IHP's `bondpad` and inductors, in a test of version 0.3).
+  `audit` reports each such cell, from the grid in its stamp.
 - Another package that registers a library under one of these four names
   would replace it. The PDKs' own libraries have other names (`skywater130`;
   `gf180mcu`, `gf180mcu_klayoutapi`, `gf180mcu_sealring`; `SG13_dev`,
@@ -1074,9 +1200,10 @@ the drawn values:
 - The eight "[+/-](%)" coverage parameters are strings, not doubles (see
   [Parameters](#parameters)), and selectlists are choice parameters. The
   design typed the coverage values as floats and left selectlists out.
-- Floats are sent as 12 significant digits rather than `repr()`, and a value
-  equal to Magic's default is sent as Magic's default text. Without this, a
-  reopened file changed its requests.
+- Floats are sent as the 15-digit text KLayout saves, rounded to 12
+  significant digits, rather than `repr()`, and a value equal to Magic's
+  default is sent as Magic's default text. Without this, a reopened file
+  changed its requests.
 - Magic's checked values come from an execution trace on
   `magic::gencell_setparams`, which `gencell_create` calls with them; fixed
   devices have no `parameters` property to read them from. The trace changes
@@ -1101,9 +1228,10 @@ the drawn values:
   directory turns the disk cache off instead of stopping registration.
 - The harness has more checks per point than the design listed (the request
   path B sent, Magic's cell name and checked values from both paths, the
-  shape counts, every label attribute, the GDS census, the menu check), a
-  known-extraction list per PDK, the manifest check, and a watchdog on
-  path A. Path A's request text is independent of the plugin. The entry
+  shape counts, every label attribute, the fonts from the raw GDS records,
+  the GDS census, the menu check, round trips regenerated by Magic with the
+  cache off), a known-extraction list per PDK, the manifest check, and a
+  watchdog on path A. Path A's request text is independent of the plugin. The entry
   point is `scripts/parity.sh`, as in the design.
 - `docs/design.md` section 4.2 gave the wrong reason for leaving out Magic's
   dialog callbacks; it now says so.

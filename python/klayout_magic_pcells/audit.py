@@ -7,9 +7,12 @@ device of three PDKs.
 Reports cells that hold a placeholder, cells with no stamp, empty cells,
 stamps from a different Magic or PDK than the installed one (including a
 locally edited generator file or vendor GDS, through the stamp's digest), a
-file dbu that doesn't divide 5 nm, and devices whose Magic output lies on a
+file dbu that doesn't divide 5 nm, and cells whose Magic output lies on a
 finer grid than the file's dbu (vendor cells with 1 nm coordinates in a
-5 nm file). With ``regen=True`` it keeps a copy of every cell's stored
+5 nm file, a box-paint cell on Magic's 5 nm grid in a 2 nm file). The grid
+of each cell's Magic output is in its generated-by stamp; for stamps
+written before version 0.4, which have none, the manifest's grid of the
+device's default output stands in. With ``regen=True`` it keeps a copy of every cell's stored
 geometry, registers the libraries those cells need with every lookup going
 to Magic (not to the memo or the disk cache), and reports each cell whose
 regenerated geometry differs as a problem. A disk-cache entry that differs
@@ -48,15 +51,24 @@ def owner(title):
     return PDK_OF_LIBRARY[lib], lib, dev.split("(")[0]
 
 
-def _grid_problem(manifest, device, dbu):
-    """A message if the device's Magic output has coordinates on a grid that
-    the file's dbu can't hold (from the manifest's defaults run)."""
-    spec = manifest.get(device) if manifest is not None else None
-    grid = spec.raw.get("defaults_run", {}).get("grid_nm") if spec is not None else None
+def _grid_problem(manifest, device, dbu, stamp=None):
+    """A message if the cell's Magic output has coordinates on a grid that
+    the file's dbu can't hold: the grid recorded in the cell's stamp, else
+    (an older stamp) the grid of the device's default output from the
+    manifest."""
+    grid, what = None, "this cell's Magic output"
+    try:
+        grid = int((stamp or {}).get("grid") or 0) or None
+    except ValueError:
+        grid = None
+    if grid is None:
+        spec = manifest.get(device) if manifest is not None else None
+        grid = spec.raw.get("defaults_run", {}).get("grid_nm") if spec is not None else None
+        what = "Magic's output for this device at its defaults (the stamp records no grid)"
     if not grid or _divides(dbu, grid / 1000.0):
         return None
-    return ("Magic's output for this device has coordinates on a %d nm grid, which the file's "
-            "dbu of %g um rounds" % (grid, dbu))
+    return ("%s has coordinates on a %d nm grid, which the file's dbu of %g um rounds"
+            % (what[0].upper() + what[1:], grid, dbu))
 
 
 def _snapshot(layout, cell):
@@ -182,7 +194,7 @@ def audit(path, current=None, regen=False, manifests=None, notes=None):
             rec["problems"].append("stamped for %s, but the cell is in the %s library" % (st["pdk"], lib))
         elif cur and not same_versions(st, cur):
             rec["problems"].append("generated with %s; installed is %s" % (describe(st), describe(cur)))
-        gp = _grid_problem(manifests.get(pdk), dev, ly.dbu)
+        gp = _grid_problem(manifests.get(pdk), dev, ly.dbu, st)
         if gp:
             rec["problems"].append(gp)
         rep["cells"].append(rec)

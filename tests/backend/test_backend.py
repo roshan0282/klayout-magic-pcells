@@ -1,14 +1,20 @@
 """Backend tests: need Magic and the PDKs (run them in the pinned image).
 
 The PDK under test is the one KMP_PDK names (sky130A by default); the
-harness runs this file once per PDK. Tests that name sky130A devices run only
-for sky130A; the rest run for every PDK. Skipped when Magic or the rcfile
-can't be found.
+harness runs this file once per PDK. Most tests run on every PDK, with the
+devices of the table DEV below. Tests that depend on one PDK's own files
+(sky130A's vendor GDS byte offsets, the IHP layout scripts) say so in their
+skip reason. Skipped when Magic or the rcfile can't be found.
 """
 
+import glob
+import hashlib
+import json
 import os
+import re
 import shutil
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
@@ -20,7 +26,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(REPO, "python"))
 
 from klayout_magic_pcells.backend import BackendError, MagicServer  # noqa: E402
-from klayout_magic_pcells.config import Config  # noqa: E402
+from klayout_magic_pcells.config import LIBRARY_NAMES, Config  # noqa: E402
 from klayout_magic_pcells.manifest import Manifest  # noqa: E402
 
 try:
@@ -45,7 +51,62 @@ except Exception:
 needs_magic = unittest.skipUnless(HAVE_MAGIC and db is not None,
                                   "Magic, the PDK or the klayout module is missing")
 PDK = CFG.pdk if HAVE_MAGIC else "sky130A"
-sky130_only = unittest.skipUnless(PDK == "sky130A", "names sky130A devices")
+LIB = LIBRARY_NAMES.get(PDK, "sky130_magic")
+sky130_only = unittest.skipUnless(PDK == "sky130A", "edits sky130A's vendor GDS at known byte offsets")
+
+# The devices the tests use, per PDK: a MOSFET, the MOSFETs and varactors
+# whose mos_check loops forever above 28 um, the values _check clamps a
+# 0.1 x 0.1 MOSFET to (l, w), a fixed device, a resistor and a second
+# device, a device and size for which Magic writes an empty cell, and
+# parameters whose values the PCell refuses unless they are numbers or
+# Magic's choices. "vendor" is the libs.ref library that holds the fixed
+# devices' GDS; the IHP PDKs draw theirs from scripts in libs.tech/magic.
+DEV = {
+    "sky130A": dict(
+        mos="sky130_fd_pr__nfet_01v8", loop=("sky130_fd_pr__nfet_01v8", "sky130_fd_pr__cap_var_lvt"),
+        small=("0.15", "0.42"), fixed="sky130_fd_pr__npn_05v5_W1p00L1p00",
+        res="sky130_fd_pr__res_high_po_0p69", other="sky130_fd_pr__cap_mim_m3_1",
+        empty=("sky130_fd_pr__res_generic_po", "l"),
+        refused=(("sky130_fd_pr__nfet_01v8", "viagb"), ("sky130_fd_pr__res_high_po_0p35", "viagb"),
+                 ("sky130_fd_pr__cap_mim_m3_1", "ccov"), ("sky130_fd_pr__diode_pw2nd_05v5", "viagt")),
+        vendor="sky130_fd_pr", script=None),
+    "gf180mcuD": dict(
+        mos="nfet_03v3", loop=(), small=("0.28", "0.22"), fixed="npn_00p54x02p00",
+        res="ppolyf_u", other="cap_mim_2p0fF", empty=("rm1", "l"),
+        refused=(("ppolyf_u", "guard_type"),), vendor="gf180mcu_fd_pr", script=None),
+    "ihp-sg13g2": dict(
+        mos="sg13_lv_nmos", loop=("sg13_lv_nmos",), small=("0.13", "0.15"), fixed="diodevdd_2kv",
+        res="rsil", other="cap_cmim", empty=("rsil", "l"),
+        refused=(("dantenna", "viagb"), ("cap_cmim", "ccov"), ("via", "nxcuts"), ("via", "metalbot")),
+        vendor=None, script="diodevdd_2kv.tcl"),
+    "ihp-sg13cmos5l": dict(
+        mos="sg13_lv_nmos", loop=("sg13_lv_nmos",), small=("0.13", "0.15"), fixed="diodevdd_2kv",
+        res="rsil", other="cap_cmomf", empty=("rsil", "l"),
+        refused=(("dantenna", "viagb"), ("via", "nxcuts")), vendor=None, script="diodevdd_2kv.tcl"),
+}
+D = DEV.get(PDK, DEV["sky130A"])
+FINGERS = "ng" if PDK.startswith("ihp") else "nf"
+PY = os.path.join(REPO, "python")
+
+
+def script(body):
+    """A python -c script with the package on sys.path and klayout.db,
+    klayout_magic_pcells (as kmp), PDK and LIB defined."""
+    return ("import os, sys\nsys.path.insert(0, %r)\nimport klayout.db as db\n"
+            "import klayout_magic_pcells as kmp\nPDK, LIB = %r, %r\n" % (PY, PDK, LIB)
+            + textwrap.dedent(body))
+
+
+def run_py(body, env, args=(), timeout=180):
+    p = subprocess.run([sys.executable, "-c", script(body)] + list(args), stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, env=env, timeout=timeout)
+    return p.returncode, p.stdout.decode(errors="replace")
+
+
+def cli(env, *args, timeout=180, cwd=None):
+    p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells"] + list(args), stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, env=dict(env, PYTHONPATH=PY), timeout=timeout, cwd=cwd)
+    return p.returncode, p.stdout.decode(errors="replace")
 
 
 def alive(pid):
@@ -56,20 +117,102 @@ def alive(pid):
         return False
 
 
-def flat_signature(path):
+def flat_signature(path, shift=(0, 0)):
     ly = db.Layout()
     ly.read(path)
     top = ly.top_cells()
     assert len(top) == 1, [c.name for c in top]
     out = {}
+    t = db.ICplxTrans(db.Vector(*shift))
     for li in ly.layer_indices():
         info = ly.get_info(li)
-        r = db.Region(top[0].begin_shapes_rec(li))
+        r = db.Region(top[0].begin_shapes_rec(li)).transformed(t)
         r.merge()
-        t = sorted((x.string, x.x, x.y) for x in db.Texts(top[0].begin_shapes_rec(li)).each())
-        if not r.is_empty() or t:
-            out["%d/%d" % (info.layer, info.datatype)] = (r.area(), r.count(), str(r.bbox()), t)
+        tx = sorted((x.string, x.x, x.y) for x in db.Texts(top[0].begin_shapes_rec(li)).transformed(t).each())
+        if not r.is_empty() or tx:
+            out["%d/%d" % (info.layer, info.datatype)] = (r.area(), r.count(), str(r.bbox()), tx)
     return out
+
+
+def farm(root, edit_tcl=None, drop_vendor_gds=False, edit_vendor_gds=None, remove=()):
+    """A PDK_ROOT whose PDK is the installed one through symlinks.
+
+    ``edit_tcl(name, text)`` returns the new text of each libs.tech/magic/*.tcl
+    file (or the text unchanged); ``remove`` names libs.tech/magic files
+    left out. With ``drop_vendor_gds``, libs.ref/<vendor>/gds is left out
+    (the fixed devices' GDS); ``edit_vendor_gds(bytes)`` rewrites sky130A's
+    sky130_fd_pr.gds."""
+    src = os.path.join(CFG.pdk_root, PDK)
+    dst = os.path.join(root, PDK)
+    os.makedirs(os.path.join(dst, "libs.tech", "magic"))
+    for name in os.listdir(src):
+        if name == "libs.ref" and (drop_vendor_gds or edit_vendor_gds) and D["vendor"]:
+            for lib in os.listdir(os.path.join(src, name)):
+                d = os.path.join(dst, name, lib)
+                os.makedirs(os.path.dirname(d), exist_ok=True)
+                if lib != D["vendor"]:
+                    os.symlink(os.path.join(src, name, lib), d)
+                    continue
+                os.makedirs(d)
+                for sub in os.listdir(os.path.join(src, name, lib)):
+                    if sub != "gds":
+                        os.symlink(os.path.join(src, name, lib, sub), os.path.join(d, sub))
+                    elif edit_vendor_gds is not None:
+                        g = os.path.join(src, name, lib, "gds")
+                        os.makedirs(os.path.join(d, "gds"))
+                        for fn in os.listdir(g):
+                            if fn == "sky130_fd_pr.gds":
+                                with open(os.path.join(g, fn), "rb") as f:
+                                    data = edit_vendor_gds(f.read())
+                                with open(os.path.join(d, "gds", fn), "wb") as f:
+                                    f.write(data)
+                            else:
+                                os.symlink(os.path.join(g, fn), os.path.join(d, "gds", fn))
+        elif name != "libs.tech":
+            os.symlink(os.path.join(src, name), os.path.join(dst, name))
+    for name in os.listdir(os.path.join(src, "libs.tech")):
+        if name != "magic":
+            os.symlink(os.path.join(src, "libs.tech", name), os.path.join(dst, "libs.tech", name))
+    for name in os.listdir(os.path.join(src, "libs.tech", "magic")):
+        if name in remove:
+            continue
+        p = os.path.join(src, "libs.tech", "magic", name)
+        q = os.path.join(dst, "libs.tech", "magic", name)
+        if edit_tcl is not None and name.endswith(".tcl"):
+            with open(p) as f:
+                text = f.read()
+            new = edit_tcl(name, text)
+            if new != text:
+                with open(q, "w") as f:
+                    f.write(new)
+                continue
+        os.symlink(p, q)
+    return root
+
+
+# Register the PDK's library, then open the file named in argv.
+REOPEN = """
+assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+ly = db.Layout()
+ly.read(sys.argv[1])
+print("OK")
+"""
+
+
+def insert_after_proc(proc, line):
+    """An edit_tcl for farm(): ``line`` as the first statement of ``proc``
+    (for example "sky130::via1_draw"), wherever the PDK defines it."""
+    pat = re.compile(r"^proc %s \{[^\n]*\{\s*$" % re.escape(proc), re.M)
+    done = []
+
+    def edit(name, text):
+        m = pat.search(text)
+        if not m:
+            return text
+        done.append(name)
+        return text[:m.end()] + "\n    " + line + text[m.end():]
+    edit.done = done
+    return edit
 
 
 @needs_magic
@@ -120,15 +263,15 @@ class Server(unittest.TestCase):
             if not spec.batch.get("empty"):
                 self.assertTrue(sigs[0], spec.name + " wrote no shapes")
 
-    @sky130_only
     def test_brace_in_a_value(self):
-        r = self.s.generate("sky130_fd_pr__nfet_01v8", {"w": "1{.5"}, "cell", self.out("b.gds"))
+        # An unbalanced brace is data, not Tcl source: Magic's _check says
+        # the value is not numeric and clamps it, and the session goes on.
+        r = self.s.generate(D["mos"], {"w": "1{.5"}, "cell", self.out("b.gds"))
         self.assertIn("not numeric", r.log)
-        self.assertEqual(r.checked["w"], "0.42")
-        r2 = self.s.generate("sky130_fd_pr__nfet_01v8", {"w": "1.5"}, "cell", self.out("b2.gds"))
+        self.assertEqual(r.checked["w"], D["small"][1])
+        r2 = self.s.generate(D["mos"], {"w": "1.5"}, "cell", self.out("b2.gds"))
         self.assertEqual(r2.checked["w"], "1.5")
 
-    @sky130_only
     def test_a_value_that_tcl_would_substitute_is_refused(self):
         # Defence in depth behind ParamSpec.check: the server itself refuses
         # [, ], $ and backslash in any value, whoever sends it.
@@ -136,21 +279,22 @@ class Server(unittest.TestCase):
         for op in ("generate", "check"):
             with self.assertRaises(BackendError) as cm:
                 if op == "generate":
-                    self.s.generate("sky130_fd_pr__nfet_01v8", {"guard": "1", "viagb": "[exec touch %s]" % marker},
-                                    "cell", self.out("inj.gds"))
+                    self.s.generate(D["mos"], {"w": "[exec touch %s]" % marker}, "cell", self.out("inj.gds"))
                 else:
-                    self.s.check("sky130_fd_pr__nfet_01v8", {"viagb": "$::env(HOME)"})
+                    self.s.check(D["mos"], {"w": "$::env(HOME)"})
             self.assertIn("refused", str(cm.exception))
+        with self.assertRaises(BackendError):
+            self.s.generate("via1", {"w": "[exec touch %s]" % marker, "h": "1"}, "box", self.out("i.gds"))
         self.assertFalse(os.path.exists(marker))
         self.assertTrue(self.s.ping())
 
-    @sky130_only
     def test_endless_check_loop_is_stopped(self):
-        # sky130::mos_check never returns when w and l are both above 28 um,
-        # whatever nf and m are. The server stops it without a restart.
+        # mos_check (sky130A, IHP) never returns when w and l are both above
+        # 28 um, whatever nf and m are. The server stops it without a
+        # restart. gf180mcuD's loop ends, and the device draws.
         pid = self.s.pid
-        for dev in ("sky130_fd_pr__nfet_01v8", "sky130_fd_pr__cap_var_lvt"):
-            for params in ({"w": "35", "l": "35", "nf": "1"}, {"w": "29", "l": "29", "nf": "4"}):
+        for dev in D["loop"]:
+            for params in ({"w": "35", "l": "35", FINGERS: "1"}, {"w": "29", "l": "29", FINGERS: "4"}):
                 t = time.time()
                 with self.assertRaises(BackendError) as cm:
                     self.s.generate(dev, params, "cell", self.out("loop.gds"))
@@ -161,35 +305,61 @@ class Server(unittest.TestCase):
                 self.assertLess(time.time() - t, 10, (dev, params))
         self.assertEqual(self.s.pid, pid)
         # Just below the condition Magic terminates and draws.
-        r = self.s.generate("sky130_fd_pr__nfet_01v8", {"w": "28", "l": "35"}, "cell", self.out("w28.gds"))
+        r = self.s.generate(D["mos"], {"w": "28", "l": "35"}, "cell", self.out("w28.gds"))
         self.assertTrue(r.cell)
         self.assertNotIn("endless", r.log)
+        if not D["loop"]:
+            r = self.s.generate(D["mos"], {"w": "35", "l": "35"}, "cell", self.out("w35.gds"))
+            self.assertTrue(r.cell)
 
-    @sky130_only
     def test_unknown_device_is_an_error(self):
         with self.assertRaises(BackendError) as cm:
-            self.s.generate("sky130_fd_pr__nope", {}, "cell", self.out("n.gds"))
+            self.s.generate("nope_device", {}, "cell", self.out("n.gds"))
         self.assertIn("unknown device", str(cm.exception))
         self.assertTrue(self.s.ping())
 
-    @sky130_only
     def test_check_messages_arrive_in_the_log(self):
-        r = self.s.check("sky130_fd_pr__nfet_01v8", {"l": "0.1", "w": "0.1"})
-        self.assertEqual((r.checked["l"], r.checked["w"]), ("0.15", "0.42"))
-        self.assertIn("Mos length must be >= 0.15 um", r.log)
-        r = self.s.generate("sky130_fd_pr__nfet_01v8", {"l": "0.1"}, "cell", self.out("c.gds"))
-        self.assertIn("Mos length must be >= 0.15 um", r.log)
+        r = self.s.check(D["mos"], {"l": "0.1", "w": "0.1"})
+        self.assertEqual((r.checked["l"], r.checked["w"]), D["small"])
+        self.assertIn("Mos length must be >= %s um" % D["small"][0], r.log)
+        r = self.s.generate(D["mos"], {"l": "0.1"}, "cell", self.out("c.gds"))
+        self.assertIn("Mos length must be >= %s um" % D["small"][0], r.log)
 
-    @sky130_only
     def test_fixed_device_array(self):
-        r = self.s.generate("sky130_fd_pr__npn_05v5_W1p00L1p00", {"nx": "2", "ny": "3"},
-                            "wrapper", self.out("a.gds"))
+        r = self.s.generate(D["fixed"], {"nx": "2", "ny": "3"}, "wrapper", self.out("a.gds"))
         self.assertEqual((r.checked["nx"], r.checked["ny"]), ("2", "3"))
         ly = db.Layout()
         ly.read(self.out("a.gds"))
         insts = list(ly.top_cell().each_inst())
         self.assertEqual(len(insts), 1)
         self.assertEqual((insts[0].na, insts[0].nb), (3, 2))
+
+    def test_negative_and_non_finite_box_sizes(self):
+        # What Magic's box command does with them: a negative size puts the
+        # box left of or below the origin and the generator paints it there;
+        # -0.0, inf and nan come out below the minimum (inf and nan as
+        # -2147483648 internal units), and nothing is painted.
+        for spec in [d for d in self.man.devices if d.kind == "box"]:
+            m = float(spec.raw["min_box_um"])
+            big = max(2 * m, 1.0)
+            pos = self.out("pos.gds")
+            self.s.generate(spec.name, {"w": repr(big), "h": repr(big)}, "box", pos)
+            want = flat_signature(pos)
+            self.assertTrue(want, spec.name)
+            for w, h, dx, dy in ((-big, big, 1, 0), (big, -big, 0, 1), (-big, -big, 1, 1)):
+                p = self.out("neg.gds")
+                r = self.s.generate(spec.name, {"w": repr(w), "h": repr(h)}, "box", p)
+                self.assertEqual((float(r.checked["w"]), float(r.checked["h"])), (big, big), spec.name)
+                shift = (int(round(dx * big * 1000)), int(round(dy * big * 1000)))
+                self.assertEqual(flat_signature(p, shift), want, (spec.name, w, h))
+            for w in ("-0.0", "inf", "-inf", "nan"):
+                p = self.out("zero.gds")
+                r = self.s.generate(spec.name, {"w": w, "h": repr(big)}, "box", p)
+                self.assertEqual(flat_signature(p), {}, (spec.name, w))
+                self.assertRegex(r.log, r"(?i)width", (spec.name, w))
+            with self.assertRaises(BackendError) as cm:
+                self.s.generate(spec.name, {"w": "+1", "h": "1"}, "box", self.out("x.gds"))
+            self.assertIn("refused", str(cm.exception))
 
 
 # Requests that leave Magic's session changed, per PDK, and the requests that
@@ -290,7 +460,6 @@ class AnyPdk(unittest.TestCase):
 
 
 @needs_magic
-@sky130_only
 class Recovery(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="kmp-recover-")
@@ -305,7 +474,7 @@ class Recovery(unittest.TestCase):
             pid = s.pid
             os.kill(pid, signal.SIGKILL)
             time.sleep(0.2)
-            r = s.generate("sky130_fd_pr__nfet_01v8", {}, "cell", os.path.join(self.tmp, "k.gds"))
+            r = s.generate(D["mos"], {}, "cell", os.path.join(self.tmp, "k.gds"))
             self.assertTrue(r.cell)
             self.assertNotEqual(s.pid, pid)
             self.assertGreaterEqual(s.stats["spawns"], 2)
@@ -322,7 +491,7 @@ class Recovery(unittest.TestCase):
             s._proc.stdin.write(b"puts {unbalanced\n")
             s._proc.stdin.flush()
             t = time.time()
-            r = s.generate("sky130_fd_pr__nfet_01v8", {}, "cell", os.path.join(self.tmp, "t.gds"))
+            r = s.generate(D["mos"], {}, "cell", os.path.join(self.tmp, "t.gds"))
             self.assertTrue(r.cell)
             self.assertGreater(time.time() - t, 2.5)
             self.assertNotEqual(s.pid, pid)
@@ -346,9 +515,8 @@ class Recovery(unittest.TestCase):
             f.write("#!/bin/sh\nexec cat\n")
         os.chmod(boom, 0o755)
         os.chmod(hang, 0o755)
-        script = textwrap.dedent("""
-            import os, sys, time
-            sys.path.insert(0, %r)
+        body = """
+            import time
             from klayout_magic_pcells.backend import MagicServer
             from klayout_magic_pcells.config import Config
             env = dict(os.environ)
@@ -361,23 +529,30 @@ class Recovery(unittest.TestCase):
                 s.start()
                 print("STARTED")
             except Exception as e:
-                print("ERR %%.0f %%s" %% (time.time() - t, e))
+                print("ERR %.0f %s" % (time.time() - t, e))
             finally:
                 s.close()
-        """ % os.path.join(REPO, "python"))
+        """
         rc = os.path.join(os.path.dirname(CFG.magicrc))
+        if PDK.startswith("ihp"):
+            # The IHP rcfiles load the tech file from their own directory.
+            moved = os.path.join(self.tmp, "moved")
+            os.makedirs(moved)
+            shutil.copy(CFG.magicrc, moved)
+            missing = (["KMP_MAGICRC=" + os.path.join(moved, os.path.basename(CFG.magicrc))],
+                       "Could not find file '%s/%s.tech'" % (moved, PDK))
+        else:
+            missing = (["PDK_ROOT=/nonexistent", "KMP_MAGICRC=" + CFG.magicrc],
+                       "Could not find file '/nonexistent/%s/libs.tech/magic/%s.tech'" % (PDK, PDK))
         cases = [
             (["KMP_MAGIC=/bin/false"], "Magic exited (status 1)"),
             (["KMP_MAGIC=" + boom], "Magic exited (status 3); Magic said: boom: no tech file"),
             (["KMP_MAGIC=" + hang, "KMP_TIMEOUT=1"], "timed out after 10 s waiting for Magic to load kmp_server.tcl"),
-            (["PDK_ROOT=/nonexistent", "KMP_MAGICRC=" + CFG.magicrc],
-             "Could not find file '/nonexistent/sky130A/libs.tech/magic/sky130A.tech'"),
+            missing,
         ]
         self.assertTrue(os.path.isdir(rc))
         for args, expect in cases:
-            p = subprocess.run([sys.executable, "-c", script, "KMP_CACHE_DIR=" + self.tmp] + args,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
-            text = p.stdout.decode()
+            code, text = run_py(body, dict(os.environ), ["KMP_CACHE_DIR=" + self.tmp] + args, timeout=60)
             self.assertIn(expect, text, args)
             self.assertNotIn("Traceback", text, args)
             self.assertNotIn("Exception in thread", text, args)
@@ -388,9 +563,7 @@ class Recovery(unittest.TestCase):
         self.assertEqual(os.listdir(os.path.join(self.tmp, "run")), [])
 
     def test_no_magic_left_after_the_client_exits(self):
-        script = textwrap.dedent("""
-            import os, sys
-            sys.path.insert(0, %r)
+        body = """
             from klayout_magic_pcells.backend import make_server
             from klayout_magic_pcells.config import Config
             s = make_server(Config.load())
@@ -399,12 +572,10 @@ class Recovery(unittest.TestCase):
             if sys.argv[1] == "kill":
                 os.kill(os.getpid(), 9)
             # normal exit: the atexit handler closes Magic
-        """ % os.path.join(REPO, "python"))
+        """
         for how in ("exit", "kill"):
-            env = dict(os.environ, KMP_CACHE_DIR=self.tmp)
-            p = subprocess.run([sys.executable, "-c", script, how], stdout=subprocess.PIPE,
-                               env=env, timeout=60)
-            pid = int(p.stdout.split()[0])
+            code, text = run_py(body, dict(os.environ, KMP_CACHE_DIR=self.tmp), [how], timeout=60)
+            pid = int(text.split()[0])
             for _ in range(50):
                 if not alive(pid):
                     break
@@ -413,135 +584,212 @@ class Recovery(unittest.TestCase):
 
 
 @needs_magic
-@sky130_only
 class GeneratorAndLibrary(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="kmp-gen-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def env(self, **kw):
+        e = dict(os.environ, KMP_CACHE_DIR=os.path.join(self.tmp, "cache"), KMP_PDKS=PDK, KMP_PDK=PDK)
+        e.update(kw)
+        return e
+
     def test_memo_disk_magic(self):
         from klayout_magic_pcells.backend import Generator
         from klayout_magic_pcells.cache import GdsCache, versions_fields
-        tmp = tempfile.mkdtemp(prefix="kmp-gen-")
-        cfg = _cfg(KMP_CACHE_DIR=tmp)
+        cfg = _cfg(KMP_CACHE_DIR=self.tmp)
         man = Manifest.load(cfg.manifest)
-        spec = man["sky130_fd_pr__res_high_po_0p69"]
+        spec = man[D["res"]]
         s = MagicServer(cfg)
         try:
             v = s.start()
-            cache = GdsCache(tmp, versions_fields(v, cfg.pdk))
+            cache = GdsCache(self.tmp, versions_fields(v, cfg.pdk))
             g = Generator(s, cache, v)
             req = spec.build_request(dict(spec.defaults_values(), l=5.0, nx=2))
             a = g.get(spec, req)
             b = g.get(spec, req)
             self.assertEqual((a.source, b.source), ("magic", "memo"))
-            g2 = Generator(s, GdsCache(tmp, versions_fields(v, cfg.pdk)), v)
+            g2 = Generator(s, GdsCache(self.tmp, versions_fields(v, cfg.pdk)), v)
             c = g2.get(spec, req)
             self.assertEqual(c.source, "disk")
             self.assertEqual(c.checked, a.checked)
-            self.assertEqual(c.magic_cell, "sky130_fd_pr__res_high_po_0p69_G99TND")
+            self.assertEqual(c.magic_cell, a.magic_cell)
+            self.assertTrue(a.magic_cell.startswith(spec.name + "_"), a.magic_cell)
+            if PDK == "sky130A":
+                self.assertEqual(c.magic_cell, "sky130_fd_pr__res_high_po_0p69_G99TND")
             self.assertEqual(s.stats["generate"], 1)
         finally:
             s.close()
-            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_damaged_cache_entries_are_regenerated(self):
         # A cache GDS that is garbage, truncated, or another device's file is
         # regenerated by Magic in the next session, in produce as well.
-        tmp = tempfile.mkdtemp(prefix="kmp-damage-")
-        script = textwrap.dedent("""
-            import glob, os, shutil, sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is not None, kmp.state.last_error
+        body = """
+            import glob, shutil
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+            st = kmp.state_for(PDK)
+            res, other = sys.argv[2], sys.argv[3]
             def place(dev):
                 ly = db.Layout()
-                c = ly.create_cell(dev, "sky130_magic", {})
+                c = ly.create_cell(dev, LIB, {})
                 ph = ly.find_layer(255, 0)
-                return "%%s %%s %%s" %% (dev[14:], c.dbbox(), ph is not None and not c.shapes(ph).is_empty())
-            print("PLACE", place("sky130_fd_pr__res_high_po_0p69"), kmp.state.generator.stats)
-            print("PLACE", place("sky130_fd_pr__cap_mim_m3_1"), kmp.state.generator.stats)
-            res = glob.glob(os.path.join(os.environ["KMP_CACHE_DIR"], "v1/*/sky130_fd_pr__res_high_po_0p69/*.gds"))[0]
+                return "%s %s %s" % (dev, c.dbbox(), ph is not None and not c.shapes(ph).is_empty())
+            print("PLACE", place(res), st.generator.stats)
+            print("PLACE", place(other), st.generator.stats)
+            path = glob.glob(os.path.join(os.environ["KMP_CACHE_DIR"], "v1/*/%s/*.gds" % res))[0]
             if sys.argv[1] == "live":
                 # damage the file under the memo of this session
-                open(res, "wb").write(b"not a GDS file")
-                print("PLACE", place("sky130_fd_pr__res_high_po_0p69"), kmp.state.generator.stats)
+                open(path, "wb").write(b"not a GDS file")
+                print("PLACE", place(res), st.generator.stats)
             elif sys.argv[1] != "none":
-                mim = glob.glob(os.path.join(os.environ["KMP_CACHE_DIR"], "v1/*/sky130_fd_pr__cap_mim_m3_1/*.gds"))[0]
+                oth = glob.glob(os.path.join(os.environ["KMP_CACHE_DIR"], "v1/*/%s/*.gds" % other))[0]
                 if sys.argv[1] == "swap":
-                    shutil.copy(mim, res)
+                    shutil.copy(oth, path)
                 elif sys.argv[1] == "truncate":
-                    data = open(res, "rb").read()
-                    open(res, "wb").write(data[:len(data) // 2])
+                    data = open(path, "rb").read()
+                    open(path, "wb").write(data[:len(data) // 2])
                 else:
-                    open(res, "wb").write(b"garbage" * 40)
-        """ % os.path.join(REPO, "python"))
-        good = "res_high_po_0p69 (-1.12,-3.355;1.12,3.355) False"
-        try:
-            for damage in ("garbage", "truncate", "swap", "live"):
-                env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, damage))
-                outs = []
-                for step in (damage, "none"):
-                    p = subprocess.run([sys.executable, "-c", script, step], stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, env=env, timeout=120)
-                    outs.append(p.stdout.decode())
-                    self.assertEqual(p.returncode, 0, outs[-1])
-                first, second = outs
-                if damage == "live":
-                    self.assertIn("can't be read", first)
-                    self.assertIn("PLACE " + good + " {'memo': 1, 'disk': 0, 'magic': 3, 'evicted': 1}", first)
-                # The next session sees the damage, deletes the entry and asks Magic.
-                self.assertIn("PLACE " + good + " {'memo': 0, 'disk': 0, 'magic': 1, 'evicted': 0}"
-                              if damage != "live" else
-                              "PLACE " + good + " {'memo': 0, 'disk': 1, 'magic': 0, 'evicted': 0}", second, damage)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+                    open(path, "wb").write(b"garbage" * 40)
+        """
+        good = None
+        for damage in ("garbage", "truncate", "swap", "live"):
+            env = self.env(KMP_CACHE_DIR=os.path.join(self.tmp, damage))
+            outs = []
+            for step in (damage, "none"):
+                rc, text = run_py(body, env, [step, D["res"], D["other"]])
+                outs.append(text)
+                self.assertEqual(rc, 0, text)
+            first, second = outs
+            place = [ln for ln in first.splitlines() if ln.startswith("PLACE ")][0]
+            g = place[len("PLACE "):place.index(" {")]
+            self.assertTrue(g.endswith(" False"), g)
+            if good is None:
+                good = g
+                if PDK == "sky130A":
+                    self.assertEqual(good, "sky130_fd_pr__res_high_po_0p69 (-1.12,-3.355;1.12,3.355) False")
+            self.assertEqual(g, good)
+            if damage == "live":
+                self.assertIn("can't be read", first)
+                self.assertIn("PLACE " + good + " {'memo': 1, 'disk': 0, 'magic': 3, 'evicted': 1}", first)
+            # The next session sees the damage, deletes the entry and asks Magic.
+            self.assertIn("PLACE " + good + " {'memo': 0, 'disk': 0, 'magic': 1, 'evicted': 0}"
+                          if damage != "live" else
+                          "PLACE " + good + " {'memo': 0, 'disk': 1, 'magic': 0, 'evicted': 0}", second, damage)
+
+    def test_the_cache_removed_under_a_running_session(self):
+        # gf180mcuD tester's case: "cache clear" or "cache prune" from
+        # another shell, or the cache directory removed by hand, while a
+        # session is open. Every later variant drew the error marker
+        # ("gds write produced no file"); now the session makes the
+        # directories again, and a variant it remembered but whose file is
+        # gone is generated again.
+        body = """
+            import shutil, subprocess
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+            st = kmp.state_for(PDK)
+            dev = sys.argv[1]
+            spec = st.manifest[dev]
+            name = spec.params[0].name
+            base = float(spec.params[0].default)
+            def place(i):
+                ly = db.Layout()
+                c = ly.create_cell(dev, LIB, {name: base + 0.01 * i})
+                ph = ly.find_layer(255, 0)
+                bad = ph is not None and not c.shapes(ph).is_empty()
+                return "MARKER" if bad else ("EMPTY" if c.dbbox().empty() else "ok")
+            cache = os.environ["KMP_CACHE_DIR"]
+            print("STEP before", place(0), place(1))
+            for i, how in enumerate(("clear", "prune", "rmtree")):
+                if how == "rmtree":
+                    shutil.rmtree(cache)
+                else:
+                    p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "cache", how],
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    assert p.returncode == 0, p.stdout
+                print("STEP", how, place(10 + i), place(0), st.generator.stats["magic"])
+        """
+        rc, text = run_py(body, self.env(PYTHONPATH=PY), [D["mos"]])
+        self.assertEqual(rc, 0, text)
+        steps = [ln for ln in text.splitlines() if ln.startswith("STEP ")]
+        self.assertEqual(len(steps), 4, text)
+        for ln in steps:
+            self.assertNotIn("MARKER", ln, text)
+            self.assertNotIn("EMPTY", ln, text)
+        # clear and rmtree deleted variant 0's file, so it came from Magic again.
+        self.assertNotIn("can't be read", text)
+
+    def test_prune_leaves_the_other_pdks_alone(self):
+        # The testers' case: entries of two PDKs, then "cache prune" with
+        # KMP_PDKS naming one; the other PDK's current entries stayed only
+        # when this prune worked on all of them.
+        other = "gf180mcuD" if PDK == "sky130A" else "sky130A"
+        if not os.path.isfile(os.path.join(CFG.pdk_root, other, "libs.tech", "magic", other + ".magicrc")):
+            self.skipTest("%s is not installed" % other)
+        body = """
+            for p in sys.argv[1:]:
+                lib = kmp.register(p)
+                assert lib is not None, kmp.state_for(p).last_error
+                ly = db.Layout()
+                c = ly.create_cell("via1", lib.name(), {})
+                print("PLACED", p, c.dbbox())
+        """
+        both = self.env(KMP_PDKS="%s,%s" % (PDK, other))
+        rc, text = run_py(body, both, [PDK, other])
+        self.assertEqual(rc, 0, text)
+        rc, stats = cli(both, "cache", "stats")
+        self.assertEqual(rc, 0, stats)
+        cur = json.loads(stats[stats.index("{"):])["current"]
+        self.assertEqual(sorted(cur), sorted([PDK, other]))
+        rc, text = cli(self.env(), "cache", "prune")
+        self.assertEqual(rc, 0, text)
+        self.assertNotIn("removed", text)
+        self.assertIn("kept %s" % os.path.join(self.tmp, "cache", "v1", cur[other]), text)
+        left = sorted(os.listdir(os.path.join(self.tmp, "cache", "v1")))
+        self.assertEqual(left, sorted(cur.values()))
 
     def test_register_in_plain_python(self):
-        tmp = tempfile.mkdtemp(prefix="kmp-lib-")
-        script = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            lib = kmp.register("sky130A")
-            assert lib is not None, kmp.state.last_error
-            assert kmp.register("sky130A") is lib
-            pid = kmp.state.server.pid
-            assert kmp.state.server.stats["spawns"] == 1
+        body = """
+            lib = kmp.register(PDK)
+            assert lib is not None, kmp.state_for(PDK).last_error
+            assert kmp.register(PDK) is lib
+            st = kmp.state_for(PDK)
+            assert st.server.stats["spawns"] == 1
             ly = db.Layout()
             top = ly.create_cell("TOP")
-            c = ly.create_cell("sky130_fd_pr__nfet_01v8", "sky130_magic", {"w": 1.5, "l": 0.5, "nf": 3})
+            c = ly.create_cell(sys.argv[1], LIB, {"w": 1.5, "l": 0.5, sys.argv[2]: 3})
             top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
             b = c.dbbox()
             print("BBOX", b.left, b.bottom, b.right, b.top, c.display_title())
-        """ % os.path.join(REPO, "python"))
-        p = subprocess.run([sys.executable, "-c", script], stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, env=dict(os.environ, KMP_CACHE_DIR=tmp), timeout=120)
-        text = p.stdout.decode()
-        shutil.rmtree(tmp, ignore_errors=True)
-        self.assertEqual(p.returncode, 0, text)
-        self.assertIn("BBOX -1.965 -1.745 1.965 1.745 sky130_magic.nfet_01v8(w=1.5 l=0.5 nf=3)", text)
+        """
+        rc, text = run_py(body, self.env(), [D["mos"], FINGERS])
+        self.assertEqual(rc, 0, text)
+        short = D["mos"].replace("sky130_fd_pr__", "")
+        self.assertIn(" %s.%s(w=1.5 l=0.5 %s=3)" % (LIB, short, FINGERS), text)
+        if PDK == "sky130A":
+            self.assertIn("BBOX -1.965 -1.745 1.965 1.745 sky130_magic.nfet_01v8(w=1.5 l=0.5 nf=3)", text)
 
     def test_opening_a_file_never_runs_a_command_in_a_parameter(self):
-        # A saved instance whose coverage string holds a Tcl command: placing
-        # it and reopening the file (empty cache, so produce asks Magic) must
-        # not run the command, and the cell must carry the error marker.
-        tmp = tempfile.mkdtemp(prefix="kmp-inject-")
-        marker = os.path.join(tmp, "INJECTED")
-        gds = os.path.join(tmp, "inj.gds")
-        script = textwrap.dedent("""
-            import os, sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is not None, kmp.state.last_error
+        # A saved instance whose coverage string, choice or number list holds
+        # a Tcl command: placing it and reopening the file (empty cache, so
+        # produce asks Magic) must not run the command, and the cell must
+        # carry the error marker.
+        marker = os.path.join(self.tmp, "INJECTED")
+        gds = os.path.join(self.tmp, "inj.gds")
+        body = """
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+            st = kmp.state_for(PDK)
             marker, gds = sys.argv[1], sys.argv[2]
             if sys.argv[3] == "make":
                 ly = db.Layout()
                 top = ly.create_cell("TOP")
-                for dev, name in (("sky130_fd_pr__nfet_01v8", "viagb"),
-                                  ("sky130_fd_pr__res_high_po_0p35", "viagb"),
-                                  ("sky130_fd_pr__cap_mim_m3_1", "ccov"),
-                                  ("sky130_fd_pr__diode_pw2nd_05v5", "viagt")):
-                    c = ly.create_cell(dev, "sky130_magic", {"guard": True, name: "[exec touch %%s]" %% marker})
+                for item in sys.argv[4:]:
+                    dev, name = item.split(":")
+                    vals = {name: "[exec touch %s]" % marker}
+                    if st.manifest[dev].param("guard") is not None:
+                        vals["guard"] = True
+                    c = ly.create_cell(dev, LIB, vals)
                     top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
                 ly.write(gds)
             else:
@@ -554,102 +802,84 @@ class GeneratorAndLibrary(unittest.TestCase):
                 texts = [t.text_string for t in c.shapes(ph).each() if t.is_text()]
                 print("CELL", c.name, c.is_pcell_variant(), "|".join(texts))
             print("MARKER", os.path.exists(marker))
-        """ % os.path.join(REPO, "python"))
-        try:
-            for step in ("make", "open"):
-                env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, "cache-" + step))
-                p = subprocess.run([sys.executable, "-c", script, marker, gds, step], stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, env=env, timeout=120)
-                text = p.stdout.decode()
-                self.assertEqual(p.returncode, 0, text)
-                self.assertIn("MARKER False", text, step)
-                cells = [ln for ln in text.splitlines() if ln.startswith("CELL ")]
-                self.assertEqual(len(cells), 4, text)
-                for ln in cells:
-                    self.assertIn(" True KMP_ERROR ", ln, step)
-                    self.assertIn("not sent to Magic", ln, step)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+        """
+        items = ["%s:%s" % dn for dn in D["refused"]]
+        for step in ("make", "open"):
+            env = self.env(KMP_CACHE_DIR=os.path.join(self.tmp, "cache-" + step))
+            rc, text = run_py(body, env, [marker, gds, step] + items)
+            self.assertEqual(rc, 0, text)
+            self.assertIn("MARKER False", text, step)
+            cells = [ln for ln in text.splitlines() if ln.startswith("CELL ")]
+            self.assertEqual(len(cells), len(items), text)
+            for ln in cells:
+                self.assertIn(" True KMP_ERROR ", ln, step)
+                self.assertIn("not sent to Magic", ln, step)
 
     def test_register_fails_cleanly_on_a_bad_manifest(self):
-        tmp = tempfile.mkdtemp(prefix="kmp-badman-")
-        import json
         with open(CFG.manifest) as f:
             man = json.load(f)
         # A parameter called "layout" would overwrite PCellDeclarationHelper.layout.
         man["devices"][0]["params"].append({"name": "layout", "type": "float", "default": "1",
                                             "editable": True})
-        bad = os.path.join(tmp, "bad.json")
+        bad = os.path.join(self.tmp, "bad.json")
         with open(bad, "w") as f:
             json.dump(man, f)
-        script = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout_magic_pcells as kmp
-            import klayout.db as db
-            assert kmp.register("sky130A") is None
-            assert db.Library.library_by_name("sky130_magic") is None
-            assert kmp.state.server is None
-            print("ERR", kmp.state.last_error)
-        """ % os.path.join(REPO, "python"))
-        p = subprocess.run([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                           env=dict(os.environ, KMP_MANIFEST=bad, KMP_CACHE_DIR=tmp), timeout=60)
-        text = p.stdout.decode()
-        shutil.rmtree(tmp, ignore_errors=True)
-        self.assertEqual(p.returncode, 0, text)
+        body = """
+            assert kmp.register(PDK) is None
+            assert db.Library.library_by_name(LIB) is None
+            assert kmp.state_for(PDK).server is None
+            print("ERR", kmp.state_for(PDK).last_error)
+        """
+        rc, text = run_py(body, self.env(KMP_MANIFEST=bad), timeout=60)
+        self.assertEqual(rc, 0, text)
         self.assertIn("collide", text)
 
-    def _py(self, script, env, args=()):
-        p = subprocess.run([sys.executable, "-c", script] + list(args), stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT, env=env, timeout=120)
-        return p.returncode, p.stdout.decode()
-
-    def test_register_refuses_a_magic_without_the_devices(self):
-        # An rcfile that loads no PDK (here: an empty one; a sky130A.tcl that
-        # fails to load behaves the same): every PCell would draw the marker
-        # and saving a file would replace its geometry, so nothing registers.
-        tmp = tempfile.mkdtemp(prefix="kmp-nodev-")
-        empty = os.path.join(tmp, "empty.magicrc")
+    def test_register_refuses_an_rcfile_that_loads_no_pdk(self):
+        # An empty rcfile, and one with a Tcl syntax error: every PCell would
+        # draw the marker and saving a file would replace its geometry, so
+        # nothing registers, and the error says the rcfile loaded no PDK
+        # (version 0.3 named the namespace sky130 for every PDK) and quotes
+        # Magic.
+        empty = os.path.join(self.tmp, "empty.magicrc")
         open(empty, "w").close()
-        script = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is None
-            assert db.Library.library_by_name("sky130_magic") is None
-            assert kmp.state.server is None
-            print("ERR", kmp.state.last_error)
-        """ % os.path.join(REPO, "python"))
-        rc, text = self._py(script, dict(os.environ, KMP_MAGICRC=empty, KMP_CACHE_DIR=os.path.join(tmp, "c")))
-        shutil.rmtree(tmp, ignore_errors=True)
-        self.assertEqual(rc, 0, text)
-        self.assertIn("the running Magic defines 0 of the manifest's 73 generators", text)
-        self.assertIn("KMP_MANIFEST", text)
+        syntax = os.path.join(self.tmp, "syntax.magicrc")
+        with open(syntax, "w") as f:
+            f.write("this is not tcl {\n")
+        body = """
+            assert kmp.register(PDK) is None
+            assert db.Library.library_by_name(LIB) is None
+            assert kmp.state_for(PDK).server is None
+            print("ERR", kmp.state_for(PDK).last_error)
+        """
+        n = len(Manifest.load(CFG.manifest).devices)
+        for rc_file, said in ((empty, 'Using technology "minimum"'), (syntax, "missing close-brace")):
+            rc, text = run_py(body, self.env(KMP_MAGICRC=rc_file))
+            self.assertEqual(rc, 0, text)
+            self.assertIn("the rcfile %s loaded no PDK" % rc_file, text)
+            self.assertIn("none of the manifest's %d generators" % n, text)
+            self.assertIn(said, text)
+            self.assertNotIn("namespace sky130,", text)
+            self.assertIn("KMP_MANIFEST", text)
 
     def test_an_unwritable_cache_dir_only_turns_the_cache_off(self):
-        tmp = tempfile.mkdtemp(prefix="kmp-rocache-")
-        ro = os.path.join(tmp, "ro")
+        ro = os.path.join(self.tmp, "ro")
         os.makedirs(ro)
         os.chmod(ro, 0o555)
-        tmpdir = os.path.join(tmp, "tmpdir")
+        tmpdir = os.path.join(self.tmp, "tmpdir")
         os.makedirs(tmpdir)
-        script = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is not None, kmp.state.last_error
+        body = """
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+            st = kmp.state_for(PDK)
             ly = db.Layout()
-            c = ly.create_cell("sky130_fd_pr__nfet_01v8", "sky130_magic", {"w": 1.0})
-            print("CELL", c.dbbox(), kmp.state.cfg.cache_enabled, kmp.state.generator.stats["magic"])
-        """ % os.path.join(REPO, "python"))
+            c = ly.create_cell(sys.argv[1], LIB, {"w": 1.0})
+            print("CELL", not c.dbbox().empty(), st.cfg.cache_enabled, st.generator.stats["magic"])
+        """
         try:
             for cache in ("1", "0"):
-                env = dict(os.environ, KMP_CACHE_DIR=os.path.join(ro, "c"), KMP_CACHE=cache, TMPDIR=tmpdir)
-                rc, text = self._py(script, env)
+                env = self.env(KMP_CACHE_DIR=os.path.join(ro, "c"), KMP_CACHE=cache, TMPDIR=tmpdir)
+                rc, text = run_py(body, env, [D["mos"]])
                 self.assertEqual(rc, 0, text)
-                self.assertIn("CELL (-1,-1.495;1,1.495) False 1", text)
+                self.assertIn("CELL True False 1", text)
                 if cache == "1":
                     self.assertIn("can't be used", text)
                     self.assertIn("KMP_CACHE_DIR", text)
@@ -659,158 +889,182 @@ class GeneratorAndLibrary(unittest.TestCase):
                 self.assertEqual(os.listdir(tmpdir), [], cache)
         finally:
             os.chmod(ro, 0o755)
-            shutil.rmtree(tmp, ignore_errors=True)
 
-    def test_cli_leaves_nothing_behind_and_generate_reports_failure(self):
-        tmp = tempfile.mkdtemp(prefix="kmp-cli-")
-        tmpdir = os.path.join(tmp, "tmpdir")
+    def test_cli_leaves_nothing_behind_and_reports_failure(self):
+        tmpdir = os.path.join(self.tmp, "tmpdir")
         os.makedirs(tmpdir)
-        env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, "cache"), TMPDIR=tmpdir,
-                   PYTHONPATH=os.path.join(REPO, "python"))
-
-        def cli(*args):
-            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells"] + list(args), stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, env=env, timeout=120, cwd=tmp)
-            return p.returncode, p.stdout.decode()
-        try:
-            out = os.path.join(tmp, "x.gds")
-            rc, text = cli("generate", "sky130_fd_pr__nfet_01v8", "w=1", "-o", out)
-            self.assertEqual(rc, 0, text)
-            rc, text = cli("generate", "sky130_fd_pr__res_generic_po", "l=0", "-o", out)
+        env = self.env(TMPDIR=tmpdir)
+        out = os.path.join(self.tmp, "x.gds")
+        rc, text = cli(env, "generate", D["mos"], "w=1", "-o", out, cwd=self.tmp)
+        self.assertEqual(rc, 0, text)
+        dev, name = D["empty"]
+        rc, text = cli(env, "generate", dev, "%s=0" % name, "-o", out, cwd=self.tmp)
+        self.assertEqual(rc, 1, text)
+        self.assertIn("Magic drew nothing", text)
+        # check generates once too: Magic draws nothing here, although
+        # _check hands back a value (sky130A res_generic_po: l=1.65 with val
+        # 10000 turns into the SPICE string 68.465u, which _draw fails on).
+        rc, text = cli(env, "check", dev, "%s=0" % name, cwd=self.tmp)
+        self.assertEqual(rc, 1, text)
+        self.assertIn("Magic draws nothing for these values", text)
+        if PDK == "sky130A":
+            rc, text = cli(env, "check", "sky130_fd_pr__res_generic_po", "val=10000", "l=0", cwd=self.tmp)
             self.assertEqual(rc, 1, text)
-            self.assertIn("Magic drew nothing", text)
-            rc, text = cli("generate", "sky130_fd_pr__nfet_01v8", "viagb=abc", "-o", out)
-            self.assertEqual(rc, 1, text)
-            self.assertIn("KMP_ERROR", text)
-            rc, text = cli("check", "sky130_fd_pr__nfet_01v8", "viagb=[exec ls]")
-            self.assertEqual(rc, 2, text)
-            self.assertIn("not sent to Magic", text)
-            for args in (("check", "sky130_fd_pr__nfet_01v8", "w=0.1"), ("doctor",), ("cache", "stats"),
-                         ("audit", out)):
-                rc, text = cli(*args)
-                self.assertNotIn("Traceback", text, args)
-            self.assertEqual(os.listdir(tmpdir), [])
-            self.assertEqual(os.listdir(os.path.join(tmp, "cache", "run")), [])
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            self.assertIn("_check sets l=68.465u (entered 0.0)", text)
+            self.assertNotIn("Magic draws l=", text)
+        dev, name = D["refused"][0]
+        rc, text = cli(env, "generate", dev, "%s=abc" % name, "-o", out, cwd=self.tmp)
+        self.assertEqual(rc, 1, text)
+        self.assertIn("KMP_ERROR", text)
+        rc, text = cli(env, "check", dev, "%s=[exec ls]" % name, cwd=self.tmp)
+        self.assertEqual(rc, 2, text)
+        self.assertIn("not sent to Magic", text)
+        # A box below the minimum on one side: Magic paints nothing.
+        spec = Manifest.load(CFG.manifest)["via1"]
+        m = float(spec.raw["min_box_um"])
+        rc, text = cli(env, "check", "--pdk", PDK, "via1", "w=%.3f" % (m - 0.01), "h=%.3f" % (m + 0.04),
+                       cwd=self.tmp)
+        self.assertEqual(rc, 1, text)
+        self.assertIn("via1: Magic paints nothing on a", text)
+        self.assertIn("width must be at least", text)
+        rc, text = cli(env, "check", "--pdk", PDK, "via1", "w=-1", "h=1", cwd=self.tmp)
+        self.assertEqual(rc, 0, text)
+        self.assertIn("via1: Magic paints a 1.0 x 1.0 um box (entered -1.0 x 1.0)", text)
+        # A value the CLI can't parse: an error line, exit 2, no traceback.
+        rc, text = cli(env, "check", D["mos"], "%s=1.5" % FINGERS, cwd=self.tmp)
+        self.assertEqual(rc, 2, text)
+        self.assertIn("error: ", text)
+        for args in (("check", D["mos"], "w=0.1"), ("check", D["mos"], "w=abc"), ("doctor",),
+                     ("cache", "stats"), ("audit", out)):
+            rc, text = cli(env, *args, cwd=self.tmp)
+            self.assertNotIn("Traceback", text, args)
+        self.assertEqual(os.listdir(tmpdir), [])
+        self.assertEqual(os.listdir(os.path.join(self.tmp, "cache", "run")), [])
 
-    def _farm(self, root, edit_tcl=lambda text: text, no_vendor_gds=False, edit_vendor_gds=None):
-        """A PDK_ROOT whose sky130A is the installed one through symlinks,
-        with sky130A.tcl passed through ``edit_tcl``, and optionally without
-        libs.ref/sky130_fd_pr/gds (the vendor cells of the fixed devices),
-        or with sky130_fd_pr.gds passed through ``edit_vendor_gds`` (bytes)."""
-        src = os.path.join(CFG.pdk_root, "sky130A")
-        dst = os.path.join(root, "sky130A")
-        os.makedirs(os.path.join(dst, "libs.tech", "magic"))
-        for name in os.listdir(src):
-            if name == "libs.ref" and edit_vendor_gds is not None:
-                for lib in os.listdir(os.path.join(src, name)):
-                    d = os.path.join(dst, name, lib)
-                    if lib != "sky130_fd_pr":
-                        os.makedirs(os.path.dirname(d), exist_ok=True)
-                        os.symlink(os.path.join(src, name, lib), d)
-                        continue
-                    os.makedirs(os.path.join(d, "gds"))
-                    for sub in os.listdir(os.path.join(src, name, lib)):
-                        if sub != "gds":
-                            os.symlink(os.path.join(src, name, lib, sub), os.path.join(d, sub))
-                    g = os.path.join(src, name, lib, "gds")
-                    for fn in os.listdir(g):
-                        if fn == "sky130_fd_pr.gds":
-                            with open(os.path.join(g, fn), "rb") as f:
-                                data = edit_vendor_gds(f.read())
-                            with open(os.path.join(d, "gds", fn), "wb") as f:
-                                f.write(data)
-                        else:
-                            os.symlink(os.path.join(g, fn), os.path.join(d, "gds", fn))
-            elif name == "libs.ref" and no_vendor_gds:
-                for lib in os.listdir(os.path.join(src, name)):
-                    d = os.path.join(dst, name, lib)
-                    if lib != "sky130_fd_pr":
-                        os.makedirs(os.path.dirname(d), exist_ok=True)
-                        os.symlink(os.path.join(src, name, lib), d)
-                        continue
-                    os.makedirs(d)
-                    for sub in os.listdir(os.path.join(src, name, lib)):
-                        if sub != "gds":
-                            os.symlink(os.path.join(src, name, lib, sub), os.path.join(d, sub))
-            elif name != "libs.tech":
-                os.symlink(os.path.join(src, name), os.path.join(dst, name))
-        for name in os.listdir(os.path.join(src, "libs.tech")):
-            if name != "magic":
-                os.symlink(os.path.join(src, "libs.tech", name), os.path.join(dst, "libs.tech", name))
-        for name in os.listdir(os.path.join(src, "libs.tech", "magic")):
-            p = os.path.join(src, "libs.tech", "magic", name)
-            if name == "sky130A.tcl":
-                with open(p) as f:
-                    text = f.read()
-                with open(os.path.join(dst, "libs.tech", "magic", name), "w") as f:
-                    f.write(edit_tcl(text))
-            else:
-                os.symlink(p, os.path.join(dst, "libs.tech", "magic", name))
-        return root
+    def test_form_callback_icons(self):
+        # The GUI form's callback (driven here with PCellParameterStates, as
+        # KLayout's form calls it): a box below its minimum on one side gets
+        # the icon on that side only; a device Magic draws nothing for says
+        # so, on the value _check changed; a clamped value says what Magic
+        # draws.
+        body = """
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+            ly = db.Library.library_by_name(LIB).layout()
+            def cb(dev, vals):
+                decl = ly.pcell_declaration(dev)
+                states = db.PCellParameterStates()
+                for pd in decl.get_parameters():
+                    states.parameter(pd.name).value = vals.get(pd.name, pd.default)
+                decl.callback(ly, list(vals)[0], states)
+                icons = {db.PCellParameterState.WarningIcon: "WARN", db.PCellParameterState.ErrorIcon: "ERR"}
+                out = {}
+                for pd in decl.get_parameters():
+                    st = states.parameter(pd.name)
+                    if st.icon in icons:
+                        out[pd.name] = (icons[st.icon], st.tooltip)
+                print("CB", json.dumps(out, sort_keys=True))
+            import json
+            m, big = float(sys.argv[1]), float(sys.argv[2])
+            cb("via1", {"w": m - 0.01, "h": big})
+            cb("via1", {"h": m - 0.01, "w": big})
+            cb("via1", {"w": big, "h": big})
+            dev, name = sys.argv[3], sys.argv[4]
+            cb(dev, {name: 0.0})
+            cb(sys.argv[5], {"l": 0.1})
+            cb(sys.argv[6], {sys.argv[7]: "[exec ls]"})
+        """
+        spec = Manifest.load(CFG.manifest)["via1"]
+        m = float(spec.raw["min_box_um"])
+        dev, name = D["empty"]
+        rc, text = run_py(body, self.env(), [repr(m), repr(m + 1), dev, name, D["mos"]]
+                          + list(D["refused"][0]))
+        self.assertEqual(rc, 0, text)
+        lines = [json.loads(ln[3:]) for ln in text.splitlines() if ln.startswith("CB ")]
+        self.assertEqual(len(lines), 6, text)
+        w_low, h_low, ok, empty, small, refused = lines
+        self.assertEqual(sorted(w_low), ["w"], text)
+        self.assertIn("Magic draws nothing", w_low["w"][1])
+        self.assertIn("width", w_low["w"][1])
+        self.assertEqual(sorted(h_low), ["h"], text)
+        self.assertIn("height", h_low["h"][1])
+        self.assertEqual(ok, {}, text)
+        self.assertTrue(empty, text)
+        self.assertTrue(all(v[0] == "WARN" and v[1].startswith("Magic draws nothing") for v in empty.values()),
+                        text)
+        self.assertEqual(sorted(small), ["l"], text)
+        self.assertIn("Magic draws %s (entered 0.1)" % D["small"][0], small["l"][1])
+        self.assertEqual(list(refused.values())[0][0], "ERR", text)
 
-    def test_audit_after_a_local_sky130A_tcl_edit(self):
-        # The photodiode's guard ring spacing edited in sky130A.tcl: the
-        # stamp's digest shows it, audit --regen counts the difference as a
-        # problem and exits 1, and reopening the file warns.
-        tmp = tempfile.mkdtemp(prefix="kmp-edit-")
-        old = "guard_sub_surround  0.18\t"
-        def edit(text):
-            self.assertEqual(text.count(old), 1)
-            return text.replace(old, "guard_sub_surround  0.19\t")
-        farm = self._farm(os.path.join(tmp, "farm"), edit)
-        gds = os.path.join(tmp, "pd.gds")
-        make = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is not None, kmp.state.last_error
+    def _make_and_audit(self, devices, dbu="0.001", env=None, audit_env=None, regen=True):
+        """Place ``devices`` [(device, {params})] in a file at ``dbu``, then
+        audit it. Returns (audit exit status, audit text, file)."""
+        gds = os.path.join(self.tmp, "a%s.gds" % dbu)
+        body = """
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
             ly = db.Layout()
-            if sys.argv[1] == "make":
-                top = ly.create_cell("TOP")
-                for dev in ("sky130_fd_pr__photodiode", "sky130_fd_pr__nfet_01v8"):
-                    c = ly.create_cell(dev, "sky130_magic", {})
-                    top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
-                ly.write(sys.argv[2])
-            else:
-                ly.read(sys.argv[2])
-            print("OK")
-        """ % os.path.join(REPO, "python"))
-        env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, "cache"), PYTHONPATH=os.path.join(REPO, "python"))
-        edited = dict(env, PDK_ROOT=farm)
-        try:
-            rc, text = self._py(make, env, ["make", gds])
-            self.assertEqual(rc, 0, text)
-            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds, "--regen"],
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=120)
-            self.assertEqual(p.returncode, 0, p.stdout.decode())
-            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds, "--regen"],
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=edited, timeout=120)
-            text = p.stdout.decode()
-            self.assertEqual(p.returncode, 1, text)
-            pd = [ln for ln in text.splitlines() if "photodiode__kmp_" in ln][0]
-            nf = [ln for ln in text.splitlines() if "nfet_01v8__kmp_" in ln][0]
-            self.assertIn("regenerated geometry differs on 64/20", pd)
-            self.assertIn("digest=", pd)
-            self.assertIn("generated with", nf)          # same tech version, other code digest
-            self.assertNotIn("regenerated geometry differs", nf)
-            self.assertIn("2 sky130_magic cells, 2 with problems", text)
-            rc, text = self._py(make, edited, ["open", gds])
-            self.assertEqual(rc, 0, text)
-            self.assertIn("photodiode: instance created with", text)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            ly.dbu = float(sys.argv[2])
+            top = ly.create_cell("TOP")
+            for dev, vals in json.loads(sys.argv[3]):
+                c = ly.create_cell(dev, LIB, vals)
+                top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
+            ly.write(sys.argv[1])
+            print("OK", kmp.state_for(PDK).generator.stats)
+        """
+        rc, text = run_py("import json\n" + textwrap.dedent(body), env or self.env(),
+                          [gds, dbu, json.dumps(devices)])
+        self.assertEqual(rc, 0, text)
+        args = ["audit", gds] + (["--regen"] if regen else [])
+        rc, text = cli(audit_env or env or self.env(), *args)
+        return rc, text, gds
 
+    def test_audit_after_a_local_generator_edit(self):
+        # via1_draw edited in the PDK's generator code (its box grown by
+        # 0.1 um before it paints): the stamp's digest shows it, audit
+        # --regen counts the difference as a problem and exits 1, and
+        # reopening the file warns.
+        ns = Manifest.load(CFG.manifest).namespace
+        edit = insert_after_proc("%s::via1_draw" % ns, "box grow e 0.1um")
+        root = farm(os.path.join(self.tmp, "farm"), edit_tcl=edit)
+        self.assertEqual(len(edit.done), 1, edit.done)
+        edited = self.env(PDK_ROOT=root)
+        # via2 doesn't call via1_draw (the IHP MOSFETs and resistors do).
+        rc, text, gds = self._make_and_audit([("via1", {}), ("via2", {})])
+        self.assertEqual(rc, 0, text)
+        rc, text = cli(edited, "audit", gds, "--regen")
+        self.assertEqual(rc, 1, text)
+        via = [ln for ln in text.splitlines() if "via1__kmp_" in ln][0]
+        other = [ln for ln in text.splitlines() if "via2__kmp_" in ln][0]
+        self.assertIn("regenerated geometry differs on", via)
+        self.assertIn("digest=", via)
+        self.assertIn("generated with", other)          # same tech version, other code digest
+        self.assertNotIn("regenerated geometry differs", other)
+        self.assertIn("2 %s cells, 2 with problems" % LIB, text)
+        rc, text = run_py(REOPEN, edited, [gds])
+        self.assertEqual(rc, 0, text)
+        self.assertIn("via1: instance created with", text)
+
+    def test_a_generator_that_now_fails_still_warns_on_reopen(self):
+        # The gf180mcuD tester's case: a file reopened under a PDK whose
+        # _draw for a saved device raises. Magic writes an empty cell (as it
+        # does for a zero size), and the "created with" warning must still
+        # appear: produce returned before comparing the stamps.
+        ns = Manifest.load(CFG.manifest).namespace
+        edit = insert_after_proc("%s::%s_draw" % (ns, D["mos"]), 'error "kmp-test: injected generator error"')
+        root = farm(os.path.join(self.tmp, "farm"), edit_tcl=edit)
+        self.assertEqual(len(edit.done), 1, edit.done)
+        rc, text, gds = self._make_and_audit([(D["mos"], {})], regen=False)
+        self.assertEqual(rc, 0, text)
+        rc, text = run_py(REOPEN, self.env(PDK_ROOT=root, KMP_CACHE="0"), [gds])
+        self.assertEqual(rc, 0, text)
+        self.assertIn("Magic drew nothing for these parameters: kmp-test: injected generator error", text)
+        self.assertIn("instance created with", text)
+
+    @sky130_only
     def test_audit_after_a_vendor_gds_edit(self):
         # The review's case: one boundary of rf_test_coil1 in sky130_fd_pr.gds
         # moved 1 um, under the same open_pdks commit. The cache key and the
         # stamp cover the vendor GDS, so the edited PDK neither reads the old
         # cache entry nor passes the stamp check.
-        import struct
-        tmp = tempfile.mkdtemp(prefix="kmp-vendor-")
-
         def move_first_boundary(data):
             data = bytearray(data)
             i, in_bnd = 10318056, False         # rf_test_coil1's GDS_START
@@ -827,158 +1081,108 @@ class GeneratorAndLibrary(unittest.TestCase):
                     return bytes(data)
                 i += n
             raise AssertionError("no boundary found")
-        farm = self._farm(os.path.join(tmp, "farm"), edit_vendor_gds=move_first_boundary)
-        gds = os.path.join(tmp, "coil.gds")
-        make = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is not None, kmp.state.last_error
-            ly = db.Layout()
-            top = ly.create_cell("TOP")
-            c = ly.create_cell("sky130_fd_pr__rf_test_coil1", "sky130_magic", {})
-            top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
-            ly.write(sys.argv[1])
-            print("OK", kmp.state.generator.stats)
-        """ % os.path.join(REPO, "python"))
-        env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, "cache"), KMP_PDKS="sky130A",
-                   PYTHONPATH=os.path.join(REPO, "python"))
-        try:
-            rc, text = self._py(make, env, [gds])
-            self.assertEqual(rc, 0, text)
-            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds, "--regen"],
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               env=dict(env, PDK_ROOT=farm), timeout=180)
-            text = p.stdout.decode()
-            self.assertEqual(p.returncode, 1, text)
-            self.assertIn("regenerated geometry differs on", text)
-            self.assertIn("generated with", text)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+        root = farm(os.path.join(self.tmp, "farm"), edit_vendor_gds=move_first_boundary)
+        rc, text, gds = self._make_and_audit([("sky130_fd_pr__rf_test_coil1", {})], regen=False)
+        rc, text = cli(self.env(PDK_ROOT=root), "audit", gds, "--regen")
+        self.assertEqual(rc, 1, text)
+        self.assertIn("regenerated geometry differs on", text)
+        self.assertIn("generated with", text)
 
     def test_audit_regen_replaces_a_stale_cache_entry(self):
         # A cache entry whose GDS (with a matching sidecar digest) isn't what
         # Magic generates now: audit --regen asks Magic anyway, reports the
         # entry and replaces it, so the next session reads the new one.
-        import glob
-        import hashlib
-        import json
-        tmp = tempfile.mkdtemp(prefix="kmp-stale-")
-        make = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is not None, kmp.state.last_error
-            ly = db.Layout()
-            top = ly.create_cell("TOP")
-            for dev, p in (("sky130_fd_pr__res_generic_po", {}), ("sky130_fd_pr__res_generic_po", {"l": 5.0})):
-                c = ly.create_cell(dev, "sky130_magic", p)
-                top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
-            ly.write(sys.argv[1])
-            print("OK", kmp.state.generator.stats)
-        """ % os.path.join(REPO, "python"))
-        gds = os.path.join(tmp, "res.gds")
-        env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, "cache"), KMP_PDKS="sky130A",
-                   PYTHONPATH=os.path.join(REPO, "python"))
-        try:
-            rc, text = self._py(make, env, [gds])
-            self.assertEqual(rc, 0, text)
-            entries = sorted(glob.glob(os.path.join(tmp, "cache", "v1", "*", "sky130_fd_pr__res_generic_po", "*.gds")))
-            self.assertEqual(len(entries), 2)
-            # Put one entry's GDS under the other's key, with a matching digest.
-            a, b = entries
-            shutil.copyfile(b, a)
-            side = a[:-4] + ".json"
-            with open(side) as f:
-                sc = json.load(f)
-            with open(a, "rb") as f:
-                sc["gds_sha256"] = hashlib.sha256(f.read()).hexdigest()
-            with open(side, "w") as f:
-                json.dump(sc, f)
-            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds, "--regen"],
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=180)
-            text = p.stdout.decode()
-            self.assertEqual(p.returncode, 1, text)
-            self.assertIn("disk cache held a stale sky130_fd_pr__res_generic_po", text)
-            self.assertEqual(text.count("regenerated: same as stored"), 2, text)
-            # Replaced: a second audit finds nothing.
-            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds, "--regen"],
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=180)
-            self.assertEqual(p.returncode, 0, p.stdout.decode())
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+        rc, text, gds = self._make_and_audit([(D["res"], {}), (D["res"], {"l": 5.0})], regen=False)
+        entries = sorted(glob.glob(os.path.join(self.tmp, "cache", "v1", "*", D["res"], "*.gds")))
+        self.assertEqual(len(entries), 2)
+        # Put one entry's GDS under the other's key, with a matching digest.
+        a, b = entries
+        shutil.copyfile(b, a)
+        side = a[:-4] + ".json"
+        with open(side) as f:
+            sc = json.load(f)
+        with open(a, "rb") as f:
+            sc["gds_sha256"] = hashlib.sha256(f.read()).hexdigest()
+        with open(side, "w") as f:
+            json.dump(sc, f)
+        rc, text = cli(self.env(), "audit", gds, "--regen")
+        self.assertEqual(rc, 1, text)
+        self.assertIn("disk cache held a stale %s" % D["res"], text)
+        self.assertEqual(text.count("regenerated: same as stored"), 2, text)
+        # Replaced: a second audit finds nothing.
+        rc, text = cli(self.env(), "audit", gds, "--regen")
+        self.assertEqual(rc, 0, text)
 
-    def test_a_missing_vendor_gds_is_named_in_the_marker(self):
-        tmp = tempfile.mkdtemp(prefix="kmp-novendor-")
-        farm = self._farm(os.path.join(tmp, "farm"), no_vendor_gds=True)
-        script = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is not None, kmp.state.last_error
+    @unittest.skipUnless(D["vendor"] or D["script"], "the PDK's fixed devices need no file")
+    def test_a_missing_vendor_file_is_named_in_the_marker(self):
+        # sky130A and gf180mcuD copy fixed devices from libs.ref GDS; the IHP
+        # PDKs draw them with a layout script in libs.tech/magic. Either one
+        # missing: the marker names it (on IHP, in front of gencell_create's
+        # own error, which came first and pushed it past the marker's 400
+        # characters).
+        if D["vendor"]:
+            root = farm(os.path.join(self.tmp, "farm"), drop_vendor_gds=True)
+            want = ".gds"
+        else:
+            root = farm(os.path.join(self.tmp, "farm"), remove=(D["script"],))
+            want = "read file"
+        body = """
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
             ly = db.Layout()
-            c = ly.create_cell("sky130_fd_pr__npn_05v5_W1p00L1p00", "sky130_magic", {})
+            c = ly.create_cell(sys.argv[1], LIB, {})
             print("MARKER", [sh.text_string for sh in c.shapes(ly.layer(255, 0)).each() if sh.is_text()])
-        """ % os.path.join(REPO, "python"))
-        try:
-            rc, text = self._py(script, dict(os.environ, PDK_ROOT=farm, KMP_CACHE_DIR=os.path.join(tmp, "c")))
-            self.assertEqual(rc, 0, text)
-            marker = [ln for ln in text.splitlines() if ln.startswith("MARKER")][0]
-            self.assertIn("KMP_ERROR sky130_fd_pr__npn_05v5_W1p00L1p00", marker)
-            self.assertIn("sky130_fd_pr.gds", marker)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            c2 = ly.create_cell(sys.argv[2], LIB, {})
+            print("NEXT", c2.dbbox().empty(), not c2.shapes(ly.layer(255, 0)).is_empty())
+        """
+        rc, text = run_py(body, self.env(PDK_ROOT=root, KMP_CACHE_DIR=os.path.join(self.tmp, "c")),
+                          [D["fixed"], D["mos"]])
+        self.assertEqual(rc, 0, text)
+        marker = [ln for ln in text.splitlines() if ln.startswith("MARKER")][0]
+        self.assertIn("KMP_ERROR %s: " % D["fixed"], marker)
+        self.assertIn(want, marker)
+        if D["script"]:
+            self.assertIn(D["script"] + '": no such file or directory', marker)
+            self.assertNotIn("-errorstack", marker)
+        self.assertIn("NEXT False False", text)
 
-    def test_audit_flags_vendor_coordinates_rounded_by_the_file_dbu(self):
-        tmp = tempfile.mkdtemp(prefix="kmp-grid-")
-        make = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout.db as db
-            import klayout_magic_pcells as kmp
-            assert kmp.register("sky130A") is not None, kmp.state.last_error
-            ly = db.Layout()
-            ly.dbu = float(sys.argv[2])
-            top = ly.create_cell("TOP")
-            for dev in ("sky130_fd_pr__pnp_05v5_W0p68L0p68", "sky130_fd_pr__nfet_01v8"):
-                c = ly.create_cell(dev, "sky130_magic", {})
-                top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
-            ly.write(sys.argv[1])
-        """ % os.path.join(REPO, "python"))
-        env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, "cache"), PYTHONPATH=os.path.join(REPO, "python"))
-        try:
+    def test_audit_flags_cells_rounded_by_the_file_dbu(self):
+        # The grid of each cell's own Magic output is in its stamp. A box on
+        # Magic's 5 nm grid in a file at dbu 0.002 is rounded, although the
+        # generator's default box is on 10 nm (the testers' mcon, via4,
+        # bondpad and inductor cases, which audit called ok); at 0.0025 it
+        # is exact.
+        man = Manifest.load(CFG.manifest)
+        spec = [d for d in man.devices if d.kind == "box" and d.batch.get("grid_nm") == 10][0]
+        m = float(spec.raw["min_box_um"])
+        fine = (spec.name, {"w": round(m + 1.005, 3), "h": round(m + 1.005, 3)})
+        for dbu, want in (("0.002", 1), ("0.0025", 0), ("0.001", 0)):
+            rc, text, gds = self._make_and_audit([fine, (spec.name, {})], dbu=dbu, regen=False)
+            cells = [ln for ln in text.splitlines() if spec.name + "__kmp_" in ln]
+            self.assertEqual(len(cells), 2, text)
+            flagged = [ln for ln in cells if "grid" in ln]
+            self.assertEqual(len(flagged), want, text)
+            for ln in flagged:
+                self.assertIn("This cell's Magic output has coordinates on a 5 nm grid", ln)
+            self.assertEqual(rc, want, text)
+        if PDK == "sky130A":
+            # A vendor cell with 1 nm coordinates in a 5 nm file.
             for dbu, want in (("0.005", 1), ("0.001", 0)):
-                gds = os.path.join(tmp, "g%s.gds" % dbu)
-                rc, text = self._py(make, env, [gds, dbu])
-                self.assertEqual(rc, 0, text)
-                p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds],
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=120)
-                text = p.stdout.decode()
-                self.assertEqual(p.returncode, want, text)
+                rc, text, gds = self._make_and_audit([("sky130_fd_pr__pnp_05v5_W0p68L0p68", {}),
+                                                      ("sky130_fd_pr__nfet_01v8", {})], dbu=dbu, regen=False)
+                self.assertEqual(rc, want, text)
                 pnp = [ln for ln in text.splitlines() if "pnp_05v5_W0p68L0p68__kmp_" in ln][0]
                 nf = [ln for ln in text.splitlines() if "nfet_01v8__kmp_" in ln][0]
                 self.assertEqual("1 nm grid" in pnp, want == 1, text)
                 self.assertTrue(nf.rstrip().endswith(" ok"), text)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_register_fails_cleanly_without_magic(self):
-        script = textwrap.dedent("""
-            import sys
-            sys.path.insert(0, %r)
-            import klayout_magic_pcells as kmp
-            import klayout.db as db
-            assert kmp.register("sky130A") is None
-            assert db.Library.library_by_name("sky130_magic") is None
-            print("ERR", kmp.state.last_error)
-        """ % os.path.join(REPO, "python"))
-        p = subprocess.run([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                           env=dict(os.environ, KMP_MAGIC="/no/magic"), timeout=60)
-        text = p.stdout.decode()
-        self.assertEqual(p.returncode, 0, text)
+        body = """
+            assert kmp.register(PDK) is None
+            assert db.Library.library_by_name(LIB) is None
+            print("ERR", kmp.state_for(PDK).last_error)
+        """
+        rc, text = run_py(body, self.env(KMP_MAGIC="/no/magic"), timeout=60)
+        self.assertEqual(rc, 0, text)
         self.assertIn("KMP_MAGIC", text)
 
 

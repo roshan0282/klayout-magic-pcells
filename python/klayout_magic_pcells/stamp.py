@@ -1,14 +1,17 @@
 """Version stamps.
 
-Format: ``kmp1;magic=8.3.681;tech=1.0.588-56-g026824c;pdk=sky130A;digest=<12 hex>;key=<16 hex>``.
+Format: ``kmp1;magic=8.3.681;tech=1.0.588-56-g026824c;pdk=sky130A;digest=<12 hex>;key=<16 hex>;grid=<nm>``.
 ``digest`` covers what decides Magic's geometry beyond the three version
 strings: the PDK's commit, the text of every loaded proc in the PDK's
 generator namespace and in ::magic, the tech file, every file in the PDK's
 libs.tech/magic directory, and the vendor GDS files that fixed devices copy.
 A locally edited sky130A.tcl or sky130_fd_pr.gds therefore gives a
-different stamp. The ``key`` field appears only in the generated-by stamp,
-which is stored as a GDS property with integer attribute 100 on one shape of
-the variant. The created-with stamp (no key) is the hidden PCell parameter
+different stamp. The ``key`` and ``grid`` fields appear only in the
+generated-by stamp, which is stored as a GDS property with integer attribute
+100 on one shape of the variant: ``key`` is the start of the cache key, and
+``grid`` the coarsest grid in nm that every coordinate of this variant's
+Magic output lies on (audit compares it with a file's dbu; stamps written
+before version 0.4 have no grid). The created-with stamp (no key) is the hidden PCell parameter
 ``kmp_created``. Stamps written before ``digest`` existed lack it; they are
 compared on magic, tech and pdk alone.
 """

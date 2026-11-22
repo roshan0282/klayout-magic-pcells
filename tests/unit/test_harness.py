@@ -3,12 +3,13 @@
 import json
 import os
 import shutil
+import struct
 import sys
 import tempfile
 import textwrap
 import unittest
 
-from tests.unit._util import REPO  # noqa: F401  (puts tests/parity on sys.path)
+from tests.unit._util import REPO, needs_klayout  # noqa: F401  (puts tests/parity on sys.path)
 import run_sweep  # noqa: E402
 
 # Stands in for "magic ... magic_ref.tcl": one index line per point from
@@ -61,6 +62,86 @@ class PathAWatchdog(unittest.TestCase):
     def test_a_broken_harness_is_a_harness_error(self):
         with self.assertRaises(run_sweep.HarnessError):
             self.run_fake(["crash"] * 5 + ["ok"])
+
+
+def _rec(rt, dt, body=b""):
+    if len(body) % 2:
+        body += b"\0"
+    return struct.pack(">HBB", 4 + len(body), rt, dt) + body
+
+
+def _real8(x):
+    """A GDSII 8-byte real (excess-64 base-16)."""
+    if x == 0:
+        return b"\0" * 8
+    e = 64
+    while x >= 1:
+        x /= 16.0
+        e += 1
+    while x < 1 / 16.0:
+        x *= 16.0
+        e -= 1
+    return struct.pack(">BQ", e, int(x * (1 << 56)))[:1] + struct.pack(">Q", int(x * (1 << 56)))[1:]
+
+
+def gds_with_text(path, font, string=b"A"):
+    """A one-cell GDS holding one text on 5/0 whose PRESENTATION has the
+    given font bits."""
+    data = (_rec(0x00, 2, struct.pack(">h", 600)) + _rec(0x01, 2, b"\0" * 24) + _rec(0x02, 6, b"LIB")
+            + _rec(0x03, 5, _real8(0.001) + _real8(1e-9)) + _rec(0x05, 2, b"\0" * 24)
+            + _rec(0x06, 6, b"TOP") + _rec(0x0C, 0) + _rec(0x0D, 2, struct.pack(">h", 5))
+            + _rec(0x16, 2, struct.pack(">h", 0)) + _rec(0x17, 1, struct.pack(">H", font << 4))
+            + _rec(0x10, 3, struct.pack(">ii", 100, 200)) + _rec(0x19, 6, string) + _rec(0x11, 0)
+            + _rec(0x07, 0) + _rec(0x04, 0))
+    with open(path, "wb") as f:
+        f.write(data)
+    return path
+
+
+class RawRecords(unittest.TestCase):
+    """gds_census reads what KLayout's GDS reader drops."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix="kmp-raw-")
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_text_fonts(self):
+        from gds_census import text_fonts
+        for font in range(4):
+            p = gds_with_text(os.path.join(self.d, "f%d.gds" % font), font)
+            self.assertEqual(text_fonts(p), [["5/0", "A", font]])
+        self.assertNotEqual(text_fonts(os.path.join(self.d, "f0.gds")),
+                            text_fonts(os.path.join(self.d, "f2.gds")))
+
+    @needs_klayout
+    def test_klayout_does_not_keep_the_font(self):
+        # Why the harness reads fonts itself: through KLayout, font 2 and
+        # font 0 are the same text.
+        from compare import compare_cells
+        a = gds_with_text(os.path.join(self.d, "a.gds"), 0)
+        b = gds_with_text(os.path.join(self.d, "b.gds"), 2)
+        self.assertTrue(compare_cells(a, "TOP", b, "TOP")["identical"])
+
+    @needs_klayout
+    def test_compare_command_line(self):
+        # The documented command line (it stopped with an AttributeError on
+        # text_attrs in version 0.3).
+        import contextlib
+        import io
+        import compare
+        a = gds_with_text(os.path.join(self.d, "a.gds"), 0)
+        b = gds_with_text(os.path.join(self.d, "b.gds"), 0, b"B")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            self.assertEqual(compare.main([a, "TOP", a, "TOP"]), 0)
+            self.assertEqual(compare.main([a, "TOP", b, "TOP", "--quiet"]), 1)
+            self.assertEqual(compare.main([a, "TOP", b, "TOP", "--quiet", "--no-texts"]), 0)
+            self.assertEqual(compare.main([a, "TOP", a, "TOP", "--quiet", "--no-text-attrs",
+                                           "--shape-counts"]), 0)
+            self.assertEqual(compare.main([a, "NOPE", a, "TOP", "--quiet"]), 2)
+        self.assertIn("IDENTICAL", out.getvalue())
 
 
 if __name__ == "__main__":

@@ -37,6 +37,18 @@ def main():
             json.dump(index, f, indent=1)
         print("PCELL_PATH: library not registered: %s" % st.last_error)
         return 2
+    # Every result the generator hands produce, so that an empty cell (no
+    # stamp to read the key from) still shows which request it got, also
+    # when an earlier point already made the same request (a tie value
+    # whose text equals the 12-digit point's).
+    calls = []
+    plain_get = st.generator.get
+
+    def recording_get(spec, request):
+        res = plain_get(spec, request)
+        calls.append(res)
+        return res
+    st.generator.get = recording_get
     t0 = time.time()
     for pt in sweep["points"]:
         pid, dev = pt["id"], pt["device"]
@@ -47,7 +59,7 @@ def main():
             params = pt["value"]
             ly = db.Layout()
             ly.dbu = 0.001
-            before = set(st.generator._memo)
+            del calls[:]
             pc = ly.create_cell(dev, LIB, params)
             if pc is None:
                 raise RuntimeError("create_cell returned None")
@@ -57,12 +69,13 @@ def main():
             ly.write(os.path.join(out, pid + ".oas"))
             # The request the PCell actually sent: the memo entry whose key
             # starts with the key in the variant's generated-by stamp.
-            # An empty cell has no stamp: then the one entry this call added.
+            # An empty cell has no stamp: then the memo entry of the last
+            # result the generator gave produce for this cell.
             stp = read_stamp(pc) or {}
             k16 = stp.get("key") or ""
             hits = [st.generator._memo[k] for k in st.generator._memo if k16 and k.startswith(k16)]
             if not k16:
-                hits = [st.generator._memo[k] for k in set(st.generator._memo) - before]
+                hits = [st.generator._memo[calls[-1].key]] if calls and calls[-1].key in st.generator._memo else []
             res = hits[0] if len(hits) == 1 else None
             req = res.sidecar.get("request") if res is not None else None
             rec.update({
