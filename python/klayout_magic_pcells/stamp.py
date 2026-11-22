@@ -2,9 +2,11 @@
 
 Format: ``kmp1;magic=8.3.681;tech=1.0.588-56-g026824c;pdk=sky130A;digest=<12 hex>;key=<16 hex>``.
 ``digest`` covers what decides Magic's geometry beyond the three version
-strings: the open_pdks commit, the text of every loaded ::sky130 and
-::magic proc, and sky130A.tech. A locally edited sky130A.tcl therefore gives
-a different stamp. The ``key`` field appears only in the generated-by stamp,
+strings: the PDK's commit, the text of every loaded proc in the PDK's
+generator namespace and in ::magic, the tech file, every file in the PDK's
+libs.tech/magic directory, and the vendor GDS files that fixed devices copy.
+A locally edited sky130A.tcl or sky130_fd_pr.gds therefore gives a
+different stamp. The ``key`` field appears only in the generated-by stamp,
 which is stored as a GDS property with integer attribute 100 on one shape of
 the variant. The created-with stamp (no key) is the hidden PCell parameter
 ``kmp_created``. Stamps written before ``digest`` existed lack it; they are
@@ -16,7 +18,8 @@ import json
 
 STAMP_ATTR = 100
 STAMP_PREFIX = "kmp1"
-DIGEST_FIELDS = ("pdk", "magic", "open_pdks", "tech", "code", "techfile")
+DIGEST_FIELDS = ("pdk", "magic", "open_pdks", "tech", "code", "techfile", "pdk_commit", "techdir",
+                 "vendor")
 
 
 def versions_digest(versions):
@@ -60,8 +63,9 @@ def describe(st):
 
 
 def _stamp_target(layout, cell):
-    """The 235/4 box if there is one, else the shape on the lowest
-    (layer, datatype) whose bounding box has the smallest (left, bottom)."""
+    """The 235/4 box if there is one (sky130's prBoundary), else the shape on
+    the lowest (layer, datatype) whose bounding box has the smallest (left,
+    bottom). On gf180mcuD that is the 0/0 boundary when the device has one."""
     from ._kl import db
     infos = []
     for li in layout.layer_indices():

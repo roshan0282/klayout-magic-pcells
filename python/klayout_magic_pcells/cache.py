@@ -16,9 +16,11 @@ import tempfile
 
 from . import protocol
 
-# 2: the sidecar carries gds_sha256. A new format starts a new versions
-# directory, so entries without the digest are never read.
-FORMAT = 2
+# 2: the sidecar carries gds_sha256. 3: the versions fields cover the PDK
+# commit, every file in libs.tech/magic and the fixed devices' vendor GDS.
+# A new format starts a new versions directory, so older entries are never
+# read.
+FORMAT = 3
 
 
 def sha256_file(path):
@@ -44,6 +46,9 @@ def versions_fields(versions, pdk):
         "tech": versions.tech,
         "code": versions.code,
         "techfile": versions.techfile,
+        "pdk_commit": getattr(versions, "pdk_commit", ""),
+        "techdir": getattr(versions, "techdir", ""),
+        "vendor": getattr(versions, "vendor", ""),
     }
 
 
@@ -188,11 +193,13 @@ class GdsCache:
             return []
         return sorted(os.path.join(top, d) for d in os.listdir(top))
 
-    def prune(self):
-        """Delete every version directory except the current one."""
+    def prune(self, keep=None):
+        """Delete every version directory except the current one (or the
+        ones whose digests are in ``keep``: one per PDK)."""
+        keep = set(keep or ()) | {self.vdigest}
         removed = []
         for d in self.version_dirs():
-            if os.path.basename(d) != self.vdigest:
+            if os.path.basename(d) not in keep:
                 shutil.rmtree(d, ignore_errors=True)
                 removed.append(d)
         shutil.rmtree(os.path.join(self.root, "tmp"), ignore_errors=True)

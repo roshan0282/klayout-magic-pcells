@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Parity harness driver. Run it inside the pinned image (scripts/parity.sh).
 
-    python3 tests/parity/run_sweep.py --out out/parity [--quick] [--devices GLOB ...]
-        [--keep] [--update-baseline] [--no-unit] [--no-drc] [--no-extract] [--jobs N]
+    python3 tests/parity/run_sweep.py --pdk PDK --out out/parity/PDK [--quick]
+        [--devices GLOB ...] [--keep] [--update-baseline] [--no-unit] [--no-drc]
+        [--no-extract] [--jobs N]
+    python3 tests/parity/run_sweep.py --pdk all --out out/parity [...]
+
+With ``--pdk all`` every supported PDK runs in turn, each into --out/<pdk>,
+and --out/summary.json and summary.md collect the results.
 
 Steps, each writing under --out:
   0. unit and backend tests (tests/unit, tests/backend)
@@ -14,6 +19,7 @@ Steps, each writing under --out:
      Magic cell name, checked dict, cache, placeholder, stamp
   6. round trips (roundtrip.py)
   7. DRC on sheets, both tools, both sides, plus the defaults one at a time
+     (KLayout only where the PDK ships a deck in the image)
   8. extraction of the MOSFET points
   9. report.json, report.md
 
@@ -40,15 +46,43 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(REPO, "python"))
 
 import report  # noqa: E402
+from klayout_magic_pcells.config import SUPPORTED_PDKS, shipped_manifest  # noqa: E402
 
 LYM = os.path.join(REPO, "pymacros", "klayout_magic_pcells.lym")
-MANIFEST = os.path.join(REPO, "python", "klayout_magic_pcells", "data", "manifest-sky130A.json")
-BASELINE = os.path.join(HERE, "baseline", "drc-defaults.json")
 PDK_ROOT = os.environ.get("PDK_ROOT", "/foss/pdks")
-MAGICRC = os.path.join(PDK_ROOT, "sky130A", "libs.tech", "magic", "sky130A.magicrc")
 SHEET_SIZE = 250
-CHECKS = ("error", "request", "geometry", "texts", "bbox", "magic_cell", "checked", "cache",
-          "placeholder", "stamp", "roundtrip", "drc", "drc_baseline", "extract")
+CHECKS = ("error", "request", "geometry", "texts", "census", "bbox", "magic_cell", "checked",
+          "cache", "placeholder", "stamp", "roundtrip", "drc", "drc_baseline", "extract")
+
+# Set by use_pdk().
+PDK = "sky130A"
+MANIFEST = shipped_manifest(PDK)
+MAGICRC = ""
+BASELINE_DIR = ""
+BASELINE = ""
+CENSUS_BASELINE = ""
+EXTRACT_KNOWN = ""
+
+
+def use_pdk(pdk):
+    global PDK, MANIFEST, MAGICRC, BASELINE_DIR, BASELINE, CENSUS_BASELINE, EXTRACT_KNOWN
+    PDK = pdk
+    MANIFEST = shipped_manifest(pdk)
+    MAGICRC = os.path.join(PDK_ROOT, pdk, "libs.tech", "magic", pdk + ".magicrc")
+    BASELINE_DIR = os.path.join(HERE, "baseline", pdk)
+    BASELINE = os.path.join(BASELINE_DIR, "drc-defaults.json")
+    CENSUS_BASELINE = os.path.join(BASELINE_DIR, "census.json")
+    EXTRACT_KNOWN = os.path.join(BASELINE_DIR, "extract-known.json")
+
+
+def pdk_env(env=None, **extra):
+    """The environment for a child that works on PDK alone: only its library
+    registers, and the image's PDK variable points at it (KLAYOUT_PATH and
+    the DRC decks follow PDK in the image's login profile)."""
+    e = dict(os.environ if env is None else env)
+    e.update(KMP_PDK=PDK, KMP_PDKS=PDK, PDK=PDK)
+    e.update(extra)
+    return e
 
 
 class HarnessError(Exception):
@@ -80,7 +114,7 @@ def step_unit(out):
     res = {}
     for suite in ("unit", "backend"):
         lp = os.path.join(out, "test_%s.log" % suite)
-        env = dict(os.environ, KMP_CACHE_DIR=os.path.join(out, "cache-tests"))
+        env = pdk_env(KMP_CACHE_DIR=os.path.join(out, "cache-tests"))
         rc = run([sys.executable, "-m", "unittest", "discover", "-s", os.path.join("tests", suite),
                   "-t", ".", "-v"], lp, env=env, cwd=REPO)
         text = tail(lp, 400)
@@ -102,7 +136,7 @@ def step_unit(out):
 def step_versions(out):
     from klayout_magic_pcells.backend import MagicServer
     from klayout_magic_pcells.config import Config
-    cfg = Config.load(env=dict(os.environ, KMP_CACHE_DIR=os.path.join(out, "cache-versions")))
+    cfg = Config.load(env=pdk_env(KMP_CACHE_DIR=os.path.join(out, "cache-versions")), pdk=PDK)
     s = MagicServer(cfg)
     try:
         v = s.start()
@@ -118,7 +152,8 @@ def step_versions(out):
     if dirty.stdout.strip():
         rev_s += "-dirty"
     meta = v.as_dict()
-    meta.update({"klayout": kl.stdout.decode().strip().replace("KLayout ", ""),
+    meta.update({"pdk": PDK, "library": cfg.library_name,
+                 "klayout": kl.stdout.decode().strip().replace("KLayout ", ""),
                  "image": os.environ.get("KMP_IMAGE", ""), "repo": rev_s,
                  "python": sys.version.split()[0]})
     with open(os.path.join(out, "versions.json"), "w") as f:
@@ -153,14 +188,19 @@ def path_a(out, sweep_path, cmd=None, stall=PATH_A_STALL):
     ref_dir = os.path.join(out, "ref")
     ix = os.path.join(ref_dir, "index.jsonl")
     lp = os.path.join(out, "path_a.log")
+    # Magic looks for cells in "." first: an empty directory, so that no file
+    # the harness writes can stand in for a vendor cell.
+    run_dir = os.path.join(out, "run_a")
+    os.makedirs(run_dir, exist_ok=True)
     t = time.time()
     start, idle_runs, restarts = 0, 0, []
     with open(lp, "w") as lf:
         while start < len(pts):
-            env = dict(os.environ, KMP_SWEEP=sweep_path, KMP_OUT=ref_dir, KMP_START=str(start))
+            env = pdk_env(KMP_SWEEP=sweep_path, KMP_OUT=ref_dir, KMP_START=str(start))
+            env.pop("KMP_NS", None)
             lf.flush()
             p = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                 env=env, cwd=out)
+                                 env=env, cwd=run_dir)
             last_n, last_t, status = -1, time.monotonic(), None
             while status is None:
                 try:
@@ -208,8 +248,8 @@ def path_a(out, sweep_path, cmd=None, stall=PATH_A_STALL):
 
 
 def path_b(out, sweep_path, dirname):
-    env = dict(os.environ, KMP_SWEEP=sweep_path, KMP_OUT=os.path.join(out, dirname),
-               KMP_CACHE_DIR=os.path.join(out, "cache"))
+    env = pdk_env(KMP_SWEEP=sweep_path, KMP_OUT=os.path.join(out, dirname),
+                  KMP_CACHE_DIR=os.path.join(out, "cache"))
     lp = os.path.join(out, "path_b_%s.log" % dirname)
     t = time.time()
     run(["klayout", "-b", "-rm", LYM, "-r", os.path.join(HERE, "pcell_path.py")], lp, env=env, cwd=out)
@@ -235,6 +275,7 @@ def _init_worker(ctx):
 def check_point(job):
     """Runs in a worker process; returns a dict of check results."""
     from compare import compare_cells
+    from gds_census import lost
     from klayout_magic_pcells.stamp import read_stamp
     import klayout.db as db
     out, manifest_bbox = _CTX["out"], _CTX["bboxes"]
@@ -260,14 +301,25 @@ def check_point(job):
     pc_gds = os.path.join(out, "pcell", pid + ".gds")
     xor = os.path.join(out, "xor", pid + ".gds")
     try:
-        c = compare_cells(ref_gds, ra["top"], pc_gds, pb["variant"])
+        c = compare_cells(ref_gds, ra["top"], pc_gds, pb["variant"], shape_counts=True)
         if not c["identical"]:
             os.makedirs(os.path.dirname(xor), exist_ok=True)
             compare_cells(ref_gds, ra["top"], pc_gds, pb["variant"], xor_out=xor)
     except Exception as e:
         r["error"] = ["compare: %s" % e]
         return pid, r
-    geo_diff = [l["layer"] for l in c["layers"] if l["xor_polygons"] or l["xor_area_um2"]]
+    # Elements in Magic's file that KLayout has no shape for (NODE): they
+    # can't reach the PCell, so they must be the ones the baseline records
+    # for this device (a change in the vendor GDS shows up here).
+    try:
+        got = lost(ref_gds)
+    except Exception as e:
+        got = {"error": str(e)}
+    want = _CTX["census"].get(pt["device"], {})
+    r["census"] = {"lost": got, "baseline": want,
+                   "ok": got == want or _CTX.get("update_baseline", False)}
+    geo_diff = [l["layer"] for l in c["layers"]
+                if l["xor_polygons"] or l["xor_area_um2"] or l.get("shape_counts_differ")]
     only_ref = [[l["layer"]] + t for l in c["layers"] for t in l["texts_only_a"]]
     only_pc = [[l["layer"]] + t for l in c["layers"] for t in l["texts_only_b"]]
     r["geometry"] = {"identical": not geo_diff, "diff_layers": geo_diff,
@@ -309,8 +361,9 @@ def check_point(job):
     cell = ly.cell(pb["variant"])
     ph = ly.find_layer(255, 0)
     r["placeholder"] = "present" if ph is not None and not cell.shapes(ph).is_empty() else "none"
-    empty = bref is None and not c["a"]["cells_below"] and not any(
-        l["texts_a"] for l in c["layers"])
+    # No shapes and no texts, flattened (a fixed device may place an empty
+    # vendor stub: gf180mcuD's eFuse).
+    empty = bref is None and not any(l["texts_a"] for l in c["layers"])
     st = read_stamp(cell)
     if empty:
         r["stamp"] = "n/a (Magic wrote no shapes)" if st is None else "unexpected stamp"
@@ -325,16 +378,48 @@ def check_point(job):
     return pid, r
 
 
-def step_checks(out, points, ref, pcell, warm, cur_stamp, manifest, jobs):
+def load_census_baseline():
+    try:
+        with open(CENSUS_BASELINE) as f:
+            return json.load(f).get("devices", {})
+    except (OSError, ValueError):
+        return {}
+
+
+def step_checks(out, points, ref, pcell, warm, cur_stamp, manifest, jobs, update_baseline=False):
     from klayout_magic_pcells.manifest import Manifest
-    bboxes = {d["name"]: d["defaults_run"].get("gds_bbox_um") for d in manifest["devices"]}
+    bboxes = {d["name"]: d["defaults_run"].get("gds_bbox_um")
+              for d in manifest["devices"] + manifest.get("boxpaint", [])}
     req_defaults = {d.name: {p.name: p.default for p in d.params} for d in Manifest(manifest).devices}
     work = [{"point": pt, "ref": ref.get(pt["id"]), "pcell": pcell.get(pt["id"]),
              "warm": warm.get(pt["id"]), "stamp": cur_stamp} for pt in points]
     ctx = multiprocessing.get_context("fork")
     with ctx.Pool(jobs, initializer=_init_worker,
-                  initargs=({"out": out, "bboxes": bboxes, "req_defaults": req_defaults},)) as pool:
+                  initargs=({"out": out, "bboxes": bboxes, "req_defaults": req_defaults,
+                             "census": load_census_baseline(),
+                             "update_baseline": update_baseline},)) as pool:
         return dict(pool.map(check_point, work, chunksize=8))
+
+
+def update_census_baseline(points, results, manifest, partial):
+    """Write the lost-element census of each device's default point."""
+    new = {}
+    for pt in points:
+        if pt["kind"] != "default":
+            continue
+        got = (results.get(pt["id"], {}).get("census") or {}).get("lost")
+        if got:
+            new[pt["device"]] = got
+    if partial:
+        new = dict(load_census_baseline(), **new)
+    doc = {"comment": "GDS elements in Magic's output that KLayout has no shape for (NODE), counted "
+                      "per device at its default point over all structures of the file. A PCell "
+                      "can't hold them. Written by run_sweep.py --update-baseline.",
+           "devices": {k: new[k] for k in sorted(new)}}
+    os.makedirs(BASELINE_DIR, exist_ok=True)
+    with open(CENSUS_BASELINE, "w") as f:
+        json.dump(doc, f, indent=1)
+        f.write("\n")
 
 
 def step_idempotence(points, pcell, cfg_env):
@@ -342,13 +427,13 @@ def step_idempotence(points, pcell, cfg_env):
     Recorded, not checked."""
     from klayout_magic_pcells.backend import MagicServer
     from klayout_magic_pcells.config import Config
-    cfg = Config.load(env=cfg_env)
+    cfg = Config.load(env=cfg_env, pdk=PDK)
     s = MagicServer(cfg)
     s.start()
     out = {}
     try:
         for pt in points:
-            if not pt["kind"].startswith("below:"):
+            if not pt["kind"].startswith("below:") or pt.get("form") == "box":
                 continue
             pb = pcell.get(pt["id"]) or {}
             chk = pb.get("checked")
@@ -363,6 +448,68 @@ def step_idempotence(points, pcell, cfg_env):
     return out
 
 
+# --- step 5c: box-paint generators through Magic's own menu ----------------------------
+
+MENU_KINDS = ("default", "wide", "large")
+
+
+def step_menu(out, points, ref, manifest):
+    """For box-paint generators that the PDK puts in Magic's menu: the menu
+    entry itself, invoked under Xvfb on the box of some sweep points, must
+    write what path A wrote (path A calls the generator the way the entry
+    does). Returns ({id: result}, note)."""
+    from compare import compare_cells
+    if not shutil.which("xvfb-run"):
+        return {}, "xvfb-run not found; the menu check did not run"
+    menus = {b["name"]: b["menu"].split(" / ", 1)[1] for b in manifest.get("boxpaint", []) if b.get("menu")}
+    jobs = []
+    for pt in points:
+        if pt.get("form") == "box" and pt["device"] in menus and pt["kind"] in MENU_KINDS:
+            if (ref.get(pt["id"]) or {}).get("rc") == 0:
+                jobs.append({"id": pt["id"], "label": menus[pt["device"]], "w": pt["request"]["w"],
+                             "h": pt["request"]["h"]})
+    if not jobs:
+        return {}, "no box-paint generator of this PDK is in Magic's menu"
+    d = os.path.join(out, "menu")
+    os.makedirs(d, exist_ok=True)
+    jp = os.path.join(d, "jobs.json")
+    with open(jp, "w") as f:
+        json.dump(jobs, f)
+    env = pdk_env(KMP_JOBS=jp, KMP_OUT=d)
+    env.pop("DISPLAY", None)
+    lp = os.path.join(out, "menu.log")
+    run(["xvfb-run", "-a", "magic", "-d", "XR", "-noconsole", "-rcfile", MAGICRC,
+         os.path.join(HERE, "menu_ref.tcl")], lp, env=env, cwd=os.path.join(out, "run_a"), timeout=600)
+    recs = {}
+    try:
+        with open(os.path.join(d, "index.jsonl")) as f:
+            for line in f:
+                r = json.loads(line)
+                recs[r["id"]] = r
+    except OSError:
+        return {j["id"]: "menu run wrote nothing; see menu.log" for j in jobs}, "menu run failed"
+    res = {}
+    for j in jobs:
+        r = recs.get(j["id"])
+        if r is None or r["rc"]:
+            res[j["id"]] = "error: %s" % ((r or {}).get("error") or "no record")
+            continue
+        try:
+            c = compare_cells(os.path.join(out, "ref", j["id"] + ".gds"), ref[j["id"]]["top"],
+                              os.path.join(d, j["id"] + ".gds"), r["top"])
+            res[j["id"]] = "identical" if c["identical"] else "differs on " + ", ".join(
+                l["layer"] for l in c["layers"] if l["status"] != "same")
+        except Exception as e:
+            res[j["id"]] = "compare: %s" % e
+    for j in jobs:
+        for ext in (".gds",):
+            p = os.path.join(d, j["id"] + ext)
+            if res.get(j["id"]) == "identical" and os.path.exists(p):
+                os.remove(p)
+    return res, "%d points through the menu entries (%s)" % (len(jobs), ", ".join(sorted(set(
+        j["label"] for j in jobs))))
+
+
 # --- step 6: round trips ------------------------------------------------------------
 
 def step_roundtrip(out, points, ref, pcell, results, seed):
@@ -375,7 +522,8 @@ def step_roundtrip(out, points, ref, pcell, results, seed):
             continue
         if k in ("default", "min", "max") or rng.random() < 0.10:
             chosen.append({"id": pt["id"], "device": pt["device"], "kind": pt["kind"],
-                           "request": pt["request"], "ref_top": ref[pt["id"]]["top"],
+                           "request": pt["request"], "value": pt["value"],
+                           "ref_top": ref[pt["id"]]["top"],
                            "key": pcell[pt["id"]].get("key") or "",
                            "expect_stamp": not r.get("empty_output")})
     rt = os.path.join(out, "roundtrip")
@@ -383,9 +531,9 @@ def step_roundtrip(out, points, ref, pcell, results, seed):
     pts_path = os.path.join(rt, "points.json")
     with open(pts_path, "w") as f:
         json.dump(chosen, f)
-    env = dict(os.environ, KMP_RT_POINTS=pts_path, KMP_RT_PCELL=os.path.join(out, "pcell"),
-               KMP_RT_REF=os.path.join(out, "ref"), KMP_RT_RESAVED=os.path.join(out, "resaved"),
-               KMP_CACHE_DIR=os.path.join(out, "cache"))
+    env = pdk_env(KMP_RT_POINTS=pts_path, KMP_RT_PCELL=os.path.join(out, "pcell"),
+                  KMP_RT_REF=os.path.join(out, "ref"), KMP_RT_RESAVED=os.path.join(out, "resaved"),
+                  KMP_CACHE_DIR=os.path.join(out, "cache"))
     res = {}
     for mode in ("nolib", "lib"):
         e = dict(env, KMP_RT_MODE=mode, KMP_RT_OUT=os.path.join(rt, mode + ".json"))
@@ -443,17 +591,29 @@ def step_drc(out, sheets, jobs):
     import drc as drcmod
     from sheet import assign
     tasks = []
+    tools = ("klayout", "magic") if drcmod.profile(PDK) else ("magic",)
     for sh in sheets:
-        for tool in ("klayout", "magic"):
+        for tool in tools:
             tasks.append((tool, sh))
 
     def work(t):
         tool, sh = t
         base = sh["path"][:-4]
-        if tool == "klayout":
-            m = drcmod.run_klayout_drc(sh["path"], "SHEET", base + ".klayout.xml", base + ".klayout.log")
+        err = None
+        for attempt in (1, 2):
+            try:
+                if tool == "klayout":
+                    m = drcmod.run_klayout_drc(sh["path"], "SHEET", base + ".klayout.xml",
+                                               base + ".klayout.log", pdk=PDK)
+                else:
+                    m = drcmod.run_magic_drc(sh["path"], "SHEET", base + ".magic.tsv",
+                                             base + ".magic.log", pdk=PDK)
+                break
+            except Exception as e:  # a crashed DRC run: once more, then an error for its points
+                err = "%s DRC failed twice: %s" % (tool, e)
+                log("  %s (attempt %d)" % (e, attempt))
         else:
-            m = drcmod.run_magic_drc(sh["path"], "SHEET", base + ".magic.tsv", base + ".magic.log")
+            return tool, sh, {pid: {"ERROR: " + err} for pid in sh["placed"]}, []
         got, unassigned = assign(m, sh["placed"])
         return tool, sh, got, unassigned
 
@@ -485,7 +645,8 @@ def step_extract(out, sheets, points, jobs):
     def work(t):
         sh, cells = t
         base = sh["path"][:-4]
-        return sh, drcmod.run_magic_extract(sh["path"], cells, base + "_ext", base + ".extract.log")
+        return sh, drcmod.run_magic_extract(sh["path"], cells, base + "_ext", base + ".extract.log",
+                                            pdk=PDK)
 
     res = {}
     with cf.ThreadPoolExecutor(max_workers=jobs) as ex:
@@ -493,9 +654,6 @@ def step_extract(out, sheets, points, jobs):
             for cell, devs in got.items():
                 res.setdefault(cell[1:], {})[sh["side"]] = devs
     return res
-
-
-EXTRACT_KNOWN = os.path.join(HERE, "baseline", "extract-known.json")
 
 
 def load_extract_known():
@@ -527,10 +685,19 @@ def identity_problems(device, devs, w, l, nf, m):
 
 
 def known_extraction(device, devs, w, l, nf, m, known):
-    """The entry in extract-known.json this result matches, or None."""
+    """The entry in extract-known.json this result matches, or None.
+
+    Two kinds of entry: "alternate" (the default; every second finger
+    extracts as another model) and "model" (every finger extracts as another
+    model, with w and the count right and l not compared)."""
     for k in known:
         other = k.get("devices", {}).get(device)
         if other is None or nf < k.get("min_nf", 1):
+            continue
+        if k.get("kind") == "model":
+            if (len(devs) == nf * m and all(d[0] == other and isinstance(d[1], float)
+                                            and abs(d[1] - w) <= 0.0051 for d in devs)):
+                return k
             continue
         own = [d for d in devs if d[0] == device]
         rest = [d for d in devs if d[0] != device]
@@ -551,7 +718,9 @@ def extract_verdict(pt, devs, checked, known=()):
         return v
     try:
         w, l = float(checked["w"]), float(checked["l"])
-        nf, m = int(float(checked["nf"])), int(float(checked.get("m", "1")))
+        # fingers: nf, or ng on the IHP PDKs
+        nf = int(float(checked["nf"] if "nf" in checked else checked["ng"]))
+        m = int(float(checked.get("m", "1")))
     except (KeyError, ValueError):
         v["identity"] = "checked values not numeric"
         return v
@@ -611,8 +780,10 @@ def cleanup(out, points, results):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", default=os.path.join(REPO, "out", "parity"))
-    ap.add_argument("--quick", action="store_true", help="only the 60 default points")
+    ap.add_argument("--pdk", default=os.environ.get("KMP_PDK") or "sky130A",
+                    help="a supported PDK, or 'all' (default: KMP_PDK, else sky130A)")
+    ap.add_argument("--out", default=None, help="default: out/parity/<pdk>, or out/parity with --pdk all")
+    ap.add_argument("--quick", action="store_true", help="only each generator's default point")
     ap.add_argument("--devices", nargs="*", default=[], help="fnmatch patterns")
     ap.add_argument("--seed", type=int, default=1121)
     ap.add_argument("--random", type=int, default=5)
@@ -623,14 +794,65 @@ def main(argv=None):
     ap.add_argument("--no-drc", action="store_true")
     ap.add_argument("--no-extract", action="store_true")
     ap.add_argument("--jobs", type=int, default=max(1, min(6, os.cpu_count() or 1)))
+    ap.add_argument("--summary", metavar="DIR",
+                    help="only write DIR/summary.json and summary.md from DIR/<pdk>/report.json")
     args = ap.parse_args(argv)
+    if args.summary:
+        return main_summary(os.path.abspath(args.summary))
+    if args.pdk == "all":
+        return main_all(args)
+    if args.pdk not in SUPPORTED_PDKS:
+        ap.error("--pdk must be one of %s or all" % ", ".join(SUPPORTED_PDKS))
+    out = os.path.abspath(args.out or os.path.join(REPO, "out", "parity", args.pdk))
+    rep = run_pdk(args, args.pdk, out)
+    print(report.summary_line(rep))
+    return rep["exit_status"]
 
-    out = os.path.abspath(args.out)
+
+def main_summary(top):
+    """The summary over the PDK reports that scripts/parity.sh wrote, one
+    container per PDK."""
+    reps = {}
+    for pdk in SUPPORTED_PDKS:
+        path = os.path.join(top, pdk, "report.json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                reps[pdk] = json.load(f)
+        except (OSError, ValueError) as e:
+            reps[pdk] = {"harness_errors": ["no report at %s (%s)" % (path, e)], "exit_status": 2,
+                         "meta": {"pdk": pdk}}
+    status = report.write_summary(reps, top)
+    for pdk, rep in reps.items():
+        print("%-15s %s" % (pdk, report.summary_line(rep)))
+    print("PARITY %s over %d PDKs" % ("PASS" if status == 0 else "FAIL" if status == 1 else "ERROR",
+                                      len(reps)))
+    return status
+
+
+def main_all(args):
+    """Every supported PDK in turn; a summary over all of them."""
+    top = os.path.abspath(args.out or os.path.join(REPO, "out", "parity"))
+    os.makedirs(top, exist_ok=True)
+    reps = {}
+    for pdk in SUPPORTED_PDKS:
+        log("===== %s =====" % pdk)
+        reps[pdk] = run_pdk(args, pdk, os.path.join(top, pdk))
+        log(report.summary_line(reps[pdk]))
+    status = report.write_summary(reps, top)
+    for pdk, rep in reps.items():
+        print("%-15s %s" % (pdk, report.summary_line(rep)))
+    print("PARITY %s over %d PDKs" % ("PASS" if status == 0 else "FAIL" if status == 1 else "ERROR",
+                                      len(reps)))
+    return status
+
+
+def run_pdk(args, pdk, out):
+    use_pdk(pdk)
     if os.path.isdir(out):
         shutil.rmtree(out)
     os.makedirs(out)
     t0 = time.time()
-    rep = {"meta": {"seed": args.seed, "quick": args.quick, "devices": args.devices,
+    rep = {"meta": {"pdk": pdk, "seed": args.seed, "quick": args.quick, "devices": args.devices,
                     "jobs": args.jobs}, "steps": {}, "harness_errors": []}
     points = []
     results = {}
@@ -639,14 +861,16 @@ def main(argv=None):
         with open(MANIFEST, encoding="utf-8") as f:
             manifest = json.load(f)
         rep["exclusions"] = manifest.get("excluded", [])
+        rep["menu_defects"] = manifest.get("menu_defects", [])
+        rep["meta"]["generators"] = len(manifest["devices"]) + len(manifest.get("boxpaint", []))
         if not args.no_unit:
             log("step 0: unit and backend tests")
             rep["steps"]["tests"] = step_unit(out)
         log("step 1: versions and the manifest check")
         rep["meta"].update(step_versions(out))
         lp = os.path.join(out, "manifest_check.log")
-        rc = run([sys.executable, os.path.join(REPO, "tools", "build_manifest.py"), "--check"], lp,
-                 env=dict(os.environ, KMP_CACHE_DIR=os.path.join(out, "cache-manifest")))
+        rc = run([sys.executable, os.path.join(REPO, "tools", "build_manifest.py"), "--pdk", PDK,
+                  "--check"], lp, env=pdk_env(KMP_CACHE_DIR=os.path.join(out, "cache-manifest")))
         rep["steps"]["manifest"] = {"ok": rc == 0, "rc": rc,
                                     "summary": tail(lp, 1).strip(), "log": os.path.relpath(lp, out)}
         log("  " + rep["steps"]["manifest"]["summary"])
@@ -691,7 +915,10 @@ def main(argv=None):
         from klayout_magic_pcells.stamp import parse_stamp
         cur = parse_stamp(pb_data["created_stamp"]) or {}
         t = time.time()
-        results = step_checks(out, points, ref, pcell, warm, cur, manifest, args.jobs)
+        results = step_checks(out, points, ref, pcell, warm, cur, manifest, args.jobs,
+                              args.update_baseline)
+        if args.update_baseline:
+            update_census_baseline(points, results, manifest, bool(args.quick or args.devices))
         rep["steps"]["checks"] = {"seconds": round(time.time() - t, 1)}
         for pt in points:
             r = results.setdefault(pt["id"], {})
@@ -701,10 +928,17 @@ def main(argv=None):
                       "checked_dict": pb.get("checked")})
 
         log("step 5b: second _check on below: points (recorded only)")
-        idem = step_idempotence(points, pcell, dict(os.environ, KMP_CACHE_DIR=os.path.join(out, "cache-idem")))
+        idem = step_idempotence(points, pcell, pdk_env(KMP_CACHE_DIR=os.path.join(out, "cache-idem")))
         shutil.rmtree(os.path.join(out, "cache-idem"), ignore_errors=True)
         for pid, d in idem.items():
             results[pid].update(d)
+
+        log("step 5c: box-paint generators through Magic's menu, under Xvfb")
+        menu, note = step_menu(out, points, ref, manifest)
+        for pid, v in menu.items():
+            results[pid]["menu"] = v
+        rep["steps"]["menu"] = {"note": note, "points": len(menu)}
+        log("  " + note)
 
         log("step 6: round trips")
         t = time.time()
@@ -718,7 +952,9 @@ def main(argv=None):
             log("building DRC sheets")
             sheets = build_sheets(out, points, ref, pcell, results)
         if not args.no_drc:
-            log("step 7: DRC (%d sheets x 2 tools)" % len(sheets))
+            import drc as drcmod
+            rep["meta"]["klayout_drc"] = drcmod.describe(PDK)
+            log("step 7: DRC (%d sheets; KLayout: %s)" % (len(sheets), drcmod.describe(PDK)))
             sheet_sets, single_sets, unassigned, tdrc = step_drc(out, sheets, args.jobs)
             rep["steps"]["drc"] = {"sheets": sum(1 for s in sheets if not s["single"]),
                                    "singles": sum(1 for s in sheets if s["single"]),
@@ -742,11 +978,10 @@ def main(argv=None):
         log("HARNESS ERROR: %s" % e)
 
     rep["meta"]["seconds"] = round(time.time() - t0, 1)
-    status = report.finalize(rep, points, results, manifest, out)
+    report.finalize(rep, points, results, manifest, out)
     if not args.keep and not rep["harness_errors"]:
         cleanup(out, points, results)
-    print(report.summary_line(rep))
-    return status
+    return rep
 
 
 def apply_drc(points, results, sheet_sets, single_sets, update_baseline, rep):
@@ -762,34 +997,36 @@ def apply_drc(points, results, sheet_sets, single_sets, update_baseline, rep):
         s = sheet_sets[pid]
         d = {"klayout": {"ref": s.get("klayout", {}).get("ref"), "pcell": s.get("klayout", {}).get("pcell")},
              "magic": {"ref": s.get("magic", {}).get("ref"), "pcell": s.get("magic", {}).get("pcell")}}
-        d["equal"] = all(d[t]["ref"] == d[t]["pcell"] for t in ("klayout", "magic"))
+        tools = [t for t in ("klayout", "magic") if t in s]
+        d["equal"] = all(d[t]["ref"] == d[t]["pcell"] for t in tools)
         if pt["kind"] == "default":
             single = single_sets.get(pid, {})
-            d["single"] = {t: single.get(t, {}).get("pcell") for t in ("klayout", "magic")}
-            d["single_matches_sheet"] = all(d["single"][t] == d[t]["pcell"] for t in ("klayout", "magic"))
-            new_baseline[pt["device"]] = {t: d[t]["pcell"] for t in ("klayout", "magic")}
+            d["single"] = {t: single.get(t, {}).get("pcell") for t in tools}
+            d["single_matches_sheet"] = all(d["single"][t] == d[t]["pcell"] for t in tools)
+            new_baseline[pt["device"]] = {t: d[t]["pcell"] for t in tools}
             b = baseline.get(pt["device"])
             if update_baseline:
                 d["baseline"] = "updated"
             elif b is None:
                 d["baseline"] = "missing"
             else:
-                diff = [t for t in ("klayout", "magic") if sorted(b.get(t) or []) != (d[t]["pcell"] or [])
+                diff = [t for t in tools if sorted(b.get(t) or []) != (d[t]["pcell"] or [])
                         or sorted(b.get(t) or []) != (d[t]["ref"] or [])]
                 d["baseline"] = "ok" if not diff else "differs (%s)" % ", ".join(diff)
         results[pid]["drc"] = d
     if update_baseline:
-        if rep["meta"].get("quick") or rep["meta"].get("devices") or len(new_baseline) < 60:
+        n_gen = rep["meta"].get("generators", 0)
+        if rep["meta"].get("quick") or rep["meta"].get("devices") or len(new_baseline) < n_gen:
             # A partial run would drop devices from the baseline; merge instead.
             if os.path.isfile(BASELINE):
                 with open(BASELINE) as f:
                     old = json.load(f).get("devices", {})
                 old.update(new_baseline)
                 new_baseline = old
+        import drc as drcmod
         doc = {"comment": "Rule IDs that each tool reports on each device's default point "
-                          "(Magic drc(full) with catchup; KLayout sky130A_mr.drc with feol, beol "
-                          "and offgrid on, floating_met and seal off). Written by "
-                          "run_sweep.py --update-baseline.",
+                          "(Magic drc(full) with catchup; KLayout: %s). Written by "
+                          "run_sweep.py --update-baseline." % drcmod.describe(PDK),
                "magic": rep["meta"].get("magic"), "tech": rep["meta"].get("tech"),
                "open_pdks": rep["meta"].get("open_pdks"), "klayout": rep["meta"].get("klayout"),
                "devices": {k: new_baseline[k] for k in sorted(new_baseline)}}

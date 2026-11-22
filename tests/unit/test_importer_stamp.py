@@ -89,7 +89,7 @@ class Stamps(unittest.TestCase):
     def test_format(self):
         from klayout_magic_pcells.stamp import make_stamp, parse_stamp
         s = make_stamp(_V, "3f9a12c4d1e07b55aaaa")
-        self.assertEqual(s, "kmp1;magic=8.3.681;tech=1.0.588-56-g026824c;pdk=sky130A;digest=663ec9ccfc22;"
+        self.assertEqual(s, "kmp1;magic=8.3.681;tech=1.0.588-56-g026824c;pdk=sky130A;digest=da5f2146a264;"
                             "key=3f9a12c4d1e07b55")
         self.assertEqual(parse_stamp(s)["key"], "3f9a12c4d1e07b55")
         self.assertNotIn("key", parse_stamp(make_stamp(_V)))
@@ -102,7 +102,7 @@ class Stamps(unittest.TestCase):
         class A(_V):
             open_pdks, code, techfile = "026824c7", "c" * 64, "t" * 64
         base = parse_stamp(make_stamp(A))
-        for field in ("open_pdks", "code", "techfile"):
+        for field in ("open_pdks", "code", "techfile", "pdk_commit", "techdir", "vendor"):
             other = type("B", (A,), {field: "other"})
             st = parse_stamp(make_stamp(other))
             self.assertNotEqual(st["digest"], base["digest"], field)
@@ -160,27 +160,36 @@ class Declarations(unittest.TestCase):
         from klayout_magic_pcells.manifest import Manifest
         from klayout_magic_pcells.pcell import make_pcell
 
+        from klayout_magic_pcells.config import SUPPORTED_PDKS, shipped_manifest
+
         class St:
             created_stamp = "kmp1;magic=x;tech=y;pdk=sky130A"
             generator = None
+            library_name = "test_magic"
 
             class cfg:
                 lazy = False
 
-        man = Manifest.load(SHIPPED_MANIFEST)
         types = {"float": db.PCellParameterDeclaration.TypeDouble,
                  "int": db.PCellParameterDeclaration.TypeInt,
                  "bool01": db.PCellParameterDeclaration.TypeBoolean,
-                 "signed": db.PCellParameterDeclaration.TypeString}
-        for spec in man.devices:
-            pc = make_pcell(spec, St)
-            decls = pc.get_parameters()
-            self.assertEqual([d.name for d in decls], [p.name for p in spec.params] + ["kmp_created"])
-            for d, p in zip(decls, spec.params):
-                self.assertEqual(d.type, types[p.type], (spec.name, p.name))
-                self.assertEqual(d.default, p.default_value())
-            self.assertTrue(decls[-1].hidden)
-            self.assertEqual(decls[-1].default, St.created_stamp)
+                 "signed": db.PCellParameterDeclaration.TypeString,
+                 "choice": db.PCellParameterDeclaration.TypeString,
+                 "numlist": db.PCellParameterDeclaration.TypeString}
+        for pdk in SUPPORTED_PDKS:
+            man = Manifest.load(shipped_manifest(pdk))
+            for spec in man.devices:
+                pc = make_pcell(spec, St)
+                decls = pc.get_parameters()
+                self.assertEqual([d.name for d in decls], [p.name for p in spec.params] + ["kmp_created"])
+                for d, p in zip(decls, spec.params):
+                    self.assertEqual(d.type, types[p.type], (pdk, spec.name, p.name))
+                    self.assertEqual(d.default, p.default_value())
+                    if p.type == "choice":
+                        self.assertEqual([c[1] if isinstance(c, (list, tuple)) else c
+                                          for c in d.choice_values()], p.choices)
+                self.assertTrue(decls[-1].hidden)
+                self.assertEqual(decls[-1].default, St.created_stamp)
 
     def test_classes_are_not_shared(self):
         from klayout_magic_pcells.config import SHIPPED_MANIFEST
@@ -190,6 +199,7 @@ class Declarations(unittest.TestCase):
         class St:
             created_stamp = ""
             generator = None
+            library_name = "test_magic"
 
         man = Manifest.load(SHIPPED_MANIFEST)
         a = make_pcell(man["sky130_fd_pr__nfet_01v8"], St)

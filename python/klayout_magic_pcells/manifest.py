@@ -1,26 +1,40 @@
-"""The device manifest: what Magic's sky130A.tcl declares, shipped as JSON.
+"""The device manifest: what a PDK's Magic generators declare, shipped as JSON.
 
-``tools/build_manifest.py`` builds ``data/manifest-sky130A.json`` by querying
-Magic in the pinned image. This module reads it and turns parameter values
-into the strings sent to Magic.
+``tools/build_manifest.py --pdk <pdk>`` builds ``data/manifest-<pdk>.json``
+by querying Magic in the pinned image. It lists the PDK's devices (every
+``<ns>::<dev>_draw`` with a ``_defaults`` proc) and its box-paint generators
+(``_draw`` procs that take no arguments and paint into the cursor box: the
+vias, contacts, substrate contacts, guard rings and wells). This module
+reads it and turns parameter values into the strings sent to Magic.
 """
 
 import json
 import re
 
 # Manifest parameter types that become PCell parameters.
-EDITABLE_TYPES = ("float", "int", "bool01", "signed")
+EDITABLE_TYPES = ("float", "int", "bool01", "signed", "choice", "numlist")
 
-# Short labels used in display texts, per family.
+# Short labels used in display texts, per family (only the ones the device
+# has are shown; a family not listed shows its first three numbers).
 DISPLAY_PARAMS = {
-    "mos": ("w", "l", "nf"),
-    "varactor": ("w", "l", "nf"),
+    "mos": ("w", "l", "nf", "ng"),
+    "moscap": ("w", "l", "nf", "ng"),
+    "varactor": ("w", "l", "nf", "ng"),
     "res": ("w", "l", "nx"),
     "mim_cap": ("w", "l", "nx", "ny"),
+    "cap": ("w", "l", "nx", "ny"),
     "diode": ("w", "l"),
     "photodiode": ("nx", "ny"),
     "fixed": ("nx", "ny"),
+    "bjt": ("w", "l", "nx", "ny"),
+    "inductor": ("diameter", "width", "turns"),
+    "special": ("width", "height", "shape"),
+    "other": ("metalbot", "metaltop"),
+    "box_paint": ("w", "h"),
 }
+
+# A decimal number, the only thing a "numlist" element may be.
+NUMBER_RE = re.compile(r"[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?")
 
 _UNIT_RE = re.compile(r"\s*(\[\+/-\])?\s*\(([^()]*)\)\s*$")
 _UNITS = {"um": "µm", "um^2": "µm²", "%": "%", "ohms": "Ω", "fF": "fF"}
@@ -65,6 +79,7 @@ class ParamSpec:
         self.check_min = d.get("check_min")
         self.check_max = d.get("check_max")
         self.check_int = d.get("check_int")
+        self.choices = list(d.get("choices") or [])
         self.family = family
 
     @property
@@ -81,6 +96,8 @@ class ParamSpec:
             text = "Finger width"
         if self.type == "signed":
             text += " (+ or - prefix anchors the vias)"
+        if self.type == "numlist":
+            text += " (one number, or one per layer separated by spaces)"
         return text
 
     def parse(self, text):
@@ -90,7 +107,7 @@ class ParamSpec:
         reads the first character of a coverage value as its anchor, so " +50"
         is not "+50".
         """
-        if self.type in ("signed", "string"):
+        if self.type in ("signed", "string", "choice", "numlist"):
             return str(text)
         t = str(text).strip()
         if self.type == "float":
@@ -139,8 +156,17 @@ class ParamSpec:
         """Raise InvalidValue if the string ``text`` must not reach Magic."""
         if self.type == "signed" and not SIGNED_RE.fullmatch(str(text)):
             raise InvalidValue(self.name, text, "is not a number with an optional + or - in front; "
-                               "sky130A.tcl evaluates this value with an unbraced expr, which runs "
-                               "any [command] in it, so it was not sent to Magic")
+                               "the PDK's generator code evaluates this value with an unbraced "
+                               "expr, which runs any [command] in it, so it was not sent to Magic")
+        if self.type == "choice" and str(text) not in self.choices:
+            raise InvalidValue(self.name, text, "is not one of Magic's choices for it (%s), so it "
+                               "was not sent to Magic" % ", ".join(self.choices))
+        if self.type == "numlist":
+            toks = str(text).split()
+            if not toks or not all(NUMBER_RE.fullmatch(t) for t in toks):
+                raise InvalidValue(self.name, text, "is not a number or a list of numbers separated "
+                                   "by spaces; the PDK's generator code evaluates each element with "
+                                   "an unbraced expr, so it was not sent to Magic")
 
     def canonical(self, text):
         """Round-trip a string through parse/format (used by the sweep)."""
@@ -148,11 +174,17 @@ class ParamSpec:
 
 
 class DeviceSpec:
+    """A device (``kind`` "device") or a box-paint generator (``kind``
+    "box", form "box", parameters w and h)."""
+
     def __init__(self, d):
         self.name = d["name"]
+        self.kind = d.get("kind", "device")
         self.family = d["family"]
-        self.nocell = bool(d["nocell"])
-        self.form = d.get("form") or ("wrapper" if self.nocell else "cell")
+        self.nocell = bool(d.get("nocell", False))
+        self.form = d.get("form") or ("box" if self.kind == "box" else
+                                      "wrapper" if self.nocell else "cell")
+        self.label = d.get("label") or self.name
         self.defaults = [tuple(kv) for kv in d["defaults"]]
         self.all_params = [ParamSpec(p, self.family) for p in d["params"]]
         self.params = [p for p in self.all_params if p.editable and p.type in EDITABLE_TYPES]
@@ -211,6 +243,15 @@ class DeviceSpec:
     def batch(self):
         return self.raw.get("defaults_run", {})
 
+    @property
+    def vendor_cells(self):
+        """Cells other than the top in Magic's output for the defaults: for a
+        fixed device, the vendor cell from libs.ref and its children."""
+        run = self.batch
+        names = run.get("cell_names") or []
+        tops = set(run.get("top_cells") or [])
+        return [c for c in names if c not in tops] if self.nocell else []
+
 
 class Manifest:
     def __init__(self, data, path=None):
@@ -219,8 +260,12 @@ class Manifest:
         if data.get("format") != 1:
             raise ManifestError("unsupported manifest format %r" % data.get("format"))
         self.pdk = data["pdk"]
+        self.namespace = data.get("namespace", "")
         self.devices = [DeviceSpec(d) for d in data["devices"]]
+        self.devices += [DeviceSpec(dict(d, kind="box")) for d in data.get("boxpaint", [])]
         self._by_name = {d.name: d for d in self.devices}
+        if len(self._by_name) != len(self.devices):
+            raise ManifestError("manifest %s names a PCell twice" % path)
 
     @classmethod
     def load(cls, path):
@@ -244,7 +289,15 @@ class Manifest:
         return self.data.get("defaults_digest", "")
 
     def defaults_by_device(self):
-        return {d.name: [list(kv) for kv in d.defaults] for d in self.devices}
+        return {d.name: [list(kv) for kv in d.defaults] for d in self.devices if d.kind == "device"}
+
+    def vendor_cells(self):
+        out = []
+        for d in self.devices:
+            for c in d.vendor_cells:
+                if c not in out:
+                    out.append(c)
+        return out
 
     def editable_names(self):
         names = []

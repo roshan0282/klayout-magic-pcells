@@ -3,9 +3,10 @@
     KMP_SWEEP=sweep.json KMP_OUT=<dir> \
       klayout -b -rm pymacros/klayout_magic_pcells.lym -r tests/parity/pcell_path.py
 
-For each point: a layout at dbu 0.001, ``create_cell(device, "sky130_magic",
-params)`` with the request converted to the declared types, the variant
-placed in a top cell ``T<id>``, and ``<id>.gds`` and ``<id>.oas`` written.
+The PDK is the one KMP_PDK names (run_sweep.py sets KMP_PDK and KMP_PDKS to
+it). For each point: a layout at dbu 0.001, ``create_cell(device, <the
+PDK's library>, params)`` with the point's typed values, the variant placed
+in a top cell ``T<id>``, and ``<id>.gds`` and ``<id>.oas`` written.
 ``index.json`` records the variant's name, its stored parameters and what the
 backend returned (checked dict, messages, Magic's cell name, cache source).
 """
@@ -18,9 +19,7 @@ import traceback
 
 import klayout.db as db
 import klayout_magic_pcells as kmp
-
-LIB = kmp.LIBRARY_NAME
-
+from klayout_magic_pcells.stamp import read_stamp
 
 def main():
     sweep_path = os.environ["KMP_SWEEP"]
@@ -28,8 +27,9 @@ def main():
     os.makedirs(out, exist_ok=True)
     with open(sweep_path, encoding="utf-8") as f:
         sweep = json.load(f)
-    st = kmp.state
-    index = {"registered": st.library is not None, "error": st.last_error,
+    st = kmp.state_for(os.environ.get("KMP_PDK") or "sky130A")
+    LIB = st.library_name
+    index = {"registered": st.library is not None, "error": st.last_error, "library": LIB,
              "versions": st.versions.as_dict() if st.versions else None,
              "created_stamp": st.created_stamp, "points": {}}
     if st.library is None:
@@ -43,9 +43,11 @@ def main():
         spec = st.manifest[dev]
         rec = {"device": dev}
         try:
-            params = spec.parse_request(pt["request"])
+            # The typed values come from the sweep, not from the plugin's parser.
+            params = pt["value"]
             ly = db.Layout()
             ly.dbu = 0.001
+            before = set(st.generator._memo)
             pc = ly.create_cell(dev, LIB, params)
             if pc is None:
                 raise RuntimeError("create_cell returned None")
@@ -53,8 +55,16 @@ def main():
             top.insert(db.CellInstArray(pc.cell_index(), db.Trans()))
             ly.write(os.path.join(out, pid + ".gds"))
             ly.write(os.path.join(out, pid + ".oas"))
-            req = spec.build_request(spec.defaults_values() | params)
-            res = st.generator.peek(spec, req)
+            # The request the PCell actually sent: the memo entry whose key
+            # starts with the key in the variant's generated-by stamp.
+            # An empty cell has no stamp: then the one entry this call added.
+            stp = read_stamp(pc) or {}
+            k16 = stp.get("key") or ""
+            hits = [st.generator._memo[k] for k in st.generator._memo if k16 and k.startswith(k16)]
+            if not k16:
+                hits = [st.generator._memo[k] for k in set(st.generator._memo) - before]
+            res = hits[0] if len(hits) == 1 else None
+            req = res.sidecar.get("request") if res is not None else None
             rec.update({
                 "variant": pc.name, "top": top.name,
                 "title": pc.display_title(),

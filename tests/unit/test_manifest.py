@@ -1,7 +1,7 @@
 import unittest
 
 from tests.unit._util import needs_klayout
-from klayout_magic_pcells.config import SHIPPED_MANIFEST
+from klayout_magic_pcells.config import PDKS, SHIPPED_MANIFEST, SUPPORTED_PDKS, shipped_manifest
 from klayout_magic_pcells.manifest import InvalidValue, Manifest, ParamSpec, format_float
 
 MAN = Manifest.load(SHIPPED_MANIFEST)
@@ -76,28 +76,55 @@ class Formatting(unittest.TestCase):
         self.assertEqual(P(name="val", label="Value (ohms)", family="res").unit, "Ω")
 
 
+# Generators per PDK in the image's PDKs (open_pdks 026824c7; IHP 7e53c777
+# and ff32f48c): devices, box-paint generators, excluded helpers.
+COUNTS = {"sky130A": (60, 13, 7), "gf180mcuD": (53, 6, 5), "ihp-sg13g2": (39, 14, 7),
+          "ihp-sg13cmos5l": (31, 10, 6)}
+MANS = {p: Manifest.load(shipped_manifest(p)) for p in SUPPORTED_PDKS}
+
+
 class ShippedManifest(unittest.TestCase):
     def test_counts(self):
-        self.assertEqual(len(MAN.devices), 60)
-        self.assertEqual(len(MAN.editable_names()), 49)
+        self.assertEqual(sum(1 for d in MAN.devices if d.kind == "device"), 60)
+        self.assertEqual(len(MAN.editable_names()), 50)
         fams = {}
         for d in MAN.devices:
             fams[d.family] = fams.get(d.family, 0) + 1
         self.assertEqual(fams, {"res": 22, "mos": 12, "fixed": 12, "diode": 8, "varactor": 3,
-                                "mim_cap": 2, "photodiode": 1})
-        self.assertEqual(len(MAN.data["excluded"]), 20)
+                                "mim_cap": 2, "photodiode": 1, "box_paint": 13})
+        self.assertEqual(len(MAN.data["excluded"]), 7)
 
-    def test_exclusions_say_which_helpers_magic_offers_in_its_menu(self):
+    def test_counts_per_pdk(self):
+        for pdk, (dev, box, exc) in COUNTS.items():
+            m = MANS[pdk]
+            self.assertEqual(m.pdk, pdk)
+            self.assertEqual(sum(1 for d in m.devices if d.kind == "device"), dev, pdk)
+            self.assertEqual(sum(1 for d in m.devices if d.kind == "box"), box, pdk)
+            self.assertEqual(len(m.data["excluded"]), exc, pdk)
+            self.assertEqual(m.namespace, PDKS[pdk]["namespace"], pdk)
+
+    def test_box_paint_generators(self):
         menu = {"mcon", "via1", "via2", "via3", "via4", "subconn", "mvsubconn", "subconn_guard",
                 "mvsubconn_guard", "nwell", "mvnwell", "deep_nwell", "mvdeep_nwell"}
-        ex = {e["name"]: e for e in MAN.data["excluded"]}
-        self.assertEqual({n for n, e in ex.items() if e["menu"]}, menu)
-        for n, e in ex.items():
-            if n in menu:
-                self.assertTrue(e["menu"].startswith("Devices 1 / "), n)
-                self.assertIn("paints into the current box", e["reason"])
-            else:
-                self.assertIn("menus don't offer it", e["reason"])
+        bp = {d.name: d for d in MAN.devices if d.kind == "box"}
+        self.assertEqual(set(bp), menu)
+        for n, d in bp.items():
+            self.assertTrue(d.raw["menu"].startswith("Devices 1 / "), n)
+            self.assertEqual([p.name for p in d.params], ["w", "h"])
+            self.assertEqual(d.form, "box")
+        self.assertEqual(bp["via1"].raw["min_box_um"], "0.26")
+        self.assertEqual(bp["via4"].raw["min_box_um"], "1.18")
+        self.assertEqual(bp["deep_nwell"].raw["min_box_um"], "3.0")
+        for e in MAN.data["excluded"]:
+            self.assertIn("required arguments", e["reason"])
+        for pdk, m in MANS.items():
+            for d in m.devices:
+                if d.kind != "box":
+                    continue
+                run = d.batch
+                self.assertTrue(run["ok"] and not run["empty"], (pdk, d.name))
+                self.assertEqual(d.params[0].default, d.raw["min_box_um"], (pdk, d.name))
+                self.assertFalse(d.raw["below_min"]["painted"], (pdk, d.name))
 
     def test_grid_of_the_default_output(self):
         grids = {d.name: d.raw["defaults_run"]["grid_nm"] for d in MAN.devices}
@@ -106,11 +133,23 @@ class ShippedManifest(unittest.TestCase):
                                 "sky130_fd_pr__rf_test_coil2", "sky130_fd_pr__rf_test_coil3"])
 
     def test_types(self):
-        for d in MAN.devices:
-            for p in d.params:
-                self.assertIn(p.type, ("float", "int", "bool01", "signed"), (d.name, p.name))
-                p.default_value()  # parses
-            self.assertEqual(d.form, "wrapper" if d.nocell else "cell")
+        for pdk, m in MANS.items():
+            for d in m.devices:
+                for p in d.params:
+                    self.assertIn(p.type, ("float", "int", "bool01", "signed", "choice", "numlist"),
+                                  (pdk, d.name, p.name))
+                    p.default_value()  # parses
+                    p.check(p.default)
+                    if p.type == "choice":
+                        self.assertIn(p.default, p.choices)
+                self.assertNotIn("gencell", [p.name for p in d.params])
+                self.assertEqual(d.form, "box" if d.kind == "box" else "wrapper" if d.nocell else "cell")
+        ng = MANS["ihp-sg13g2"]["sg13_lv_nmos"].param("ng")
+        self.assertEqual(ng.type, "int")
+        via = MANS["ihp-sg13g2"]["via"]
+        self.assertEqual(via.param("metalbot").type, "choice")
+        self.assertEqual(via.param("nxcuts").type, "numlist")
+        self.assertEqual(MANS["gf180mcuD"]["ppolyf_u"].param("guard_type").choices, ["nwell", "pwell"])
 
     def test_every_signed_default_passes_the_check(self):
         n = 0
@@ -121,12 +160,22 @@ class ShippedManifest(unittest.TestCase):
                     n += 1
         self.assertGreater(n, 50)
 
+    def test_choice_and_numlist_checks(self):
+        via = MANS["ihp-sg13g2"]["via"]
+        via.param("metalbot").check("metal2")
+        via.param("nxcuts").check("1 2")
+        for name, bad in (("metalbot", "metal9"), ("metalbot", "[exec x]"), ("nxcuts", "1 [x]"),
+                          ("nxcuts", ""), ("nxcuts", "$a")):
+            with self.assertRaises(InvalidValue, msg=(name, bad)):
+                via.param(name).check(bad)
+
     def test_request_of_defaults_is_magic_defaults(self):
-        for d in MAN.devices:
-            req = d.build_request(d.defaults_values())
-            magic = dict(d.defaults)
-            for k, v in req.items():
-                self.assertEqual(v, magic[k], (d.name, k))
+        for pdk, m in MANS.items():
+            for d in m.devices:
+                req = d.build_request(d.defaults_values())
+                magic = dict(d.defaults)
+                for k, v in req.items():
+                    self.assertEqual(v, magic[k], (pdk, d.name, k))
 
     def test_parse_request_round_trip(self):
         d = MAN["sky130_fd_pr__nfet_01v8"]
@@ -137,13 +186,20 @@ class ShippedManifest(unittest.TestCase):
 
     def test_defaults_digest_recomputes(self):
         from klayout_magic_pcells.backend import defaults_digest
-        self.assertEqual(defaults_digest(MAN.defaults_by_device()), MAN.defaults_digest)
+        for pdk, m in MANS.items():
+            self.assertEqual(defaults_digest(m.defaults_by_device()), m.defaults_digest, pdk)
+
+    def test_vendor_cells(self):
+        v = MAN.vendor_cells()
+        self.assertIn("sky130_fd_pr__rf_test_coil1", v)
+        self.assertEqual(len(MAN["sky130_fd_pr__nfet_01v8"].vendor_cells), 0)
 
     @needs_klayout
     def test_no_name_collides_with_the_helper(self):
         from klayout_magic_pcells.pcell import check_names
-        for d in MAN.devices:
-            check_names(d)
+        for m in MANS.values():
+            for d in m.devices:
+                check_names(d)
 
     @needs_klayout
     def test_collision_is_refused(self):

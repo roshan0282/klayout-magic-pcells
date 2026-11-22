@@ -1,11 +1,22 @@
 # Helpers shared by kmp_server.tcl and kmp_manifest.tcl.
 #
-# Nothing here redefines a proc in the ::magic or ::sky130 namespaces: the
-# backend hashes the text of those procs (the "code" field of the cache key),
-# and an override would put this file's code into that digest.  The checked
+# Nothing here redefines a proc in the ::magic namespace or in the PDK's
+# generator namespace (::sky130, ::gf180mcu, ::sg13g2, ...): the backend
+# hashes the text of those procs (the "code" field of the cache key), and an
+# override would put this file's code into that digest.  The checked
 # parameter dict is captured with an execution trace instead.
 
 namespace eval ::kmp {
+    # The PDK's generator namespace, which is also the library argument of
+    # magic::gencell_create: KMP_NS if the backend sets it, else the
+    # PDKNAMESPACE that every supported PDK's .tcl file sets (sky130,
+    # gf180mcu, sg13g2, sg13cmos5l), else sky130.
+    variable ns sky130
+    if {[info exists ::env(KMP_NS)] && $::env(KMP_NS) ne ""} {
+        set ns $::env(KMP_NS)
+    } elseif {[info exists ::PDKNAMESPACE] && $::PDKNAMESPACE ne ""} {
+        set ns $::PDKNAMESPACE
+    }
     variable log ""
     variable capture_stdout 0
     variable stdout_buf ""
@@ -37,7 +48,7 @@ proc ::kmp::unhex {h} {
 # ::kmp::log.  While ::kmp::capture_stdout is set, stdout text goes into
 # ::kmp::stdout_buf (used to read the output of Magic's "version" command).
 #
-# Runaway guard: sky130::mos_check loops forever when a MOSFET or varactor has
+# Runaway guard: sky130::mos_check (and sg13g2::mos_check) loops forever when a MOSFET or varactor has
 # both w and l above 28 um (its tap-spacing loop sets w to 29 and tests the
 # same condition again), printing the same two messages on every pass.  Once
 # one message has been printed max_repeat times in a request, this puts
@@ -62,7 +73,7 @@ if {[info commands ::kmp::real_puts] eq ""} {
             dict incr ::kmp::repeats $msg
             set n [dict get $::kmp::repeats $msg]
             if {$n > $::kmp::max_repeat} {
-                set ::kmp::abort "stopped after Magic printed \"[string trim $msg]\" $::kmp::max_repeat times in one request: sky130A.tcl is in an endless loop for these values (Magic's own dialog hangs on them too)"
+                set ::kmp::abort "stopped after Magic printed \"[string trim $msg]\" $::kmp::max_repeat times in one request: the PDK's generator code is in an endless loop for these values (Magic's own dialog hangs on them too)"
                 error $::kmp::abort
             }
             if {$n <= $::kmp::log_repeat} {
@@ -144,12 +155,13 @@ proc ::kmp::write_file {path text} {
 
 # --- Introspection ----------------------------------------------------------
 
-# Devices: every ::sky130::<dev>_draw that also has a <dev>_defaults proc.
+# Devices: every <ns>::<dev>_draw that also has a <dev>_defaults proc.
 proc ::kmp::devices {} {
     set out {}
-    foreach d [lsort [info commands ::sky130::*_draw]] {
-        if {[regexp {^::sky130::(.*)_draw$} $d -> dev]} {
-            if {[info commands ::sky130::${dev}_defaults] ne ""} {
+    set ns $::kmp::ns
+    foreach d [lsort [info commands ::${ns}::*_draw]] {
+        if {[regexp "^::${ns}::(.*)_draw\$" $d -> dev]} {
+            if {[info commands ::${ns}::${dev}_defaults] ne ""} {
                 lappend out $dev
             }
         }
@@ -160,12 +172,36 @@ proc ::kmp::devices {} {
 # Helper _draw procs: a _draw proc with no _defaults (not a device).
 proc ::kmp::helpers {} {
     set out {}
-    foreach d [lsort [info commands ::sky130::*_draw]] {
-        if {[regexp {^::sky130::(.*)_draw$} $d -> dev]} {
-            if {[info commands ::sky130::${dev}_defaults] eq ""} {
+    set ns $::kmp::ns
+    foreach d [lsort [info commands ::${ns}::*_draw]] {
+        if {[regexp "^::${ns}::(.*)_draw\$" $d -> dev]} {
+            if {[info commands ::${ns}::${dev}_defaults] eq ""} {
                 lappend out $dev
             }
         }
+    }
+    return $out
+}
+
+# Box-paint generators: helper _draw procs that can be called with no
+# arguments (every argument has a default).  These are Magic's "paint a
+# via, contact, substrate contact, guard ring or well into the cursor box"
+# commands (sky130::via1_draw, sg13g2::subconn_guard_draw, ...).  The
+# others need arguments and are internal helpers of the device generators.
+proc ::kmp::is_boxpaint {name} {
+    set p ::${::kmp::ns}::${name}_draw
+    if {[info procs $p] eq ""} { return 0 }
+    if {[info commands ::${::kmp::ns}::${name}_defaults] ne ""} { return 0 }
+    foreach a [info args $p] {
+        if {![info default $p $a _d]} { return 0 }
+    }
+    return 1
+}
+
+proc ::kmp::boxpaint {} {
+    set out {}
+    foreach h [::kmp::helpers] {
+        if {[::kmp::is_boxpaint $h]} { lappend out $h }
     }
     return $out
 }
@@ -196,14 +232,16 @@ proc ::kmp::version_info {} {
         tech_name [tech name] \
         tech_file $techfile \
         tcl [info patchlevel] \
-        pdkpath $pdkpath]
+        pdkpath $pdkpath \
+        ns $::kmp::ns \
+        boxpaint [::kmp::boxpaint]]
 }
 
-# Text of every proc in ::sky130 and ::magic, sorted by name, written to a
-# file for hashing on the Python side.
+# Text of every proc in the PDK's namespace and ::magic, sorted by name,
+# written to a file for hashing on the Python side.
 proc ::kmp::dump_procs {path} {
     set out ""
-    foreach ns {::sky130 ::magic} {
+    foreach ns [list ::$::kmp::ns ::magic] {
         foreach p [lsort [info procs ${ns}::*]] {
             set arglist {}
             foreach a [info args $p] {
@@ -224,8 +262,52 @@ proc ::kmp::dump_procs {path} {
 proc ::kmp::dump_defaults {path} {
     set items {}
     foreach dev [::kmp::devices] {
-        lappend items "[::kmp::jstr $dev]:[::kmp::jpairs [sky130::${dev}_defaults]]"
+        lappend items "[::kmp::jstr $dev]:[::kmp::jpairs [::${::kmp::ns}::${dev}_defaults]]"
     }
     ::kmp::write_file $path "\{[join $items ,]\}\n"
     return [llength $items]
+}
+
+# --- Session state that a request may leave behind --------------------------
+#
+# Some generators change Magic's session state and don't change it back:
+# a failed IHP _draw leaves layers locked (its device code runs under
+# "tech lock *"), the sky130 guard-ring and well commands run "tech revert",
+# which unlocks fence, magnet and rotate, deep_nwell_draw leaves an entry on
+# ::boxstack, and the IHP substrate-contact and well commands set "units
+# microns".  A later request in the same session would then draw something
+# a fresh Magic doesn't (IHP's via loses metal after a failed diode).  The
+# state at start-up is recorded once; after every request whatever differs
+# is put back, so each request sees the session a fresh Magic starts with.
+
+proc ::kmp::record_state {} {
+    set ::kmp::locks0 [lsort [tech lock]]
+    set ::kmp::units0 [lindex [units] 0]
+}
+
+# Returns a description of what was put back ("" when nothing was).
+proc ::kmp::restore_state {} {
+    set fixed {}
+    if {[info exists ::boxstack] && [llength $::boxstack]} {
+        set ::boxstack {}
+        lappend fixed boxstack
+    }
+    if {[lindex [units] 0] ne $::kmp::units0} {
+        catch {units $::kmp::units0}
+        lappend fixed units
+    }
+    if {[lsort [tech lock]] ne $::kmp::locks0} {
+        catch {tech revert}
+        set now [lsort [tech lock]]
+        set add {}
+        foreach t $::kmp::locks0 { if {[lsearch -exact $now $t] < 0} { lappend add $t } }
+        if {[llength $add]} { catch {tech lock [join $add ,]} }
+        set now [lsort [tech lock]]
+        set del {}
+        foreach t $now { if {[lsearch -exact $::kmp::locks0 $t] < 0} { lappend del $t } }
+        if {[llength $del]} { catch {tech unlock [join $del ,]} }
+        lappend fixed "layer locks"
+        if {[lsort [tech lock]] ne $::kmp::locks0} { lappend fixed "(locks still differ)" }
+    }
+    return [join $fixed ", "]
 }

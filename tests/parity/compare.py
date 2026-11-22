@@ -10,9 +10,13 @@ shape iterator), then compared layer by layer (GDS layer/datatype pairs):
   * polygons, boxes and paths become a pya.Region per layer, and the two
     regions are XORed (merged semantics, so splitting a shape into several
     pieces, or overlapping shapes, is not reported as a difference);
-  * texts become a multiset of (string, x, y) per layer, so a label that is
-    renamed, moved or duplicated is reported, but text size, font and
-    orientation are ignored;
+  * texts become a multiset of (string, x, y, attributes) per layer, where
+    the attributes are rotation, mirror, size, justification and font, so a
+    label that is renamed, moved, duplicated, turned or re-justified is
+    reported (``text_attrs=False`` compares string and position only: OASIS
+    keeps no text size or justification);
+  * with ``shape_counts=True`` the number of shapes per layer, unmerged, must
+    also match, so a shape inserted twice is reported;
   * bounding boxes are reported in micrometres: the geometry bbox of each
     cell, and per-layer bboxes (printed for layers that differ, all of them
     in the --json output, which also has each cell's own bbox).
@@ -147,6 +151,20 @@ def parse_ld(text):
     return (l, d)
 
 
+def flat_shape_count(cell, li):
+    """Shapes other than texts on a layer, flattened and not merged, so a
+    shape drawn twice counts twice (the merged XOR can't see it)."""
+    if li is None:
+        return 0
+    n = 0
+    it = cell.begin_shapes_rec(li)
+    while not it.at_end():
+        if not it.shape().is_text():
+            n += 1
+        it.next()
+    return n
+
+
 def flat_region(cell, li, mag):
     if li is None:
         return db.Region()
@@ -157,13 +175,30 @@ def flat_region(cell, li, mag):
     return r
 
 
-def flat_texts(cell, li, mag):
+def _enum(v):
+    return v.to_i() if hasattr(v, "to_i") else int(v)
+
+
+def text_attrs(t):
+    """Orientation, mirror, size, justification and font of a text, as one
+    string (so a label that only turns, scales or re-justifies is reported)."""
+    return "r%d%s s%d h%d v%d f%d" % (t.trans.rot * 90, "m" if t.trans.is_mirror() else "",
+                                       t.size, _enum(t.halign), _enum(t.valign), t.font)
+
+
+def flat_texts(cell, li, mag, attrs=True):
     if li is None:
         return Counter()
-    texts = db.Texts(cell.begin_shapes_rec(li))
-    if mag != 1:
-        texts.transform(db.ICplxTrans(mag))
-    return Counter((t.string, t.x, t.y) for t in texts.each())
+    out = Counter()
+    it = cell.begin_shapes_rec(li)
+    tm = db.ICplxTrans(mag)
+    while not it.at_end():
+        sh = it.shape()
+        if sh.is_text():
+            t = sh.text.transformed(tm * it.trans())
+            out[(t.string, t.x, t.y, text_attrs(t) if attrs else "")] += 1
+        it.next()
+    return out
 
 
 def bbox_um(box, unit):
@@ -187,26 +222,39 @@ class _Opts:
         self.align = kw.get("align", "none")
         self.ignore = list(kw.get("ignore") or [])
         self.no_texts = not kw.get("texts", True)
+        # False: compare texts as (string, x, y) only.  OASIS has no field
+        # for a text's size or justification, so a file saved as OASIS loses
+        # them (KLayout 0.30.11).
+        self.text_attrs = kw.get("text_attrs", True)
+        # False: compare texts as sets, so two identical texts at one
+        # position count once (a KLayout 0.30.11 OASIS file keeps one).
+        self.text_dupes = kw.get("text_dupes", True)
         self.lyp = kw.get("lyp")
         self.xor_out = kw.get("xor_out")
+        # True: also compare the number of (unmerged) shapes per layer.
+        self.shape_counts = kw.get("shape_counts", False)
 
 
 def compare_cells(file_a, cell_a, file_b, cell_b, *, tol_um=0.0, align="none", ignore=(),
-                  texts=True, xor_out=None, lyp=None):
+                  texts=True, xor_out=None, lyp=None, text_attrs=True, shape_counts=False,
+                  text_dupes=True):
     """Compare cell_a in file_a with cell_b in file_b. Raises CompareError."""
     ly_a, ly_b = read_layout(file_a), read_layout(file_b)
     ca = find_cell(ly_a, file_a, cell_a)
     cb = find_cell(ly_b, file_b, cell_b)
     opts = _Opts(file_a=file_a, file_b=file_b, tol_um=tol_um, align=align, ignore=ignore,
-                 texts=texts, xor_out=xor_out, lyp=lyp)
+                 texts=texts, xor_out=xor_out, lyp=lyp, text_attrs=text_attrs,
+                 shape_counts=shape_counts, text_dupes=text_dupes)
     return _compare(ly_a, ca, ly_b, cb, opts)
 
 
 def compare_layouts(ly_a, cell_a, ly_b, cell_b, *, tol_um=0.0, align="none", ignore=(),
-                    texts=True, xor_out=None, lyp=None, name_a="<layout A>", name_b="<layout B>"):
+                    texts=True, xor_out=None, lyp=None, name_a="<layout A>", name_b="<layout B>",
+                    text_attrs=True, text_dupes=True):
     """Like compare_cells(), for Layout and Cell objects already in memory."""
     opts = _Opts(file_a=name_a, file_b=name_b, tol_um=tol_um, align=align, ignore=ignore,
-                 texts=texts, xor_out=xor_out, lyp=lyp)
+                 texts=texts, xor_out=xor_out, lyp=lyp, text_attrs=text_attrs,
+                 text_dupes=text_dupes)
     return _compare(ly_a, cell_a, ly_b, cell_b, opts)
 
 
@@ -238,8 +286,10 @@ def _compare(ly_a, cell_a, ly_b, cell_b, args):
         if args.no_texts:
             ta, tb = Counter(), Counter()
         else:
-            ta = flat_texts(cell_a, pairs_a.get(ld), mag_a)
-            tb = flat_texts(cell_b, pairs_b.get(ld), mag_b)
+            ta = flat_texts(cell_a, pairs_a.get(ld), mag_a, args.text_attrs)
+            tb = flat_texts(cell_b, pairs_b.get(ld), mag_b, args.text_attrs)
+            if not getattr(args, "text_dupes", True):
+                ta, tb = Counter(set(ta)), Counter(set(tb))
         if ra.is_empty() and rb.is_empty() and not ta and not tb:
             continue  # layer exists in the file but not under these cells
         regions[ld] = (ra, rb)
@@ -267,8 +317,8 @@ def _compare(ly_a, cell_a, ly_b, cell_b, args):
             for ld, (ra, rb) in regions.items():
                 regions[ld] = (ra, rb.transformed(t))
             for ld, (ta, tb) in texts.items():
-                texts[ld] = (ta, Counter({(s, x + shift.x, y + shift.y): n
-                                          for (s, x, y), n in tb.items()}))
+                texts[ld] = (ta, Counter({(s, x + shift.x, y + shift.y, a): n
+                                          for (s, x, y, a), n in tb.items()}))
             bbox_b = geom_bbox(1)
 
     half_tol = 0
@@ -293,7 +343,10 @@ def _compare(ly_a, cell_a, ly_b, cell_b, args):
             xor = xor.interacting(xor.sized(-half_tol))
         only_a = sorted((ta - tb).elements())
         only_b = sorted((tb - ta).elements())
-        same = xor.is_empty() and not only_a and not only_b
+        counts = None
+        if getattr(args, "shape_counts", False):
+            counts = (flat_shape_count(cell_a, pairs_a.get(ld)), flat_shape_count(cell_b, pairs_b.get(ld)))
+        same = xor.is_empty() and not only_a and not only_b and (counts is None or counts[0] == counts[1])
         if not same:
             n_diff_layers += 1
         area2 = unit * unit
@@ -316,13 +369,16 @@ def _compare(ly_a, cell_a, ly_b, cell_b, args):
             "bbox_b_um": bbox_um(rb.bbox(), unit),
             "xor_bbox_um": bbox_um(xor.bbox(), unit),
             "texts_a": sum(ta.values()), "texts_b": sum(tb.values()),
-            "texts_only_a": [[s, round(x * unit, 6), round(y * unit, 6)] for s, x, y in only_a],
-            "texts_only_b": [[s, round(x * unit, 6), round(y * unit, 6)] for s, x, y in only_b],
+            "texts_only_a": [[s, round(x * unit, 6), round(y * unit, 6), a] for s, x, y, a in only_a],
+            "texts_only_b": [[s, round(x * unit, 6), round(y * unit, 6), a] for s, x, y, a in only_b],
         })
+        if counts is not None:
+            layers[-1]["shapes_a"], layers[-1]["shapes_b"] = counts
+            layers[-1]["shape_counts_differ"] = counts[0] != counts[1]
         if out_cell is not None and not same:
             li = out_ly.layer(ld[0], ld[1])
             out_cell.shapes(li).insert(xor)
-            for s, x, y in only_a + only_b:
+            for s, x, y, a in only_a + only_b:
                 out_cell.shapes(li).insert(db.Text(s, db.Trans(db.Vector(x, y))))
 
     result = {
@@ -384,9 +440,9 @@ def print_report(res, quiet):
             if L["status"] != "same":
                 print(f"{'':<8} bbox A {fmt_bbox(L['bbox_a_um'])}  B {fmt_bbox(L['bbox_b_um'])}"
                       f"  xor {fmt_bbox(L['xor_bbox_um'])}")
-                for s, x, y in L["texts_only_a"]:
+                for s, x, y, a in L["texts_only_a"]:
                     print(f"{'':<8} text only in A: '{s}' at ({x:.4f}, {y:.4f})")
-                for s, x, y in L["texts_only_b"]:
+                for s, x, y, a in L["texts_only_b"]:
                     print(f"{'':<8} text only in B: '{s}' at ({x:.4f}, {y:.4f})")
         print()
     n = len(res["layers"])

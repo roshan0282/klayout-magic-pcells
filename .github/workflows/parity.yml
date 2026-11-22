@@ -1,5 +1,5 @@
-# Parity harness in the pinned iic-osic-tools image, referenced by digest.
-# The repository has no remote, so this workflow has never run on GitHub.
+# Parity harness in the pinned iic-osic-tools image, referenced by digest,
+# one job per PDK. GitHub had not run this workflow as of 2026-11-21.
 name: parity
 on:
   pull_request:
@@ -17,6 +17,10 @@ jobs:
   parity:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pdk: [sky130A, gf180mcuD, ihp-sg13g2, ihp-sg13cmos5l]
     steps:
       - name: Disk before
         run: df -h / /mnt || true
@@ -39,24 +43,25 @@ jobs:
 
       # The image runs through docker run in a step, not as a job container:
       # steps in a job container run under sh, and in this image only a login
-      # bash has Magic and KLayout on PATH.
-      - name: Parity harness
+      # bash has Magic and KLayout on PATH. The harness's first step runs the
+      # unit tests and this PDK's backend tests.
+      - name: Parity harness (${{ matrix.pdk }})
         run: |
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            scripts/parity.sh --quick
+            scripts/parity.sh --pdk "${{ matrix.pdk }}" --quick
           else
-            scripts/parity.sh
+            scripts/parity.sh --pdk "${{ matrix.pdk }}"
           fi
 
       - name: Report summary
         if: always()
         run: |
-          if [ -f out/parity/report.md ]; then
-            head -60 out/parity/report.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "out/parity/${{ matrix.pdk }}/report.md" ]; then
+            head -80 "out/parity/${{ matrix.pdk }}/report.md" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: parity-results
-          path: out/parity/
+          name: parity-${{ matrix.pdk }}
+          path: out/parity/${{ matrix.pdk }}/

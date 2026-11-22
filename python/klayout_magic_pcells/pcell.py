@@ -30,6 +30,8 @@ def _ktype(helper, ptype):
         "bool01": helper.TypeBoolean,
         "signed": helper.TypeString,
         "string": helper.TypeString,
+        "choice": helper.TypeString,
+        "numlist": helper.TypeString,
     }[ptype]
 
 
@@ -72,11 +74,16 @@ def draw_placeholder(layout, cell, device, reason):
 def make_pcell(spec, state):
     """Return a PCellDeclarationHelper instance for ``spec``.
 
-    ``state`` is the package's runtime state: ``state.generator``,
-    ``state.created_stamp``, ``state.stamp_dict`` and ``state.cfg``.
+    ``state`` is the PDK's runtime state (a PdkState): ``state.generator``,
+    ``state.created_stamp``, ``state.stamp_dict``, ``state.cfg`` and
+    ``state.library_name``.
     """
     check_names(spec)
-    lead = [n for n in DISPLAY_PARAMS.get(spec.family, ()) if spec.param(n)]
+    if spec.family in DISPLAY_PARAMS:
+        lead = [n for n in DISPLAY_PARAMS[spec.family] if spec.param(n)]
+    else:
+        lead = [p.name for p in spec.params if p.type in ("float", "int")][:3]
+    lib = state.library_name
 
     class _DevicePCell(db.PCellDeclarationHelper):
         def __init__(self):
@@ -85,6 +92,8 @@ def make_pcell(spec, state):
                 kw = {"default": p.default_value(), "tooltip": p.label}
                 if p.unit:
                     kw["unit"] = p.unit
+                if p.type == "choice":
+                    kw["choices"] = [(c, c) for c in p.choices]
                 self.param(p.name, _ktype(self, p.type), p.description, **kw)
             self.param(CREATED_PARAM, self.TypeString, "Created with", hidden=True,
                        readonly=True, default=state.created_stamp)
@@ -142,8 +151,8 @@ def make_pcell(spec, state):
                         raise
                     # A remembered or cached GDS that KLayout can't read:
                     # forget it and ask Magic once.
-                    warn("sky130_magic %s: the cached GDS %s can't be read (%s); regenerating it"
-                         % (spec.short_name, res.gds_path, e))
+                    warn("%s %s: the cached GDS %s can't be read (%s); regenerating it"
+                         % (lib, spec.short_name, res.gds_path, e))
                     state.generator.evict(spec, req)
                     self.cell.clear_shapes()
                     res = state.generator.get(spec, req)
@@ -151,28 +160,29 @@ def make_pcell(spec, state):
                 if not apply_stamp(self.layout, self.cell, res.stamp):
                     # Magic wrote a cell with no shapes (for example resistor
                     # l=0, where _draw fails on the "1.0u" that _check puts
-                    # in). Parity means drawing the same nothing; say so.
+                    # in, or a via box below the generator's minimum).
+                    # Parity means drawing the same nothing; say so.
                     if ("empty", res.key) not in self._warned:
                         self._warned.add(("empty", res.key))
-                        warn("sky130_magic %s: Magic drew nothing for these parameters: %s"
-                             % (spec.short_name,
+                        warn("%s %s: Magic drew nothing for these parameters: %s"
+                             % (lib, spec.short_name,
                                 " | ".join(res.messages.strip().splitlines()) or "no message"))
                     return
                 if res.messages.strip() and res.key not in self._warned:
                     self._warned.add(res.key)
-                    warn("sky130_magic %s: Magic's _check: %s"
-                         % (spec.short_name, " | ".join(res.messages.strip().splitlines())))
+                    warn("%s %s: Magic's %s: %s"
+                         % (lib, spec.short_name, "messages" if spec.kind == "box" else "_check", " | ".join(res.messages.strip().splitlines())))
                 created = parse_stamp(getattr(self, CREATED_PARAM) or "")
                 if created and not same_versions(created, state.stamp_dict):
                     key = ("created", getattr(self, CREATED_PARAM))
                     if key not in self._warned:
                         self._warned.add(key)
-                        warn("sky130_magic %s: instance created with %s, regenerated with %s"
-                             % (spec.short_name, getattr(self, CREATED_PARAM), state.created_stamp))
+                        warn("%s %s: instance created with %s, regenerated with %s"
+                             % (lib, spec.short_name, getattr(self, CREATED_PARAM), state.created_stamp))
             except Exception as e:
                 log.debug("produce failed", exc_info=True)
-                error("sky130_magic %s: generation failed, drawing a placeholder on %d/%d: %s"
-                      % (spec.short_name, PLACEHOLDER_LAYER[0], PLACEHOLDER_LAYER[1], e))
+                error("%s %s: generation failed, drawing a placeholder on %d/%d: %s"
+                      % (lib, spec.short_name, PLACEHOLDER_LAYER[0], PLACEHOLDER_LAYER[1], e))
                 try:
                     self.cell.clear_shapes()
                 except Exception:
@@ -202,7 +212,12 @@ def make_pcell(spec, state):
             msg = " ".join(chk.log.split())
             for p in spec.params:
                 st = states.parameter(p.name)
-                if p.name in changed:
+                if spec.kind == "box" and msg:
+                    # A box-paint generator prints only when the box is below
+                    # its minimum, and then paints nothing.
+                    st.icon = db.PCellParameterState.WarningIcon
+                    st.tooltip = "Magic draws nothing: %s" % msg
+                elif p.name in changed:
                     st.icon = db.PCellParameterState.WarningIcon
                     st.tooltip = "Magic draws %s (entered %s)%s" % (
                         changed[p.name], req[p.name], (": " + msg) if msg else "")

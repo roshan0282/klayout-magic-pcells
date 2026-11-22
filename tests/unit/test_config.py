@@ -55,7 +55,44 @@ class ConfigPrecedence(unittest.TestCase):
 
     def test_unsupported_pdk(self):
         with self.assertRaises(ConfigError):
-            Config.load(env={"KMP_PDK": "gf180mcuD", "HOME": "/h"}, config_path="/nope")
+            Config.load(env={"KMP_PDK": "gf180mcuC", "HOME": "/h"}, config_path="/nope")
+
+    def test_pdk_selection(self):
+        d = tempfile.mkdtemp()
+        for p in ("sky130A", "ihp-sg13g2"):
+            os.makedirs(os.path.join(d, p, "libs.tech", "magic"))
+            open(os.path.join(d, p, "libs.tech", "magic", p + ".magicrc"), "w").close()
+        env = {"HOME": "/h", "PDK_ROOT": d}
+        # auto: the supported PDKs installed under PDK_ROOT
+        c = Config.load(env=env, config_path="/nope")
+        self.assertEqual(c.pdks, ["sky130A", "ihp-sg13g2"])
+        self.assertEqual(c.pdk, "sky130A")
+        # KMP_PDK alone selects one PDK, as in version 0.2
+        c = Config.load(env=dict(env, KMP_PDK="ihp-sg13g2"), config_path="/nope")
+        self.assertEqual(c.pdks, ["ihp-sg13g2"])
+        self.assertEqual(c.library_name, "sg13g2_magic")
+        self.assertEqual(c.magicrc, os.path.join(d, "ihp-sg13g2/libs.tech/magic/ihp-sg13g2.magicrc"))
+        self.assertTrue(c.manifest.endswith("manifest-ihp-sg13g2.json"))
+        # an explicit list keeps a missing or unknown PDK, to fail for that PDK alone
+        c = Config.load(env=dict(env, KMP_PDKS="gf180mcuD, sky130A gf180mcuC"), config_path="/nope")
+        self.assertEqual(c.pdks, ["gf180mcuD", "sky130A"])
+        self.assertIn("gf180mcuC", c.pdk_errors)
+        g = c.for_pdk("gf180mcuD")
+        self.assertTrue(g.problems())
+        self.assertIn("KMP_MAGICRC_GF180MCUD", " ".join(g.problems()))
+        self.assertEqual(c.pdk, "sky130A")
+
+    def test_per_pdk_settings(self):
+        ini = write_ini("[kmp]\npdks = sky130A, ihp-sg13g2\n[kmp:ihp-sg13g2]\nmagicrc = /ini/ihp.rc\n")
+        c = Config.load(env={"HOME": "/h", "KMP_MANIFEST_SKY130A": "/env/m.json",
+                             "KMP_MAGICRC": "/env/generic.rc"}, config_path=ini)
+        self.assertEqual(c.pdks, ["sky130A", "ihp-sg13g2"])
+        self.assertEqual(c.manifest, "/env/m.json")
+        self.assertEqual(c.magicrc, "/env/generic.rc")       # unqualified: KMP_PDK's PDK only
+        i = c.for_pdk("ihp-sg13g2")
+        self.assertEqual(i.magicrc, "/ini/ihp.rc")
+        self.assertIn("[kmp:ihp-sg13g2]", i.sources["magicrc"])
+        self.assertTrue(i.manifest.endswith("manifest-ihp-sg13g2.json"))
 
     def test_bad_values(self):
         for env in ({"KMP_TIMEOUT": "soon"}, {"KMP_TIMEOUT": "-1"}, {"KMP_CACHE": "maybe"},

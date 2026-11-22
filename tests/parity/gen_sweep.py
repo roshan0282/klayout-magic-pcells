@@ -4,20 +4,28 @@
     python3 tests/parity/gen_sweep.py --manifest M --out sweep.json \
         [--seed 1121] [--random 5] [--max-per-device 60] [--quick] [--devices GLOB ...]
 
-Each point holds only the parameters it changes, as the strings Magic gets
-on path A. Numbers go through the plugin's own parse/format functions
-(``ParamSpec.canonical``), because the plugin's number formatting (12
-significant digits, Magic's default text) is documented behaviour. Coverage
-strings ("signed") are used exactly as typed and never go through the
-plugin: the PCell promises to send them verbatim, and the harness's
-``request`` check compares what path B actually sent with this text. Points
-whose request repeats an earlier one of the same device are dropped, and the
-kinds they stood for are kept in ``aliases``.
+Each point holds only the parameters it changes, twice: ``request``, the
+strings Magic gets on path A, and ``value``, the typed values path B passes
+to ``Layout.create_cell``. Neither goes through the plugin's code:
+``magic_text.py`` restates the formatting contract from the README (12
+significant digits, Magic's default text, coverage strings as typed), so a
+bug in the plugin's own formatter makes path B send a different text and
+fails the ``request`` check. Points whose request repeats an earlier one of
+the same device are dropped, and the kinds they stood for are kept in
+``aliases``.
+
+Box-paint generators (vias, contacts, substrate contacts, guard rings and
+wells) get box sizes around the minimum the manifest records: the minimum,
+a step of 5 nm below it on each side (Magic paints nothing), squares, wide
+and tall boxes, an off-grid width that Magic rounds, a 20 x 20 um box and
+seeded random sizes. Their points carry both w and h, because path A has no
+defaults to merge for them.
 
 No point may give a MOSFET or varactor both w and l above 28 um: Magic's
-mos_check then loops forever (sky130A.tcl, the tap-spacing loop), on path A
-as in Magic's own dialog. The backend stops that loop (see kmp_common.tcl)
-and tests/backend covers it; path A has a watchdog in case one slips in.
+mos_check then loops forever (sky130A.tcl and the IHP fet code, the
+tap-spacing loop), on path A as in Magic's own dialog. The backend stops
+that loop (see kmp_common.tcl) and tests/backend covers it; path A has a
+watchdog in case one slips in.
 """
 
 import argparse
@@ -31,13 +39,16 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(REPO, "python"))
+sys.path.insert(0, HERE)
 
 from klayout_magic_pcells.manifest import Manifest  # noqa: E402
+import magic_text  # noqa: E402
 
 GRID = 0.005
 OFFGRID = 0.0034
 # Kinds dropped first when a device has more points than --max-per-device.
-DROP_ORDER = ("random", "anchor", "space", "offgrid", "int", "below", "flip", "min", "max")
+DROP_ORDER = ("random", "anchor", "space", "choice", "numlist", "offgrid", "int", "below", "flip",
+              "min", "max")
 
 
 def num(text):
@@ -70,6 +81,11 @@ def limits(spec, p, cfg):
         lo = fam.get("min", gen.get("min"))
     if hi is None:
         hi = fam.get("max", gen.get("max"))
+        d = num(p.default)
+        if hi is not None and d is not None and hi < d:
+            # A sweep cap below the default (an IHP inductor's diameter is
+            # far above the 20 um cap) would only make a smaller device.
+            hi = None
     return lo, hi, lo_magic
 
 
@@ -82,7 +98,35 @@ def fmt(v):
     return repr(round(v, 6))
 
 
+def box_points(spec, rng, n_random, quick):
+    """Box sizes for a box-paint generator, as (kind, {w, h}) in um."""
+    m = num(spec.raw.get("min_box_um"))
+    d = {"w": spec.param("w").default, "h": spec.param("h").default}
+    pts = [("default", dict(d))]
+    if quick or m is None:
+        return pts
+    big = max(2 * m, 1.0)
+    side = max(m, 0.5)
+    pts += [
+        ("min:w", {"w": fmt(m), "h": fmt(big)}),
+        ("min:h", {"w": fmt(big), "h": fmt(m)}),
+        ("below:w", {"w": fmt(m - GRID), "h": fmt(m)}),
+        ("below:h", {"w": fmt(m), "h": fmt(m - GRID)}),
+        ("square", {"w": fmt(big), "h": fmt(big)}),
+        ("wide", {"w": fmt(snap(4 * side)), "h": fmt(side)}),
+        ("tall", {"w": fmt(side), "h": fmt(snap(4 * side))}),
+        ("offgrid:w", {"w": fmt(m + OFFGRID), "h": fmt(m)}),
+        ("large", {"w": "20.0", "h": "20.0"}),
+    ]
+    for k in range(n_random):
+        pts.append(("random:%d" % (k + 1), {"w": fmt(snap(rng.uniform(m, 10))),
+                                            "h": fmt(snap(rng.uniform(m, 10)))}))
+    return pts
+
+
 def device_points(spec, cfg, rng, n_random, quick):
+    if spec.kind == "box":
+        return box_points(spec, rng, n_random, quick)
     pts = [("default", {})]
     if quick:
         return pts
@@ -107,6 +151,13 @@ def device_points(spec, cfg, rng, n_random, quick):
             pts.append(("int:%s=1" % p.name, {p.name: "1"}))
             pts.append(("int:%s=4" % p.name, {p.name: "4"}))
             pts.append(("below:" + p.name, {p.name: "0"}))
+        elif p.type == "choice":
+            for c in p.choices:
+                if c != p.default:
+                    pts.append(("choice:%s=%s" % (p.name, c), {p.name: c}))
+        elif p.type == "numlist":
+            pts.append(("numlist:%s=2" % p.name, {p.name: "2"}))
+            pts.append(("numlist:%s=1 2" % p.name, {p.name: "1 2"}))
     signed = [p for p in spec.params if p.type == "signed"]
     if signed:
         # Whitespace before the anchor: Magic reads the first character, so
@@ -124,8 +175,9 @@ def device_points(spec, cfg, rng, n_random, quick):
             if spec.param(n) is not None:
                 pts.append(("zero:" + n, {n: "0"}))
     large = cfg.get("large_nf", {}).get(spec.name)
-    if large and spec.param("nf") is not None:
-        pts.append(("large", {"w": "31", "nf": str(large)}))
+    fingers = "nf" if spec.param("nf") is not None else "ng" if spec.param("ng") is not None else None
+    if large and fingers:
+        pts.append(("large", {"w": "31", fingers: str(large)}))
     for k in range(n_random):
         req = {}
         for p in spec.params:
@@ -140,16 +192,20 @@ def device_points(spec, cfg, rng, n_random, quick):
                 req[p.name] = str(rng.randint(0, 1))
             elif p.type == "signed":
                 req[p.name] = rng.choice(("", "+", "-")) + str(rng.randint(0, 100))
+            elif p.type == "choice" and p.choices:
+                req[p.name] = rng.choice(p.choices)
         pts.append(("random:%d" % (k + 1), req))
     return pts
 
 
 def canonical(spec, req):
-    out = {}
+    """(text for Magic, typed value for the PCell), both without plugin code."""
+    out, vals = {}, {}
     for k, v in req.items():
         p = spec.param(k)
-        out[k] = v if p.type in ("signed", "string") else p.canonical(v)
-    return out
+        vals[k] = magic_text.typed(p.type, v)
+        out[k] = magic_text.text(p.type, vals[k], p.default if p.type == "float" else None)
+    return out, vals
 
 
 def gen(manifest, cfg, seed, n_random, max_per_device, quick, patterns):
@@ -162,15 +218,19 @@ def gen(manifest, cfg, seed, n_random, max_per_device, quick, patterns):
         seen = {}
         dev_pts = []
         for kind, req in device_points(spec, cfg, rng, n_random, quick):
-            creq = canonical(spec, req)
-            # A request that only restates defaults is the default point.
-            creq = {k: v for k, v in creq.items() if v != spec.param(k).default}
+            creq, cval = canonical(spec, req)
+            if spec.kind != "box":
+                # A request that only restates defaults is the default point.
+                # (A box-paint point keeps both sides: path A has no
+                # defaults to merge for it.)
+                creq = {k: v for k, v in creq.items() if v != spec.param(k).default}
+                cval = {k: v for k, v in cval.items() if k in creq}
             sig = json.dumps(creq, sort_keys=True)
             if sig in seen:
                 seen[sig]["aliases"].append(kind)
                 continue
-            pt = {"device": spec.name, "family": spec.family, "kind": kind,
-                  "request": creq, "aliases": []}
+            pt = {"device": spec.name, "family": spec.family, "form": spec.form, "kind": kind,
+                  "request": creq, "value": cval, "aliases": []}
             seen[sig] = pt
             dev_pts.append(pt)
         dropped = 0
@@ -190,8 +250,7 @@ def gen(manifest, cfg, seed, n_random, max_per_device, quick, patterns):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--manifest", default=os.path.join(
-        REPO, "python", "klayout_magic_pcells", "data", "manifest-sky130A.json"))
+    ap.add_argument("--manifest", required=True)
     ap.add_argument("--limits", default=os.path.join(HERE, "sweep_limits.json"))
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=1121)

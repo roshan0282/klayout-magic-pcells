@@ -1,10 +1,55 @@
 {
- "comment": "Rule IDs that each tool reports on each device's default point (Magic drc(full) with catchup; KLayout sky130A_mr.drc with feol, beol and offgrid on, floating_met and seal off). Written by run_sweep.py --update-baseline.",
+ "comment": "Rule IDs that each tool reports on each device's default point (Magic drc(full) with catchup; KLayout: sky130A_mr.drc with beol=true, feol=true, floating_met=false, offgrid=true, seal=false, thr=1). Written by run_sweep.py --update-baseline.",
  "magic": "8.3.681",
  "tech": "1.0.588-56-g026824c",
  "open_pdks": "026824c7969ce6f4fc9678e6ca04b0a06a596c4b",
  "klayout": "0.30.11",
  "devices": {
+  "deep_nwell": {
+   "klayout": [
+    "nwell.2a"
+   ],
+   "magic": [
+    "nwell.2a"
+   ]
+  },
+  "mcon": {
+   "klayout": [
+    "li.6",
+    "m1.6"
+   ],
+   "magic": [
+    "li.6",
+    "met1.6"
+   ]
+  },
+  "mvdeep_nwell": {
+   "klayout": [
+    "nwell.2a"
+   ],
+   "magic": [
+    "nwell.2a",
+    "nwell.8"
+   ]
+  },
+  "mvnwell": {
+   "klayout": [],
+   "magic": []
+  },
+  "mvsubconn": {
+   "klayout": [],
+   "magic": [
+    "psd.10b"
+   ]
+  },
+  "mvsubconn_guard": {
+   "klayout": [],
+   "magic": []
+  },
+  "nwell": {
+   "klayout": [],
+   "magic": []
+  },
   "sky130_fd_bs_flash__special_sonosfet_star": {
    "klayout": [
     "MR_tunm.CON.1",
@@ -336,6 +381,48 @@
     "via2.1a_b"
    ],
    "magic": []
+  },
+  "subconn": {
+   "klayout": [],
+   "magic": [
+    "psd.10b"
+   ]
+  },
+  "subconn_guard": {
+   "klayout": [],
+   "magic": []
+  },
+  "via1": {
+   "klayout": [],
+   "magic": []
+  },
+  "via2": {
+   "klayout": [
+    "m3.6"
+   ],
+   "magic": [
+    "met3.6"
+   ]
+  },
+  "via3": {
+   "klayout": [
+    "m3.6",
+    "m4.4a"
+   ],
+   "magic": [
+    "met3.6",
+    "met4.4a"
+   ]
+  },
+  "via4": {
+   "klayout": [
+    "m5.1",
+    "m5.4"
+   ],
+   "magic": [
+    "met5.1",
+    "met5.4"
+   ]
   }
  }
 }

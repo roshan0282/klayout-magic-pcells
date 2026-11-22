@@ -66,6 +66,76 @@ def read_open_pdks(pdk_path):
     return ""
 
 
+def read_pdk_commit(pdk_path):
+    """The commit the PDK was built from: open_pdks' from SOURCES (sky130A,
+    gf180mcuD), else the first word of COMMIT (the IHP PDKs), else ''."""
+    c = read_open_pdks(pdk_path)
+    if c:
+        return c
+    try:
+        with open(os.path.join(pdk_path, "COMMIT"), encoding="utf-8", errors="replace") as f:
+            words = f.read().split()
+            return words[0] if words else ""
+    except OSError:
+        return ""
+
+
+def sha256_tree(root):
+    """SHA-256 over every regular file under ``root`` (relative path and
+    contents, in sorted order), or '' if ``root`` isn't a directory.
+
+    Used on the directory that holds the PDK's tech file (libs.tech/magic):
+    the IHP tech files include four more tech files, and the IHP fixed
+    devices source layout scripts from there, none of which the proc text
+    or the top tech file shows."""
+    if not root or not os.path.isdir(root):
+        return ""
+    h = hashlib.sha256()
+    for dirpath, dirnames, files in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
+        for fn in sorted(files):
+            p = os.path.join(dirpath, fn)
+            if not os.path.isfile(p):
+                continue
+            h.update(os.path.relpath(p, root).encode("utf-8") + b"\0")
+            try:
+                h.update(sha256_file(p).encode("ascii"))
+            except OSError:
+                h.update(b"unreadable")
+            h.update(b"\n")
+    return h.hexdigest()
+
+
+def vendor_digest(lines, cache=None):
+    """SHA-256 over the vendor cells that fixed devices copy.
+
+    ``lines`` holds "<cell>\\t<.mag path>\\t<GDS file>" as the server's
+    versions op resolves them through Magic's search path. Each .mag and
+    each GDS file it names is hashed whole (sky130_fd_pr.gds, 10.5 MB, takes
+    about 25 ms). Returns (digest, rows) where rows describe each cell."""
+    cache = {} if cache is None else cache
+
+    def fh(p):
+        if not p:
+            return "none"
+        if p not in cache:
+            try:
+                cache[p] = sha256_file(p)
+            except OSError:
+                cache[p] = "missing"
+        return cache[p]
+    rows = []
+    for line in sorted(l for l in (lines or "").splitlines() if l.strip()):
+        parts = (line.split("\t") + ["", "", ""])[:3]
+        cell, mag, gds = parts
+        rows.append({"cell": cell, "mag": mag, "mag_sha256": fh(mag), "gds": gds,
+                     "gds_sha256": fh(gds)})
+    if not rows:
+        return "", rows
+    text = json.dumps(rows, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest(), rows
+
+
 def defaults_digest(defaults):
     """SHA-256 over the canonical JSON of {device: [[key, value], ...]}."""
     items = [[dev, [[str(k), str(v)] for k, v in defaults[dev]]] for dev in sorted(defaults)]
@@ -77,12 +147,15 @@ class Versions:
     """What the running Magic and PDK are; feeds the cache key and stamps."""
 
     FIELDS = ("magic", "magic_banner", "tech", "tech_name", "tech_file", "tcl", "pdk",
-              "open_pdks", "code", "techfile", "defaults_digest", "protocol")
+              "namespace", "open_pdks", "pdk_commit", "code", "techfile", "techdir", "vendor",
+              "defaults_digest", "protocol")
 
     def __init__(self, **kw):
         for f in self.FIELDS:
             setattr(self, f, kw.get(f, ""))
         self.defaults = kw.get("defaults", {})
+        self.boxpaint = kw.get("boxpaint", [])
+        self.vendor_files = kw.get("vendor_files", [])
 
     def as_dict(self):
         return {f: getattr(self, f) for f in self.FIELDS}
@@ -92,18 +165,20 @@ class Versions:
 
 
 class GenReply:
-    def __init__(self, cell, checked, log_text, us, restart=False):
+    def __init__(self, cell, checked, log_text, us, restart=False, kv=None):
         self.cell = cell
         self.checked = checked
         self.log = log_text
         self.us = us
         self.restart = restart
+        self.kv = kv or {}
 
 
 class CheckReply:
-    def __init__(self, checked, log_text):
+    def __init__(self, checked, log_text, kv=None):
         self.checked = checked
         self.log = log_text
+        self.kv = kv or {}
 
 
 def _make_pdeathsig():
@@ -148,8 +223,11 @@ class MagicServer:
     share one, and the CLI leaves nothing behind.
     """
 
-    def __init__(self, cfg, run_dir=None, server_tcl=SERVER_TCL):
+    def __init__(self, cfg, run_dir=None, server_tcl=SERVER_TCL, vendor_cells=None):
         self.cfg = cfg
+        # Cells whose .mag and vendor GDS the versions op resolves and hashes
+        # (the fixed devices' vendor cells). None: read them from the manifest.
+        self.vendor_cells = vendor_cells
         self._own_run_dir = run_dir is None
         self.run_dir = run_dir or _private_run_dir(cfg)
         self.server_tcl = server_tcl
@@ -183,9 +261,13 @@ class MagicServer:
     def _env(self):
         env = dict(os.environ)
         env["PDK_ROOT"] = self.cfg.pdk_root
-        # The sky130A rcfile reads only PDK_ROOT; PDK is set so that nothing
-        # the rcfile sources picks up an IHP default from the environment.
+        # The rcfiles read PDK_ROOT; PDK is set so that nothing the rcfile
+        # sources picks up the image's IHP default from the environment.
         env["PDK"] = self.cfg.pdk
+        # kmp_server.tcl takes the generator namespace from the PDKNAMESPACE
+        # that the PDK's Tcl sets; a KMP_NS meant for another tool must not
+        # override it for every PDK's server.
+        env.pop("KMP_NS", None)
         env.pop("DISPLAY", None)
         return env
 
@@ -207,7 +289,25 @@ class MagicServer:
         lines = self.stderr_since(mark, wait=0)
         return ("; Magic said: " + " | ".join(lines[-4:])) if lines else ""
 
+    def launch(self):
+        """Start the Magic process without waiting for it. register() calls
+        this for every PDK first, so the Magics load their PDKs in parallel;
+        start() then waits. The process is spawned on the calling thread,
+        which matters: PR_SET_PDEATHSIG kills the child when that thread
+        exits."""
+        with self._lock:
+            if self._proc is None:
+                try:
+                    self._launch()
+                except BackendError:
+                    raise
+            return self._proc is not None
+
     def _spawn(self):
+        self._launch()
+        self._await_ready()
+
+    def _launch(self):
         if os.path.isdir(self.run_dir):
             shutil.rmtree(self.run_dir, ignore_errors=True)
         os.makedirs(self.run_dir, exist_ok=True)
@@ -254,6 +354,12 @@ class MagicServer:
         self._proc, self._lines = proc, lines
         self._parser = protocol.ReplyParser()
         self.stats["spawns"] += 1
+        self._launched_at = time.monotonic()
+        self._ready = False
+
+    def _await_ready(self):
+        if self._ready:
+            return
         budget = max(self.cfg.timeout, 10.0)
         deadline = time.monotonic() + budget
         printed = []
@@ -283,6 +389,7 @@ class MagicServer:
                 text += " (it printed %r; is %s Magic?)" % (printed[-1][:80], self.cfg.magic)
             raise _Transient(text + self._said())
         self._needs_restart = False
+        self._ready = True
 
     def _exit_text(self):
         """'Magic exited (status N)' once the child has exited, else ''."""
@@ -349,14 +456,17 @@ class MagicServer:
         return self._proc is not None and self._proc.poll() is None
 
     def start(self):
-        """Start Magic and read its versions. Returns a ``Versions``."""
+        """Start Magic (or wait for a launched one) and read its versions.
+        Returns a ``Versions``."""
         with self._lock:
-            if not self.alive():
-                try:
+            try:
+                if self._proc is not None and not self._ready:
+                    self._await_ready()
+                elif not self.alive():
                     self._spawn()
-                except _Transient as e:
-                    self._kill()
-                    raise BackendError("Magic did not start: %s" % e)
+            except _Transient as e:
+                self._kill()
+                raise BackendError("Magic did not start: %s" % e)
             if self.versions is None:
                 self.versions = self._read_versions()
             return self.versions
@@ -424,10 +534,21 @@ class MagicServer:
                     self._kill()
             raise BackendError("Magic failed twice: %s" % last)
 
+    def _vendor_cells(self):
+        if self.vendor_cells is not None:
+            return list(self.vendor_cells)
+        try:
+            from .manifest import Manifest
+            return Manifest.load(self.cfg.manifest).vendor_cells()
+        except Exception as e:
+            log.debug("vendor cells: %s", e)
+            return []
+
     def _read_versions(self):
         procs_out = os.path.join(self.run_dir, "procs.txt")
         defaults_out = os.path.join(self.run_dir, "defaults.json")
-        rep = self.request({"op": "versions", "procs_out": procs_out, "defaults_out": defaults_out})
+        rep = self.request({"op": "versions", "procs_out": procs_out, "defaults_out": defaults_out,
+                            "vendor_cells": self._vendor_cells()})
         if not rep.ok:
             raise BackendError("versions request failed: %s" % rep.error)
         kv = rep.kv
@@ -444,14 +565,21 @@ class MagicServer:
                 pass
         tech_file = kv.get("tech_file", "")
         techfile_digest = sha256_file(tech_file) if tech_file and os.path.isfile(tech_file) else ""
+        vdig, vrows = vendor_digest(kv.get("vendor", ""))
         return Versions(
             magic=parse_magic_version(kv.get("magic_banner", "")),
             magic_banner=kv.get("magic_banner", ""),
             tech=kv.get("tech", ""), tech_name=kv.get("tech_name", ""),
             tech_file=tech_file, tcl=kv.get("tcl", ""), pdk=self.cfg.pdk,
-            open_pdks=read_open_pdks(self.cfg.pdk_path), code=code,
-            techfile=techfile_digest, defaults_digest=defaults_digest(defaults),
-            defaults=defaults, protocol=kv.get("protocol", ""))
+            namespace=kv.get("ns", ""),
+            open_pdks=read_open_pdks(self.cfg.pdk_path),
+            pdk_commit=read_pdk_commit(self.cfg.pdk_path), code=code,
+            techfile=techfile_digest,
+            techdir=sha256_tree(os.path.dirname(tech_file)) if tech_file else "",
+            vendor=vdig, vendor_files=vrows,
+            defaults_digest=defaults_digest(defaults),
+            defaults=defaults, boxpaint=kv.get("boxpaint", "").split(),
+            protocol=kv.get("protocol", ""))
 
     def ping(self):
         rep = self.request({"op": "ping"})
@@ -474,32 +602,43 @@ class MagicServer:
             log.warning("Magic kept cells after a request (%s); restarting it",
                         rep.kv.get("leftover", ""))
             self._needs_restart = True
+        if rep.kv.get("kept"):
+            log.debug("Magic keeps the cells %s below %s for later requests",
+                      rep.kv["kept"], device)
+        if rep.kv.get("restored"):
+            log.debug("after %s, the server put back: %s", device, rep.kv["restored"])
         try:
             us = int(rep.kv.get("us", "0"))
         except ValueError:
             us = 0
-        return GenReply(rep.kv.get("cell", ""), rep.params, rep.log, us, restart)
+        return GenReply(rep.kv.get("cell", ""), rep.params, rep.log, us, restart, kv=rep.kv)
 
-    def check(self, device, params):
-        """Run ``_check`` once on the merged defaults; nothing is drawn."""
+    def check(self, device, params, form=None):
+        """Run ``_check`` once on the merged defaults; nothing is drawn. For
+        a box-paint generator (form "box"), report the box Magic would use
+        and what the generator prints."""
         self.stats["check"] += 1
-        rep = self.request({"op": "check", "device": device, "params": dict(params)})
+        req = {"op": "check", "device": device, "params": dict(params)}
+        if form:
+            req["form"] = form
+        rep = self.request(req)
         if not rep.ok:
             raise BackendError("%s: %s" % (device, rep.error.strip() or "check failed"))
-        return CheckReply(rep.params, rep.log)
+        return CheckReply(rep.params, rep.log, kv=rep.kv)
 
 
 class MagicOneShot:
     """The same interface with one Magic process per request (debugging)."""
 
-    def __init__(self, cfg, run_dir=None):
+    def __init__(self, cfg, run_dir=None, vendor_cells=None):
         self.cfg = cfg
         self.run_dir = run_dir
+        self.vendor_cells = vendor_cells
         self.versions = None
         self.stats = {"spawns": 0, "restarts": 0, "requests": 0, "generate": 0, "check": 0}
 
     def _once(self, fn):
-        s = MagicServer(self.cfg, run_dir=self.run_dir)
+        s = MagicServer(self.cfg, run_dir=self.run_dir, vendor_cells=self.vendor_cells)
         try:
             s.start()
             if self.versions is None:
@@ -518,8 +657,11 @@ class MagicOneShot:
     def generate(self, device, params, form, out_path):
         return self._once(lambda s: s.generate(device, params, form, out_path))
 
-    def check(self, device, params):
-        return self._once(lambda s: s.check(device, params))
+    def check(self, device, params, form=None):
+        return self._once(lambda s: s.check(device, params, form))
+
+    def launch(self):
+        return False
 
     def ping(self):
         return self._once(lambda s: s.ping())
@@ -571,6 +713,10 @@ class Generator:
         self._memo = {}
         self._lock = threading.RLock()
         self.stats = {"memo": 0, "disk": 0, "magic": 0, "evicted": 0}
+        # fresh: every get() asks Magic and replaces what the disk cache
+        # held (audit --regen). replaced[key] is a copy of the replaced GDS.
+        self.fresh = False
+        self.replaced = {}
 
     def key(self, spec, request):
         return self.cache.key(spec.name, spec.form, request)
@@ -583,15 +729,22 @@ class Generator:
         key = self.key(spec, request)
         with self._lock:
             hit = self._memo.get(key)
-            if hit is not None:
+            if hit is not None and (not self.fresh or hit.source == "magic"):
                 self.stats["memo"] += 1
                 return Result(hit.key, hit.gds_path, hit.sidecar, "memo")
             entry = self.cache.lookup(key, spec.name)
-            if entry is not None:
+            if entry is not None and not self.fresh:
                 self.stats["disk"] += 1
                 res = Result(key, entry[0], entry[1], "disk")
                 self._memo[key] = res
                 return res
+            if entry is not None and key not in self.replaced:
+                old = self.cache.tmp_path(key) + ".old"
+                try:
+                    shutil.copyfile(entry[0], old)
+                    self.replaced[key] = old
+                except OSError:
+                    pass
             tmp = self.cache.tmp_path(key)
             mark = self.server.stderr_mark() if hasattr(self.server, "stderr_mark") else None
             try:
@@ -626,7 +779,7 @@ class Generator:
             return res
 
     def check(self, spec, request):
-        return self.server.check(spec.name, request)
+        return self.server.check(spec.name, request, spec.form if spec.form == "box" else None)
 
     def evict(self, spec, request):
         """Forget one variant in the memo and on disk, so the next get()
@@ -656,7 +809,8 @@ def _close_all():
 atexit.register(_close_all)
 
 
-def make_server(cfg):
-    s = MagicOneShot(cfg) if cfg.backend == "oneshot" else MagicServer(cfg)
+def make_server(cfg, vendor_cells=None):
+    cls = MagicOneShot if cfg.backend == "oneshot" else MagicServer
+    s = cls(cfg, vendor_cells=vendor_cells)
     _to_close.append(s)
     return s

@@ -1,6 +1,10 @@
 # klayout-magic-pcells design
 
-Written 2026-11-21, before any implementation.
+Written 2026-11-21, before any implementation, for sky130A alone. Version
+0.3 adds gf180mcuD, ihp-sg13g2 and ihp-sg13cmos5l, one library per PDK, and
+PCells for Magic's box-paint generators (vias, contacts, substrate contacts,
+guard rings and wells); the README describes those and lists where the code
+differs from this document.
 
 This is the design for a KLayout PCell library for the sky130A devices that
 Magic generates. Each PCell asks Magic to generate the device and copies the
@@ -441,8 +445,13 @@ Two parts of Magic's dialog are not carried over:
   different PCell.
 - **The dialog callbacks** `sky130::res_recalc`, `cap_recalc` and
   `diode_recalc`, which keep `val`, `l` and `w` consistent while a user types in
-  Magic's dialog. They are Tk dialog code, so in the plugin these fields follow
-  `_check` alone (section 4.4).
+  Magic's dialog. In the plugin these fields follow `_check` alone (section
+  4.4). (Correction, 2026-11-21: the reason first given here, that these
+  callbacks are Tk dialog code, is wrong. `res_recalc` is plain Tcl and runs
+  under `magic -dnull`; `cap_recalc` and `diode_recalc` print a line and
+  return their input. The README explains why the PCell still doesn't call
+  `res_recalc`: Magic's dialog runs `_check` before it, so a typed `val` alone
+  doesn't change the device there either.)
 
 ### 4.3 Validation with `_check`
 
@@ -1127,7 +1136,7 @@ image needs nothing installed.
 ### 10.8 CI
 
 `.github/workflows/parity.yml` follows the pattern in parity.md section 4. The
-repository has no remote, so the workflow has never run on GitHub [untested].
+workflow hadn't run on GitHub when this was written [untested].
 
 ```yaml
 name: parity
@@ -1325,7 +1334,8 @@ The README covers:
 ## 14. Out of scope
 
 - PDKs other than sky130A (sky130B, gf180mcu, ihp-sg13g2). The manifest, the
-  rcfile and the Tcl namespace are per PDK.
+  rcfile and the Tcl namespace are per PDK. (Version 0.3 adds gf180mcuD,
+  ihp-sg13g2 and ihp-sg13cmos5l; sky130B is still out.)
 - A KLayout on the host driving Magic inside a container. It would need a
   wrapper command and shared paths for the GDS files; `KMP_MAGIC` could point at
   such a wrapper later, but it isn't designed or tested here.
@@ -1337,7 +1347,8 @@ The README covers:
 - KLayout's `.mag` reader, and any path back into Magic.
 - Creating devices from guiding shapes.
 - Replacing or wrapping the PDK's `skywater130` library.
-- Publishing: no GitHub repository, no remote, no Salt Mine entry.
+- Publishing: no Salt Mine entry. (The repository went to a private GitHub
+  repository after this design was written.)
 
 ## 15. Open questions and unverified points
 

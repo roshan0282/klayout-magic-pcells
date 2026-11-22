@@ -4,7 +4,7 @@ Two modes, chosen by ``KMP_RT_MODE``:
 
 ``nolib`` (plain python3, library not registered):
     each pcell/<id>.gds and .oas must open as a cold proxy (``is_proxy()``
-    true, ``is_pcell_variant()`` false, title ``<defunct>sky130_magic.…``)
+    true, ``is_pcell_variant()`` false, title ``<defunct><library>.…``)
     whose stored geometry compares identical to ref/<id>.gds and whose stamp
     reads back; the GDS is saved again as resaved/<id>.gds.
 
@@ -37,7 +37,11 @@ for p in (HERE, os.path.join(REPO, "python")):
 from compare import compare_layouts  # noqa: E402
 from klayout_magic_pcells.stamp import read_stamp  # noqa: E402
 
-LIB = "sky130_magic"
+sys.path.insert(0, os.path.join(REPO, "python"))
+from klayout_magic_pcells.config import LIBRARY_NAMES  # noqa: E402
+
+PDK = os.environ.get("KMP_PDK") or "sky130A"
+LIB = LIBRARY_NAMES[PDK]
 DEFUNCT = "<defunct>" + LIB + "."
 
 
@@ -53,8 +57,9 @@ def device_cells(ly, top_name):
             if c.name != top_name and not c.name.startswith("$$$CONTEXT")]
 
 
-def identical(ref_ly, ref_top, ly, cell):
-    r = compare_layouts(ref_ly, ref_ly.cell(ref_top), ly, cell)
+def identical(ref_ly, ref_top, ly, cell, text_attrs=True, text_dupes=True):
+    r = compare_layouts(ref_ly, ref_ly.cell(ref_top), ly, cell, text_attrs=text_attrs,
+                        text_dupes=text_dupes)
     if r["identical"]:
         return "ok"
     return "differs: " + ", ".join(l["layer"] for l in r["layers"] if l["status"] != "same")
@@ -78,7 +83,10 @@ def nolib(pt, env):
             problems.append("is a live PCell variant")
         if not c.display_title().startswith(DEFUNCT):
             problems.append("title %r" % c.display_title())
-        g = identical(ref_ly, pt["ref_top"], ly, c)
+        # A KLayout 0.30.11 OASIS file keeps neither a text's size and
+        # justification nor the second of two identical texts at one place.
+        g = identical(ref_ly, pt["ref_top"], ly, c, text_attrs=(fmt != "oas"),
+                      text_dupes=(fmt != "oas"))
         if g != "ok":
             problems.append("geometry " + g)
         if pt.get("expect_stamp", True):
@@ -145,7 +153,8 @@ def lib(pt, env, st):
     res = {}
     spec = st.manifest[pt["device"]]
     expected = spec.defaults_values()
-    expected.update(spec.parse_request(pt["request"]))
+    # The typed values come from the sweep, not from the plugin's parser.
+    expected.update(pt["value"])
     expected["kmp_created"] = st.created_stamp
     ref_ly = read(os.path.join(env["ref"], pt["id"] + ".gds"))
     files = [("gds_lib", os.path.join(env["pcell"], pt["id"] + ".gds")),
@@ -178,7 +187,7 @@ def lib(pt, env, st):
             try:
                 ly = db.Layout()
                 ly.dbu = dbu
-                pc = ly.create_cell(pt["device"], LIB, spec.parse_request(pt["request"]))
+                pc = ly.create_cell(pt["device"], LIB, pt["value"])
                 v = identical(ref_ly, pt["ref_top"], ly, pc)
                 if v != "ok":
                     # Exact only if Magic's own coordinates sit on the host grid.
@@ -203,7 +212,7 @@ def main():
     st = None
     if mode == "lib":
         import klayout_magic_pcells as kmp
-        st = kmp.state
+        st = kmp.state_for(PDK)
         if st.library is None:
             raise SystemExit("roundtrip: library not registered: %s" % st.last_error)
     out = {}

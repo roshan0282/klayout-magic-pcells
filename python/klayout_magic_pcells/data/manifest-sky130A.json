@@ -1,6 +1,7 @@
 {
  "format": 1,
  "pdk": "sky130A",
+ "namespace": "sky130",
  "built_with": {
   "magic": "8.3.681",
   "magic_banner": "Version 8.3 revision 681.  Compiled on Tue Aug 25 11:50:23 AM CEST 2026.",
@@ -8,6 +9,7 @@
   "tech_name": "sky130A",
   "tcl": "8.6.14",
   "open_pdks": "026824c7969ce6f4fc9678e6ca04b0a06a596c4b",
+  "pdk_commit": "026824c7969ce6f4fc9678e6ca04b0a06a596c4b",
   "klayout_module": "0.30.11"
  },
  "defaults_digest": "76417a631d9ec8e29bcd36c4dca3ef2dfc26d1157286a15d6e420f7157f7348e",
@@ -21,139 +23,1126 @@
   "draw_procs": 80,
   "devices": 60,
   "helpers": 20,
-  "editable_parameter_names": 49,
-  "defaults_run_failures": 0
+  "boxpaint": 13,
+  "editable_parameter_names": 50,
+  "defaults_run_failures": 0,
+  "defaults_run_empty": []
  },
  "types": {
   "float": "number, PCell TypeDouble; sent as Magic's default string when equal to it, else rounded to 12 significant digits and written like a Python float",
-  "int": "count (nf, m, nx, ny), PCell TypeInt",
+  "int": "count (nf, ng, m, nx, ny, turns), PCell TypeInt",
   "bool01": "checkbox, PCell TypeBoolean, sent as 1 or 0",
   "signed": "coverage whose first character Magic reads as an anchor (+, - or none); PCell TypeString, sent verbatim when it is a decimal number with an optional + or - and optional whitespace, refused otherwise",
+  "choice": "selectlist other than the device-type switch; PCell TypeString with Magic's choices, sent verbatim when it is one of them, refused otherwise",
+  "numlist": "a number, or one number per layer separated by spaces (IHP via nxcuts, nycuts); PCell TypeString, sent verbatim when every element is a decimal number, refused otherwise",
   "string": "other text entry, PCell TypeString, sent verbatim",
-  "enum": "selectlist; not a PCell parameter",
+  "enum": "the device-type switch (gencell) or a selectindex; not a PCell parameter",
   "readonly": "dialog message; not a PCell parameter",
   "internal": "no dialog widget; not a PCell parameter, Magic's default is used"
  },
+ "menu_defects": [],
+ "boxpaint": [
+  {
+   "name": "deep_nwell",
+   "family": "box_paint",
+   "form": "box",
+   "label": "deep n-well region (1.8V)",
+   "proc": "sky130::deep_nwell_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / deep n-well region (1.8V)",
+   "min_box_um": "3.0",
+   "below_min": {
+    "box_um": "2.995",
+    "painted": false,
+    "messages": "Deep-nwell region width must be at least 3.0um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "3.0"
+    ],
+    [
+     "h",
+     "3.0"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "3.0",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "3.0",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_1"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_1"
+    ],
+    "gds_bbox_um": [
+     -0.4,
+     -0.4,
+     3.4,
+     3.4
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "64/18",
+     "64/20",
+     "65/44",
+     "66/44",
+     "67/20",
+     "93/44"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "3.0"
+     ],
+     [
+      "h",
+      "3.0"
+     ]
+    ],
+    "box": "0 0 600 600"
+   }
+  },
+  {
+   "name": "mcon",
+   "family": "box_paint",
+   "form": "box",
+   "label": "mcon",
+   "proc": "sky130::mcon_draw",
+   "draw_args": "dir",
+   "menu": "Devices 1 / mcon",
+   "min_box_um": "0.17",
+   "below_min": {
+    "box_um": "0.165",
+    "painted": false,
+    "messages": "Mcon width must be at least 0.17um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.17"
+    ],
+    [
+     "h",
+     "0.17"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.17",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.17",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_2"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_2"
+    ],
+    "gds_bbox_um": [
+     -0.06,
+     -0.03,
+     0.23,
+     0.2
+    ],
+    "grid_nm": 10,
+    "empty": false,
+    "layers": [
+     "67/20",
+     "67/44",
+     "68/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.17"
+     ],
+     [
+      "h",
+      "0.17"
+     ]
+    ],
+    "box": "0 0 34 34"
+   }
+  },
+  {
+   "name": "mvdeep_nwell",
+   "family": "box_paint",
+   "form": "box",
+   "label": "deep n-well region (5.0V)",
+   "proc": "sky130::mvdeep_nwell_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / deep n-well region (5.0V)",
+   "min_box_um": "3.0",
+   "below_min": {
+    "box_um": "2.995",
+    "painted": false,
+    "messages": "MV Deep-nwell region width must be at least 3.0um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "3.0"
+    ],
+    [
+     "h",
+     "3.0"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "3.0",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "3.0",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_3"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_3"
+    ],
+    "gds_bbox_um": [
+     -0.55,
+     -0.55,
+     3.55,
+     3.55
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "64/18",
+     "64/20",
+     "65/44",
+     "66/44",
+     "67/20",
+     "75/20",
+     "93/44"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "3.0"
+     ],
+     [
+      "h",
+      "3.0"
+     ]
+    ],
+    "box": "0 0 600 600"
+   }
+  },
+  {
+   "name": "mvnwell",
+   "family": "box_paint",
+   "form": "box",
+   "label": "n-well region with guard ring (5.0V)",
+   "proc": "sky130::mvnwell_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / n-well region with guard ring (5.0V)",
+   "min_box_um": "0.6",
+   "below_min": {
+    "box_um": "0.595",
+    "painted": false,
+    "messages": "MV N-well region width must be at least 0.6um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.6"
+    ],
+    [
+     "h",
+     "0.6"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.6",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.6",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_4"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_4"
+    ],
+    "gds_bbox_um": [
+     -0.415,
+     -0.415,
+     1.015,
+     1.015
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "64/20",
+     "65/44",
+     "66/44",
+     "67/20",
+     "75/20",
+     "93/44"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.6"
+     ],
+     [
+      "h",
+      "0.6"
+     ]
+    ],
+    "box": "0 0 120 120"
+   }
+  },
+  {
+   "name": "mvsubconn",
+   "family": "box_paint",
+   "form": "box",
+   "label": "substrate contact (5.0V)",
+   "proc": "sky130::mvsubconn_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / substrate contact (5.0V)",
+   "min_box_um": "0.17",
+   "below_min": {
+    "box_um": "0.165",
+    "painted": false,
+    "messages": "Substrate tap width must be at least 0.17um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.17"
+    ],
+    [
+     "h",
+     "0.17"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.17",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.17",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_5"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_5"
+    ],
+    "gds_bbox_um": [
+     -0.335,
+     -0.335,
+     0.505,
+     0.505
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "65/44",
+     "66/44",
+     "67/20",
+     "75/20",
+     "94/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.17"
+     ],
+     [
+      "h",
+      "0.17"
+     ]
+    ],
+    "box": "0 0 34 34"
+   }
+  },
+  {
+   "name": "mvsubconn_guard",
+   "family": "box_paint",
+   "form": "box",
+   "label": "substrate guard ring (5.0V)",
+   "proc": "sky130::mvsubconn_guard_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / substrate guard ring (5.0V)",
+   "min_box_um": "0.6",
+   "below_min": {
+    "box_um": "0.595",
+    "painted": false,
+    "messages": "Substrate guard ring width must be at least 0.6um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.6"
+    ],
+    [
+     "h",
+     "0.6"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.6",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.6",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_6"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_6"
+    ],
+    "gds_bbox_um": [
+     -0.27,
+     -0.27,
+     0.87,
+     0.87
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "65/44",
+     "66/44",
+     "67/20",
+     "75/20",
+     "94/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.6"
+     ],
+     [
+      "h",
+      "0.6"
+     ]
+    ],
+    "box": "0 0 120 120"
+   }
+  },
+  {
+   "name": "nwell",
+   "family": "box_paint",
+   "form": "box",
+   "label": "n-well region with guard ring (1.8V)",
+   "proc": "sky130::nwell_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / n-well region with guard ring (1.8V)",
+   "min_box_um": "0.6",
+   "below_min": {
+    "box_um": "0.595",
+    "painted": false,
+    "messages": "N-well region width must be at least 0.6um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.6"
+    ],
+    [
+     "h",
+     "0.6"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.6",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.6",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_7"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_7"
+    ],
+    "gds_bbox_um": [
+     -0.265,
+     -0.265,
+     0.865,
+     0.865
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "64/20",
+     "65/44",
+     "66/44",
+     "67/20",
+     "93/44"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.6"
+     ],
+     [
+      "h",
+      "0.6"
+     ]
+    ],
+    "box": "0 0 120 120"
+   }
+  },
+  {
+   "name": "subconn",
+   "family": "box_paint",
+   "form": "box",
+   "label": "substrate contact (1.8V)",
+   "proc": "sky130::subconn_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / substrate contact (1.8V)",
+   "min_box_um": "0.17",
+   "below_min": {
+    "box_um": "0.165",
+    "painted": false,
+    "messages": "Substrate tap width must be at least 0.17um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.17"
+    ],
+    [
+     "h",
+     "0.17"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.17",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.17",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_8"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_8"
+    ],
+    "gds_bbox_um": [
+     -0.125,
+     -0.245,
+     0.295,
+     0.415
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "65/44",
+     "66/44",
+     "67/20",
+     "94/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.17"
+     ],
+     [
+      "h",
+      "0.17"
+     ]
+    ],
+    "box": "0 0 34 34"
+   }
+  },
+  {
+   "name": "subconn_guard",
+   "family": "box_paint",
+   "form": "box",
+   "label": "substrate guard ring (1.8V)",
+   "proc": "sky130::subconn_guard_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / substrate guard ring (1.8V)",
+   "min_box_um": "0.6",
+   "below_min": {
+    "box_um": "0.595",
+    "painted": false,
+    "messages": "Substrate guard ring width must be at least 0.6um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.6"
+    ],
+    [
+     "h",
+     "0.6"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.6",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.6",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_9"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_9"
+    ],
+    "gds_bbox_um": [
+     -0.21,
+     -0.21,
+     0.81,
+     0.81
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "65/44",
+     "66/44",
+     "67/20",
+     "94/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.6"
+     ],
+     [
+      "h",
+      "0.6"
+     ]
+    ],
+    "box": "0 0 120 120"
+   }
+  },
+  {
+   "name": "via1",
+   "family": "box_paint",
+   "form": "box",
+   "label": "via1",
+   "proc": "sky130::via1_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / via1",
+   "min_box_um": "0.26",
+   "below_min": {
+    "box_um": "0.255",
+    "painted": false,
+    "messages": "Via1 width must be at least 0.26um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.26"
+    ],
+    [
+     "h",
+     "0.26"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.26",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.26",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_10"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_10"
+    ],
+    "gds_bbox_um": [
+     -0.05,
+     -0.05,
+     0.31,
+     0.31
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "68/20",
+     "68/44",
+     "69/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.26"
+     ],
+     [
+      "h",
+      "0.26"
+     ]
+    ],
+    "box": "0 0 52 52"
+   }
+  },
+  {
+   "name": "via2",
+   "family": "box_paint",
+   "form": "box",
+   "label": "via2",
+   "proc": "sky130::via2_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / via2",
+   "min_box_um": "0.28",
+   "below_min": {
+    "box_um": "0.275",
+    "painted": false,
+    "messages": "Via2 width must be at least 0.28um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.28"
+    ],
+    [
+     "h",
+     "0.28"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.28",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.28",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_11"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_11"
+    ],
+    "gds_bbox_um": [
+     -0.05,
+     -0.05,
+     0.33,
+     0.33
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "69/20",
+     "69/44",
+     "70/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.28"
+     ],
+     [
+      "h",
+      "0.28"
+     ]
+    ],
+    "box": "0 0 56 56"
+   }
+  },
+  {
+   "name": "via3",
+   "family": "box_paint",
+   "form": "box",
+   "label": "via3",
+   "proc": "sky130::via3_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / via3",
+   "min_box_um": "0.32",
+   "below_min": {
+    "box_um": "0.315",
+    "painted": false,
+    "messages": "Via3 width must be at least 0.32um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "0.32"
+    ],
+    [
+     "h",
+     "0.32"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "0.32",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "0.32",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_12"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_12"
+    ],
+    "gds_bbox_um": [
+     -0.05,
+     -0.005,
+     0.37,
+     0.325
+    ],
+    "grid_nm": 5,
+    "empty": false,
+    "layers": [
+     "70/20",
+     "70/44",
+     "71/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "0.32"
+     ],
+     [
+      "h",
+      "0.32"
+     ]
+    ],
+    "box": "0 0 64 64"
+   }
+  },
+  {
+   "name": "via4",
+   "family": "box_paint",
+   "form": "box",
+   "label": "via4",
+   "proc": "sky130::via4_draw",
+   "draw_args": "",
+   "menu": "Devices 1 / via4",
+   "min_box_um": "1.18",
+   "below_min": {
+    "box_um": "1.175",
+    "painted": false,
+    "messages": "Via3 width must be at least 1.18um\n"
+   },
+   "defaults": [
+    [
+     "w",
+     "1.18"
+    ],
+    [
+     "h",
+     "1.18"
+    ]
+   ],
+   "params": [
+    {
+     "name": "w",
+     "default": "1.18",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box width (um)"
+    },
+    {
+     "name": "h",
+     "default": "1.18",
+     "type": "float",
+     "editable": true,
+     "widget": "box",
+     "label": "Box height (um)"
+    }
+   ],
+   "defaults_run": {
+    "ok": true,
+    "messages": "",
+    "magic_cell": "",
+    "top_cells": [
+     "kmp_box_13"
+    ],
+    "cells": 1,
+    "cell_names": [
+     "kmp_box_13"
+    ],
+    "gds_bbox_um": [
+     -0.12,
+     -0.12,
+     1.3,
+     1.3
+    ],
+    "grid_nm": 10,
+    "empty": false,
+    "layers": [
+     "71/20",
+     "71/44",
+     "72/20"
+    ],
+    "texts": [],
+    "checked": [
+     [
+      "w",
+      "1.18"
+     ],
+     [
+      "h",
+      "1.18"
+     ]
+    ],
+    "box": "0 0 236 236"
+   }
+  }
+ ],
  "excluded": [
   {
    "name": "cap",
    "proc": "sky130::cap_draw",
    "menu": null,
-   "reason": "internal helper _draw proc with no _defaults proc: the device _draw procs call it, and Magic's menus don't offer it"
-  },
-  {
-   "name": "deep_nwell",
-   "proc": "sky130::deep_nwell_draw",
-   "menu": "Devices 1 / deep n-well region (1.8V)",
-   "reason": "in Magic's \"Devices 1\" menu as \"deep n-well region (1.8V)\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
+   "reason": "internal helper _draw proc: it takes required arguments, the device _draw procs call it, and Magic's menus don't offer it"
   },
   {
    "name": "diode",
    "proc": "sky130::diode_draw",
    "menu": null,
-   "reason": "internal helper _draw proc with no _defaults proc: the device _draw procs call it, and Magic's menus don't offer it"
+   "reason": "internal helper _draw proc: it takes required arguments, the device _draw procs call it, and Magic's menus don't offer it"
   },
   {
    "name": "fixed",
    "proc": "sky130::fixed_draw",
    "menu": null,
-   "reason": "internal helper _draw proc with no _defaults proc: the device _draw procs call it, and Magic's menus don't offer it"
+   "reason": "internal helper _draw proc: it takes required arguments, the device _draw procs call it, and Magic's menus don't offer it"
   },
   {
    "name": "guard_ring",
    "proc": "sky130::guard_ring_draw",
    "menu": null,
-   "reason": "internal helper _draw proc with no _defaults proc: the device _draw procs call it, and Magic's menus don't offer it"
-  },
-  {
-   "name": "mcon",
-   "proc": "sky130::mcon_draw",
-   "menu": "Devices 1 / mcon",
-   "reason": "in Magic's \"Devices 1\" menu as \"mcon\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
+   "reason": "internal helper _draw proc: it takes required arguments, the device _draw procs call it, and Magic's menus don't offer it"
   },
   {
    "name": "mos",
    "proc": "sky130::mos_draw",
    "menu": null,
-   "reason": "internal helper _draw proc with no _defaults proc: the device _draw procs call it, and Magic's menus don't offer it"
-  },
-  {
-   "name": "mvdeep_nwell",
-   "proc": "sky130::mvdeep_nwell_draw",
-   "menu": "Devices 1 / deep n-well region (5.0V)",
-   "reason": "in Magic's \"Devices 1\" menu as \"deep n-well region (5.0V)\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "mvnwell",
-   "proc": "sky130::mvnwell_draw",
-   "menu": "Devices 1 / n-well region with guard ring (5.0V)",
-   "reason": "in Magic's \"Devices 1\" menu as \"n-well region with guard ring (5.0V)\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "mvsubconn",
-   "proc": "sky130::mvsubconn_draw",
-   "menu": "Devices 1 / substrate contact (5.0V)",
-   "reason": "in Magic's \"Devices 1\" menu as \"substrate contact (5.0V)\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "mvsubconn_guard",
-   "proc": "sky130::mvsubconn_guard_draw",
-   "menu": "Devices 1 / substrate guard ring (5.0V)",
-   "reason": "in Magic's \"Devices 1\" menu as \"substrate guard ring (5.0V)\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "nwell",
-   "proc": "sky130::nwell_draw",
-   "menu": "Devices 1 / n-well region with guard ring (1.8V)",
-   "reason": "in Magic's \"Devices 1\" menu as \"n-well region with guard ring (1.8V)\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
+   "reason": "internal helper _draw proc: it takes required arguments, the device _draw procs call it, and Magic's menus don't offer it"
   },
   {
    "name": "photodiode",
    "proc": "sky130::photodiode_draw",
    "menu": null,
-   "reason": "internal helper _draw proc with no _defaults proc: the device _draw procs call it, and Magic's menus don't offer it"
+   "reason": "internal helper _draw proc: it takes required arguments, the device _draw procs call it, and Magic's menus don't offer it"
   },
   {
    "name": "res",
    "proc": "sky130::res_draw",
    "menu": null,
-   "reason": "internal helper _draw proc with no _defaults proc: the device _draw procs call it, and Magic's menus don't offer it"
-  },
-  {
-   "name": "subconn",
-   "proc": "sky130::subconn_draw",
-   "menu": "Devices 1 / substrate contact (1.8V)",
-   "reason": "in Magic's \"Devices 1\" menu as \"substrate contact (1.8V)\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "subconn_guard",
-   "proc": "sky130::subconn_guard_draw",
-   "menu": "Devices 1 / substrate guard ring (1.8V)",
-   "reason": "in Magic's \"Devices 1\" menu as \"substrate guard ring (1.8V)\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "via1",
-   "proc": "sky130::via1_draw",
-   "menu": "Devices 1 / via1",
-   "reason": "in Magic's \"Devices 1\" menu as \"via1\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "via2",
-   "proc": "sky130::via2_draw",
-   "menu": "Devices 1 / via2",
-   "reason": "in Magic's \"Devices 1\" menu as \"via2\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "via3",
-   "proc": "sky130::via3_draw",
-   "menu": "Devices 1 / via3",
-   "reason": "in Magic's \"Devices 1\" menu as \"via3\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
-  },
-  {
-   "name": "via4",
-   "proc": "sky130::via4_draw",
-   "menu": "Devices 1 / via4",
-   "reason": "in Magic's \"Devices 1\" menu as \"via4\", a command that paints into the current box; it has no _defaults proc and no parameter dialog, so magic::gencell can't build it as a parameterized cell, and this version has no PCell for it"
+   "reason": "internal helper _draw proc: it takes required arguments, the device _draw procs call it, and Magic's menus don't offer it"
   }
  ],
  "devices": [
@@ -629,6 +1618,9 @@
      "sky130_fd_bs_flash__special_sonosfet_star_BXHNFL"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_bs_flash__special_sonosfet_star_BXHNFL"
+    ],
     "gds_bbox_um": [
      -2.145,
      -2.35,
@@ -636,6 +1628,7 @@
      2.35
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "11/44",
      "64/18",
@@ -1097,6 +2090,9 @@
      "sky130_fd_pr__cap_mim_m3_1_4V3HYR"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__cap_mim_m3_1_4V3HYR"
+    ],
     "gds_bbox_um": [
      -2.08,
      -1.2,
@@ -1104,6 +2100,7 @@
      1.2
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "70/20",
      "70/44",
@@ -1487,6 +2484,9 @@
      "sky130_fd_pr__cap_mim_m3_2_B68646"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__cap_mim_m3_2_B68646"
+    ],
     "gds_bbox_um": [
      -2.745,
      -1.405,
@@ -1494,6 +2494,7 @@
      1.405
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "71/20",
      "71/44",
@@ -2067,6 +3068,9 @@
      "sky130_fd_pr__cap_var_BWNGTX"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__cap_var_BWNGTX"
+    ],
     "gds_bbox_um": [
      -2.375,
      -2.415,
@@ -2074,6 +3078,7 @@
      2.415
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/44",
@@ -2690,6 +3695,9 @@
      "sky130_fd_pr__cap_var_hvt_T9WJZK"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__cap_var_hvt_T9WJZK"
+    ],
     "gds_bbox_um": [
      -1.25,
      -1.45,
@@ -2697,6 +3705,7 @@
      1.45
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/44",
@@ -3299,6 +4308,9 @@
      "sky130_fd_pr__cap_var_lvt_RWRFT5"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__cap_var_lvt_RWRFT5"
+    ],
     "gds_bbox_um": [
      -1.25,
      -1.45,
@@ -3306,6 +4318,7 @@
      1.45
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/44",
@@ -3575,6 +4588,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__cap_vpp_04p4x04p6_m1m2_shieldl1"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -3582,6 +4599,7 @@
      4.59
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/59",
      "67/20",
@@ -3781,6 +4799,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__cap_vpp_08p6x07p8_m1m2_shieldl1"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -3788,6 +4810,7 @@
      7.84
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/59",
      "67/20",
@@ -3987,6 +5010,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__cap_vpp_11p5x11p7_m1m2_noshield"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -3994,6 +5021,7 @@
      11.69
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/59",
      "68/20",
@@ -4191,6 +5219,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__cap_vpp_11p5x11p7_m1m2m3m4_shieldl1m5"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -4198,6 +5230,7 @@
      11.69
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/59",
      "67/20",
@@ -4656,6 +5689,9 @@
      "sky130_fd_pr__diode_pd2nw_05v5_PABBBD"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__diode_pd2nw_05v5_PABBBD"
+    ],
     "gds_bbox_um": [
      -1.55,
      -1.55,
@@ -4663,6 +5699,7 @@
      1.55
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -5180,6 +6217,9 @@
      "sky130_fd_pr__diode_pd2nw_05v5_hvt_PABBBD"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__diode_pd2nw_05v5_hvt_PABBBD"
+    ],
     "gds_bbox_um": [
      -1.61,
      -1.61,
@@ -5187,6 +6227,7 @@
      1.61
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -5705,6 +6746,9 @@
      "sky130_fd_pr__diode_pd2nw_05v5_lvt_PABBBD"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__diode_pd2nw_05v5_lvt_PABBBD"
+    ],
     "gds_bbox_um": [
      -1.61,
      -1.61,
@@ -5712,6 +6756,7 @@
      1.61
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -6236,6 +7281,9 @@
      "sky130_fd_pr__diode_pd2nw_11v0_PABBBD"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__diode_pd2nw_11v0_PABBBD"
+    ],
     "gds_bbox_um": [
      -2.12,
      -2.12,
@@ -6243,6 +7291,7 @@
      2.12
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -6713,6 +7762,9 @@
      "sky130_fd_pr__diode_pw2nd_05v5_95G5CE"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__diode_pw2nd_05v5_95G5CE"
+    ],
     "gds_bbox_um": [
      -0.86,
      -0.86,
@@ -6720,6 +7772,7 @@
      0.86
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -7172,6 +8225,9 @@
      "sky130_fd_pr__diode_pw2nd_05v5_lvt_95G5CE"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__diode_pw2nd_05v5_lvt_95G5CE"
+    ],
     "gds_bbox_um": [
      -0.92,
      -0.92,
@@ -7179,6 +8235,7 @@
      0.92
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -7638,6 +8695,9 @@
      "sky130_fd_pr__diode_pw2nd_05v5_nvt_95G5CE"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__diode_pw2nd_05v5_nvt_95G5CE"
+    ],
     "gds_bbox_um": [
      -1.07,
      -1.07,
@@ -7645,6 +8705,7 @@
      1.07
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -8106,6 +9167,9 @@
      "sky130_fd_pr__diode_pw2nd_11v0_95G5CE"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__diode_pw2nd_11v0_95G5CE"
+    ],
     "gds_bbox_um": [
      -1.09,
      -1.09,
@@ -8113,6 +9177,7 @@
      1.09
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -8710,6 +9775,9 @@
      "sky130_fd_pr__nfet_01v8_BXHNFL"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__nfet_01v8_BXHNFL"
+    ],
     "gds_bbox_um": [
      -1.0,
      -1.205,
@@ -8717,6 +9785,7 @@
      1.205
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -9357,6 +10426,9 @@
      "sky130_fd_pr__nfet_01v8_lvt_BXHNFL"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__nfet_01v8_lvt_BXHNFL"
+    ],
     "gds_bbox_um": [
      -1.0,
      -1.205,
@@ -9364,6 +10436,7 @@
      1.205
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -10005,6 +11078,9 @@
      "sky130_fd_pr__nfet_03v3_nvt_4PGU4D"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__nfet_03v3_nvt_4PGU4D"
+    ],
     "gds_bbox_um": [
      -1.395,
      -1.505,
@@ -10012,6 +11088,7 @@
      1.505
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -10656,6 +11733,9 @@
      "sky130_fd_pr__nfet_05v0_nvt_9AL773"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__nfet_05v0_nvt_9AL773"
+    ],
     "gds_bbox_um": [
      -1.595,
      -1.505,
@@ -10663,6 +11743,7 @@
      1.505
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -11306,6 +12387,9 @@
      "sky130_fd_pr__nfet_g5v0d10v5_4PGU4D"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__nfet_g5v0d10v5_4PGU4D"
+    ],
     "gds_bbox_um": [
      -1.405,
      -1.505,
@@ -11313,6 +12397,7 @@
      1.505
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/20",
      "65/44",
@@ -11928,6 +13013,9 @@
      "sky130_fd_pr__nfet_g5v0d16v0_XNCHUA"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__nfet_g5v0d16v0_XNCHUA"
+    ],
     "gds_bbox_um": [
      -3.53,
      -4.585,
@@ -11935,6 +13023,7 @@
      4.585
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -12224,6 +13313,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__rf_npn_05v5_W1p00L1p00"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -12231,6 +13324,7 @@
      8.62
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/18",
      "64/20",
@@ -12412,6 +13506,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__rf_npn_05v5_W1p00L2p00"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -12419,6 +13517,7 @@
      9.62
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/18",
      "64/20",
@@ -12600,6 +13699,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__rf_npn_11v0_W1p00L1p00"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -12607,6 +13710,7 @@
      9.75
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/18",
      "64/20",
@@ -13151,6 +14255,9 @@
      "sky130_fd_pr__pfet_01v8_FQ5XRT"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__pfet_01v8_FQ5XRT"
+    ],
     "gds_bbox_um": [
      -1.055,
      -1.305,
@@ -13158,6 +14265,7 @@
      1.305
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -13797,6 +14905,9 @@
      "sky130_fd_pr__pfet_01v8_hvt_FQ5XRT"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__pfet_01v8_hvt_FQ5XRT"
+    ],
     "gds_bbox_um": [
      -1.055,
      -1.305,
@@ -13804,6 +14915,7 @@
      1.305
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -14444,6 +15556,9 @@
      "sky130_fd_pr__pfet_01v8_lvt_CWK98C"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__pfet_01v8_lvt_CWK98C"
+    ],
     "gds_bbox_um": [
      -1.155,
      -1.305,
@@ -14451,6 +15566,7 @@
      1.305
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -15091,6 +16207,9 @@
      "sky130_fd_pr__pfet_g5v0d10v5_DASHZW"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__pfet_g5v0d10v5_DASHZW"
+    ],
     "gds_bbox_um": [
      -1.54,
      -1.695,
@@ -15098,6 +16217,7 @@
      1.695
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -15723,6 +16843,9 @@
      "sky130_fd_pr__pfet_g5v0d16v0_VMPBJP"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__pfet_g5v0d16v0_VMPBJP"
+    ],
     "gds_bbox_um": [
      -3.47,
      -4.64,
@@ -15730,6 +16853,7 @@
      4.64
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -16012,6 +17136,9 @@
      "sky130_fd_pr__photodiode_MN62CG"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__photodiode_MN62CG"
+    ],
     "gds_bbox_um": [
      -10.68,
      -10.68,
@@ -16019,6 +17146,7 @@
      10.68
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/18",
      "64/20",
@@ -16194,6 +17322,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__rf_pnp_05v5_W0p68L0p68"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -16201,6 +17333,7 @@
      3.98
     ],
     "grid_nm": 1,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -16482,6 +17615,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__rf_pnp_05v5_W3p40L3p40"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -16489,6 +17626,7 @@
      6.7
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/20",
@@ -16644,6 +17782,9 @@
      "check_int": false,
      "check_messages": [
       "Resistor width must be >= 0.17 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -16789,6 +17930,9 @@
      "sky130_fd_pr__res_generic_l1_TV5DTF"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_l1_TV5DTF"
+    ],
     "gds_bbox_um": [
      -0.085,
      -0.37,
@@ -16796,6 +17940,7 @@
      0.37
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "67/5",
      "67/13",
@@ -16959,6 +18104,9 @@
      "check_int": false,
      "check_messages": [
       "Resistor width must be >= 0.14 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -17101,6 +18249,9 @@
      "sky130_fd_pr__res_generic_m1_NX92XM"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_m1_NX92XM"
+    ],
     "gds_bbox_um": [
      -0.07,
      -0.355,
@@ -17108,6 +18259,7 @@
      0.355
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "68/5",
      "68/13",
@@ -17267,6 +18419,9 @@
      "check_int": false,
      "check_messages": [
       "Resistor width must be >= 0.14 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -17409,6 +18564,9 @@
      "sky130_fd_pr__res_generic_m2_NX92XM"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_m2_NX92XM"
+    ],
     "gds_bbox_um": [
      -0.07,
      -0.355,
@@ -17416,6 +18574,7 @@
      0.355
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "69/5",
      "69/13",
@@ -17575,6 +18734,9 @@
      "check_int": false,
      "check_messages": [
       "Resistor width must be >= 0.30 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -17717,6 +18879,9 @@
      "sky130_fd_pr__res_generic_m3_5VRV4L"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_m3_5VRV4L"
+    ],
     "gds_bbox_um": [
      -0.15,
      -0.435,
@@ -17724,6 +18889,7 @@
      0.435
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "70/5",
      "70/13",
@@ -17883,6 +19049,9 @@
      "check_int": false,
      "check_messages": [
       "Resistor width must be >= 0.30 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -18025,6 +19194,9 @@
      "sky130_fd_pr__res_generic_m4_5VRV4L"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_m4_5VRV4L"
+    ],
     "gds_bbox_um": [
      -0.15,
      -0.435,
@@ -18032,6 +19204,7 @@
      0.435
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "71/5",
      "71/13",
@@ -18191,6 +19364,9 @@
      "check_int": false,
      "check_messages": [
       "Resistor width must be >= 1.60 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -18330,6 +19506,9 @@
      "sky130_fd_pr__res_generic_m5_KD9WJ6"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_m5_KD9WJ6"
+    ],
     "gds_bbox_um": [
      -0.8,
      -1.085,
@@ -18337,6 +19516,7 @@
      1.085
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "72/5",
      "72/13",
@@ -18837,6 +20017,9 @@
      "sky130_fd_pr__res_generic_nd__hv_4WA2BH"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_nd__hv_4WA2BH"
+    ],
     "gds_bbox_um": [
      -1.125,
      -2.48,
@@ -18844,6 +20027,7 @@
      2.48
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/13",
      "65/20",
@@ -19420,6 +20604,9 @@
      "sky130_fd_pr__res_generic_nd_4WA2BH"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_nd_4WA2BH"
+    ],
     "gds_bbox_um": [
      -0.945,
      -2.3,
@@ -19427,6 +20614,7 @@
      2.3
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/13",
      "65/20",
@@ -20001,6 +21189,9 @@
      "sky130_fd_pr__res_generic_pd__hv_EJU6QV"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_pd__hv_EJU6QV"
+    ],
     "gds_bbox_um": [
      -1.27,
      -2.625,
@@ -20008,6 +21199,7 @@
      2.625
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/13",
@@ -20584,6 +21776,9 @@
      "sky130_fd_pr__res_generic_pd_EJU6QV"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_pd_EJU6QV"
+    ],
     "gds_bbox_um": [
      -1.0,
      -2.355,
@@ -20591,6 +21786,7 @@
      2.355
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/20",
      "65/13",
@@ -20893,6 +22089,9 @@
      "check_int": false,
      "check_messages": [
       "Resistor width must be >= 0.330 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -21186,6 +22385,9 @@
      "sky130_fd_pr__res_generic_po_QJMCKK"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_generic_po_QJMCKK"
+    ],
     "gds_bbox_um": [
      -0.94,
      -3.75,
@@ -21193,6 +22395,7 @@
      3.75
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -21504,6 +22707,9 @@
      "check_messages": [
       "Resistor width must be <= 0.350 um",
       "Resistor width must be >= 0.350 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -21801,6 +23007,9 @@
      "sky130_fd_pr__res_high_po_0p35_TD68X4"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_high_po_0p35_TD68X4"
+    ],
     "gds_bbox_um": [
      -0.95,
      -3.105,
@@ -21808,6 +23017,7 @@
      3.105
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -22120,6 +23330,9 @@
      "check_messages": [
       "Resistor width must be <= 0.690 um",
       "Resistor width must be >= 0.690 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -22414,6 +23627,9 @@
      "sky130_fd_pr__res_high_po_0p69_UELT9B"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_high_po_0p69_UELT9B"
+    ],
     "gds_bbox_um": [
      -1.12,
      -3.355,
@@ -22421,6 +23637,7 @@
      3.355
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -22733,6 +23950,9 @@
      "check_messages": [
       "Resistor width must be <= 1.410 um",
       "Resistor width must be >= 1.410 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -23027,6 +24247,9 @@
      "sky130_fd_pr__res_high_po_1p41_Q2AW66"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_high_po_1p41_Q2AW66"
+    ],
     "gds_bbox_um": [
      -1.48,
      -3.855,
@@ -23034,6 +24257,7 @@
      3.855
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -23346,6 +24570,9 @@
      "check_messages": [
       "Resistor width must be <= 2.850 um",
       "Resistor width must be >= 2.850 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -23640,6 +24867,9 @@
      "sky130_fd_pr__res_high_po_2p85_EJVDE3"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_high_po_2p85_EJVDE3"
+    ],
     "gds_bbox_um": [
      -2.2,
      -4.355,
@@ -23647,6 +24877,7 @@
      4.355
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -23959,6 +25190,9 @@
      "check_messages": [
       "Resistor width must be <= 5.730 um",
       "Resistor width must be >= 5.730 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -24253,6 +25487,9 @@
      "sky130_fd_pr__res_high_po_5p73_8TU35N"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_high_po_5p73_8TU35N"
+    ],
     "gds_bbox_um": [
      -3.64,
      -5.855,
@@ -24260,6 +25497,7 @@
      5.855
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -24750,6 +25988,9 @@
      "sky130_fd_pr__res_iso_pw_VDLDNF"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_iso_pw_VDLDNF"
+    ],
     "gds_bbox_um": [
      -2.755,
      -15.47,
@@ -24757,6 +25998,7 @@
      15.47
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "64/13",
      "64/18",
@@ -25029,6 +26271,9 @@
      "check_messages": [
       "Resistor width must be <= 0.350 um",
       "Resistor width must be >= 0.350 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -25326,6 +26571,9 @@
      "sky130_fd_pr__res_xhigh_po_0p35_JF7MNF"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_xhigh_po_0p35_JF7MNF"
+    ],
     "gds_bbox_um": [
      -0.95,
      -3.105,
@@ -25333,6 +26581,7 @@
      3.105
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -25645,6 +26894,9 @@
      "check_messages": [
       "Resistor width must be <= 0.690 um",
       "Resistor width must be >= 0.690 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -25939,6 +27191,9 @@
      "sky130_fd_pr__res_xhigh_po_0p69_WL8URU"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_xhigh_po_0p69_WL8URU"
+    ],
     "gds_bbox_um": [
      -1.12,
      -3.355,
@@ -25946,6 +27201,7 @@
      3.355
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -26258,6 +27514,9 @@
      "check_messages": [
       "Resistor width must be <= 1.410 um",
       "Resistor width must be >= 1.410 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -26552,6 +27811,9 @@
      "sky130_fd_pr__res_xhigh_po_1p41_U9R9H4"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_xhigh_po_1p41_U9R9H4"
+    ],
     "gds_bbox_um": [
      -1.48,
      -3.855,
@@ -26559,6 +27821,7 @@
      3.855
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -26871,6 +28134,9 @@
      "check_messages": [
       "Resistor width must be <= 2.850 um",
       "Resistor width must be >= 2.850 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -27165,6 +28431,9 @@
      "sky130_fd_pr__res_xhigh_po_2p85_HJ2Q5V"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_xhigh_po_2p85_HJ2Q5V"
+    ],
     "gds_bbox_um": [
      -2.2,
      -4.355,
@@ -27172,6 +28441,7 @@
      4.355
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -27484,6 +28754,9 @@
      "check_messages": [
       "Resistor width must be <= 5.730 um",
       "Resistor width must be >= 5.730 um"
+     ],
+     "check_errors": [
+      "w=0: integer value too large to represent"
      ]
     },
     {
@@ -27778,6 +29051,9 @@
      "sky130_fd_pr__res_xhigh_po_5p73_USHYQM"
     ],
     "cells": 1,
+    "cell_names": [
+     "sky130_fd_pr__res_xhigh_po_5p73_USHYQM"
+    ],
     "gds_bbox_um": [
      -3.64,
      -5.855,
@@ -27785,6 +29061,7 @@
      5.855
     ],
     "grid_nm": 5,
+    "empty": false,
     "layers": [
      "65/44",
      "66/13",
@@ -28078,6 +29355,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__rf_test_coil1"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -28085,6 +29366,7 @@
      145.04
     ],
     "grid_nm": 1,
+    "empty": false,
     "layers": [
      "69/20",
      "69/44",
@@ -28260,6 +29542,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__rf_test_coil2"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -28267,6 +29553,7 @@
      265.0
     ],
     "grid_nm": 1,
+    "empty": false,
     "layers": [
      "69/20",
      "69/44",
@@ -28442,6 +29729,10 @@
      "kmp_top"
     ],
     "cells": 2,
+    "cell_names": [
+     "kmp_top",
+     "sky130_fd_pr__rf_test_coil3"
+    ],
     "gds_bbox_um": [
      0.0,
      0.0,
@@ -28449,6 +29740,7 @@
      365.08
     ],
     "grid_nm": 1,
+    "empty": false,
     "layers": [
      "69/20",
      "69/44",

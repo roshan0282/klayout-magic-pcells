@@ -1,6 +1,9 @@
-"""Backend tests: need Magic and the sky130A PDK (run them in the pinned image).
+"""Backend tests: need Magic and the PDKs (run them in the pinned image).
 
-Skipped when Magic or the rcfile can't be found.
+The PDK under test is the one KMP_PDK names (sky130A by default); the
+harness runs this file once per PDK. Tests that name sky130A devices run only
+for sky130A; the rest run for every PDK. Skipped when Magic or the rcfile
+can't be found.
 """
 
 import os
@@ -40,7 +43,9 @@ except Exception:
     HAVE_MAGIC = False
 
 needs_magic = unittest.skipUnless(HAVE_MAGIC and db is not None,
-                                  "Magic, the sky130A PDK or the klayout module is missing")
+                                  "Magic, the PDK or the klayout module is missing")
+PDK = CFG.pdk if HAVE_MAGIC else "sky130A"
+sky130_only = unittest.skipUnless(PDK == "sky130A", "names sky130A devices")
 
 
 def alive(pid):
@@ -90,7 +95,11 @@ class Server(unittest.TestCase):
         self.assertRegex(v.magic, r"^\d+\.\d+\.\d+$")
         self.assertTrue(v.tech)
         self.assertEqual(len(v.code), 64)
-        self.assertEqual(len(v.defaults), 60)
+        self.assertEqual(len(v.defaults), sum(1 for d in self.man.devices if d.kind == "device"))
+        self.assertEqual(sorted(v.boxpaint), sorted(d.name for d in self.man.devices if d.kind == "box"))
+        self.assertEqual(v.namespace, self.man.namespace)
+        self.assertEqual(len(v.techdir), 64)
+        self.assertTrue(v.pdk_commit)
         self.assertEqual(v.defaults_digest, self.man.defaults_digest,
                          "the running Magic's defaults differ from the shipped manifest")
 
@@ -100,14 +109,18 @@ class Server(unittest.TestCase):
             sigs = []
             for k in range(2):
                 p = self.out("%s_%d.gds" % (spec.short_name, k))
-                r = self.s.generate(spec.name, {}, spec.form, p)
-                self.assertTrue(r.cell, spec.name)
-                self.assertGreater(os.path.getsize(p), 200, spec.name)
+                req = spec.build_request(spec.defaults_values()) if spec.kind == "box" else {}
+                r = self.s.generate(spec.name, req, spec.form, p)
+                self.assertTrue(r.cell or spec.kind == "box", spec.name)
+                self.assertFalse(r.restart, (spec.name, r.kv))
+                self.assertGreater(os.path.getsize(p), 100, spec.name)
                 sigs.append(flat_signature(p))
                 os.remove(p)
             self.assertEqual(sigs[0], sigs[1], spec.name)
-            self.assertTrue(sigs[0], spec.name + " wrote no shapes")
+            if not spec.batch.get("empty"):
+                self.assertTrue(sigs[0], spec.name + " wrote no shapes")
 
+    @sky130_only
     def test_brace_in_a_value(self):
         r = self.s.generate("sky130_fd_pr__nfet_01v8", {"w": "1{.5"}, "cell", self.out("b.gds"))
         self.assertIn("not numeric", r.log)
@@ -115,6 +128,7 @@ class Server(unittest.TestCase):
         r2 = self.s.generate("sky130_fd_pr__nfet_01v8", {"w": "1.5"}, "cell", self.out("b2.gds"))
         self.assertEqual(r2.checked["w"], "1.5")
 
+    @sky130_only
     def test_a_value_that_tcl_would_substitute_is_refused(self):
         # Defence in depth behind ParamSpec.check: the server itself refuses
         # [, ], $ and backslash in any value, whoever sends it.
@@ -130,6 +144,7 @@ class Server(unittest.TestCase):
         self.assertFalse(os.path.exists(marker))
         self.assertTrue(self.s.ping())
 
+    @sky130_only
     def test_endless_check_loop_is_stopped(self):
         # sky130::mos_check never returns when w and l are both above 28 um,
         # whatever nf and m are. The server stops it without a restart.
@@ -150,12 +165,14 @@ class Server(unittest.TestCase):
         self.assertTrue(r.cell)
         self.assertNotIn("endless", r.log)
 
+    @sky130_only
     def test_unknown_device_is_an_error(self):
         with self.assertRaises(BackendError) as cm:
             self.s.generate("sky130_fd_pr__nope", {}, "cell", self.out("n.gds"))
         self.assertIn("unknown device", str(cm.exception))
         self.assertTrue(self.s.ping())
 
+    @sky130_only
     def test_check_messages_arrive_in_the_log(self):
         r = self.s.check("sky130_fd_pr__nfet_01v8", {"l": "0.1", "w": "0.1"})
         self.assertEqual((r.checked["l"], r.checked["w"]), ("0.15", "0.42"))
@@ -163,6 +180,7 @@ class Server(unittest.TestCase):
         r = self.s.generate("sky130_fd_pr__nfet_01v8", {"l": "0.1"}, "cell", self.out("c.gds"))
         self.assertIn("Mos length must be >= 0.15 um", r.log)
 
+    @sky130_only
     def test_fixed_device_array(self):
         r = self.s.generate("sky130_fd_pr__npn_05v5_W1p00L1p00", {"nx": "2", "ny": "3"},
                             "wrapper", self.out("a.gds"))
@@ -174,7 +192,105 @@ class Server(unittest.TestCase):
         self.assertEqual((insts[0].na, insts[0].nb), (3, 2))
 
 
+# Requests that leave Magic's session changed, per PDK, and the requests that
+# must still draw what a fresh Magic draws after them.
+DISTURB = {
+    "sky130A": [("nwell", "box", {"w": "3.0", "h": "2.0"}),         # runs tech revert
+                ("deep_nwell", "box", {"w": "5.0", "h": "4.0"})],   # leaves ::boxstack
+    "gf180mcuD": [("subcon_3p3", "box", {"w": "1.0", "h": "1.0"})],
+    "ihp-sg13g2": [("dantenna", "cell", {"w": "0"}),               # leaves layers locked
+                   ("subconn", "box", {"w": "1.0", "h": "1.0"})],   # sets units microns
+    "ihp-sg13cmos5l": [("dantenna", "cell", {"w": "0"}),
+                       ("subconn", "box", {"w": "1.0", "h": "1.0"})],
+}
+AFTER = {
+    "sky130A": [("via1", "box", {"w": "1.0", "h": "1.0"}), ("sky130_fd_pr__nfet_01v8", "cell", {})],
+    "gf180mcuD": [("via1", "box", {"w": "1.0", "h": "1.0"}), ("nfet_03v3", "cell", {})],
+    "ihp-sg13g2": [("via", "cell", {}), ("inductor2", "cell", {}), ("inductor3", "cell", {}),
+                   ("via1", "box", {"w": "1.0", "h": "1.0"})],
+    "ihp-sg13cmos5l": [("via", "cell", {}), ("inductor2", "cell", {}),
+                       ("via1", "box", {"w": "1.0", "h": "1.0"})],
+}
+
+
 @needs_magic
+class AnyPdk(unittest.TestCase):
+    """Run for the PDK that KMP_PDK names."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="kmp-pdk-")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def sigs(self, s, reqs, tag):
+        out = []
+        for i, (dev, form, params) in enumerate(reqs):
+            p = os.path.join(self.tmp, "%s_%d.gds" % (tag, i))
+            try:
+                r = s.generate(dev, params, form, p)
+                out.append((dev, flat_signature(p), r.kv.get("restored", "")))
+            except BackendError as e:
+                out.append((dev, "error: %s" % e, ""))
+        return out
+
+    def test_session_state_is_put_back_after_each_request(self):
+        cfg = _cfg(KMP_CACHE_DIR=self.tmp)
+        a, b = MagicServer(cfg), MagicServer(cfg)
+        try:
+            a.start()
+            b.start()
+            fresh = self.sigs(a, AFTER[PDK], "fresh")
+            dist = self.sigs(b, DISTURB[PDK], "dist")
+            after = self.sigs(b, AFTER[PDK], "after")
+        finally:
+            a.close()
+            b.close()
+        if PDK != "gf180mcuD":
+            self.assertTrue(any(d[2] for d in dist), "no request changed the session: %s" % dist)
+        for f, g in zip(fresh, after):
+            self.assertEqual(f[1], g[1], f[0])
+
+    def test_box_paint_check_reports_the_box_magic_uses(self):
+        cfg = _cfg(KMP_CACHE_DIR=self.tmp)
+        man = Manifest.load(cfg.manifest)
+        spec = man["via1"]
+        s = MagicServer(cfg)
+        try:
+            s.start()
+            r = s.check("via1", {"w": "1.003", "h": "1.0"}, "box")
+            self.assertEqual((r.checked["w"], r.checked["h"]), ("1.005", "1.0"))
+            self.assertEqual(r.log.strip(), "")
+            m = float(spec.raw["min_box_um"])
+            r = s.check("via1", {"w": "%.3f" % (m - 0.005), "h": "1.0"}, "box")
+            self.assertIn("must be at least", r.log)
+            with self.assertRaises(BackendError):
+                s.check("via1", {"w": "1 [exec x]", "h": "1"}, "box")
+            with self.assertRaises(BackendError):
+                s.generate("nope_draw", {"w": "1", "h": "1"}, "box", os.path.join(self.tmp, "x.gds"))
+        finally:
+            s.close()
+
+    @unittest.skipUnless(PDK in ("ihp-sg13g2", "gf180mcuD"), "needs a device without _check or "
+                         "with a _check that raises")
+    def test_check_without_a_check_proc_or_with_one_that_raises(self):
+        s = MagicServer(_cfg(KMP_CACHE_DIR=self.tmp))
+        try:
+            s.start()
+            if PDK == "ihp-sg13g2":
+                r = s.check("rm6", {"w": "1.0"})
+                self.assertEqual(r.kv.get("check"), "none")
+            else:
+                r = s.check("npolyf_s", {"w": "0"})
+                self.assertEqual(r.kv.get("check"), "failed")
+                self.assertIn("integer value too large", r.kv.get("check_error", ""))
+            self.assertTrue(r.checked)
+        finally:
+            s.close()
+
+
+@needs_magic
+@sky130_only
 class Recovery(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="kmp-recover-")
@@ -297,6 +413,7 @@ class Recovery(unittest.TestCase):
 
 
 @needs_magic
+@sky130_only
 class GeneratorAndLibrary(unittest.TestCase):
     def test_memo_disk_magic(self):
         from klayout_magic_pcells.backend import Generator
@@ -333,7 +450,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout.db as db
             import klayout_magic_pcells as kmp
-            assert kmp.register() is not None, kmp.state.last_error
+            assert kmp.register("sky130A") is not None, kmp.state.last_error
             def place(dev):
                 ly = db.Layout()
                 c = ly.create_cell(dev, "sky130_magic", {})
@@ -384,9 +501,9 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout.db as db
             import klayout_magic_pcells as kmp
-            lib = kmp.register()
+            lib = kmp.register("sky130A")
             assert lib is not None, kmp.state.last_error
-            assert kmp.register() is lib
+            assert kmp.register("sky130A") is lib
             pid = kmp.state.server.pid
             assert kmp.state.server.stats["spawns"] == 1
             ly = db.Layout()
@@ -415,7 +532,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout.db as db
             import klayout_magic_pcells as kmp
-            assert kmp.register() is not None, kmp.state.last_error
+            assert kmp.register("sky130A") is not None, kmp.state.last_error
             marker, gds = sys.argv[1], sys.argv[2]
             if sys.argv[3] == "make":
                 ly = db.Layout()
@@ -470,7 +587,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout_magic_pcells as kmp
             import klayout.db as db
-            assert kmp.register() is None
+            assert kmp.register("sky130A") is None
             assert db.Library.library_by_name("sky130_magic") is None
             assert kmp.state.server is None
             print("ERR", kmp.state.last_error)
@@ -499,7 +616,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout.db as db
             import klayout_magic_pcells as kmp
-            assert kmp.register() is None
+            assert kmp.register("sky130A") is None
             assert db.Library.library_by_name("sky130_magic") is None
             assert kmp.state.server is None
             print("ERR", kmp.state.last_error)
@@ -507,7 +624,7 @@ class GeneratorAndLibrary(unittest.TestCase):
         rc, text = self._py(script, dict(os.environ, KMP_MAGICRC=empty, KMP_CACHE_DIR=os.path.join(tmp, "c")))
         shutil.rmtree(tmp, ignore_errors=True)
         self.assertEqual(rc, 0, text)
-        self.assertIn("the running Magic defines 0 of the manifest's 60 devices", text)
+        self.assertIn("the running Magic defines 0 of the manifest's 73 generators", text)
         self.assertIn("KMP_MANIFEST", text)
 
     def test_an_unwritable_cache_dir_only_turns_the_cache_off(self):
@@ -522,7 +639,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout.db as db
             import klayout_magic_pcells as kmp
-            assert kmp.register() is not None, kmp.state.last_error
+            assert kmp.register("sky130A") is not None, kmp.state.last_error
             ly = db.Layout()
             c = ly.create_cell("sky130_fd_pr__nfet_01v8", "sky130_magic", {"w": 1.0})
             print("CELL", c.dbbox(), kmp.state.cfg.cache_enabled, kmp.state.generator.stats["magic"])
@@ -577,15 +694,36 @@ class GeneratorAndLibrary(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    def _farm(self, root, edit_tcl=lambda text: text, no_vendor_gds=False):
+    def _farm(self, root, edit_tcl=lambda text: text, no_vendor_gds=False, edit_vendor_gds=None):
         """A PDK_ROOT whose sky130A is the installed one through symlinks,
         with sky130A.tcl passed through ``edit_tcl``, and optionally without
-        libs.ref/sky130_fd_pr/gds (the vendor cells of the fixed devices)."""
+        libs.ref/sky130_fd_pr/gds (the vendor cells of the fixed devices),
+        or with sky130_fd_pr.gds passed through ``edit_vendor_gds`` (bytes)."""
         src = os.path.join(CFG.pdk_root, "sky130A")
         dst = os.path.join(root, "sky130A")
         os.makedirs(os.path.join(dst, "libs.tech", "magic"))
         for name in os.listdir(src):
-            if name == "libs.ref" and no_vendor_gds:
+            if name == "libs.ref" and edit_vendor_gds is not None:
+                for lib in os.listdir(os.path.join(src, name)):
+                    d = os.path.join(dst, name, lib)
+                    if lib != "sky130_fd_pr":
+                        os.makedirs(os.path.dirname(d), exist_ok=True)
+                        os.symlink(os.path.join(src, name, lib), d)
+                        continue
+                    os.makedirs(os.path.join(d, "gds"))
+                    for sub in os.listdir(os.path.join(src, name, lib)):
+                        if sub != "gds":
+                            os.symlink(os.path.join(src, name, lib, sub), os.path.join(d, sub))
+                    g = os.path.join(src, name, lib, "gds")
+                    for fn in os.listdir(g):
+                        if fn == "sky130_fd_pr.gds":
+                            with open(os.path.join(g, fn), "rb") as f:
+                                data = edit_vendor_gds(f.read())
+                            with open(os.path.join(d, "gds", fn), "wb") as f:
+                                f.write(data)
+                        else:
+                            os.symlink(os.path.join(g, fn), os.path.join(d, "gds", fn))
+            elif name == "libs.ref" and no_vendor_gds:
                 for lib in os.listdir(os.path.join(src, name)):
                     d = os.path.join(dst, name, lib)
                     if lib != "sky130_fd_pr":
@@ -628,7 +766,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout.db as db
             import klayout_magic_pcells as kmp
-            assert kmp.register() is not None, kmp.state.last_error
+            assert kmp.register("sky130A") is not None, kmp.state.last_error
             ly = db.Layout()
             if sys.argv[1] == "make":
                 top = ly.create_cell("TOP")
@@ -665,6 +803,113 @@ class GeneratorAndLibrary(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_audit_after_a_vendor_gds_edit(self):
+        # The review's case: one boundary of rf_test_coil1 in sky130_fd_pr.gds
+        # moved 1 um, under the same open_pdks commit. The cache key and the
+        # stamp cover the vendor GDS, so the edited PDK neither reads the old
+        # cache entry nor passes the stamp check.
+        import struct
+        tmp = tempfile.mkdtemp(prefix="kmp-vendor-")
+
+        def move_first_boundary(data):
+            data = bytearray(data)
+            i, in_bnd = 10318056, False         # rf_test_coil1's GDS_START
+            while i < 10324764:
+                n, rt, _ = struct.unpack(">HBB", data[i:i + 4])
+                if rt == 0x08:
+                    in_bnd = True
+                if rt == 0x10 and in_bnd:
+                    k = (n - 4) // 4
+                    v = list(struct.unpack(">%di" % k, data[i + 4:i + n]))
+                    for j in range(0, k, 2):
+                        v[j] += 1000
+                    data[i + 4:i + n] = struct.pack(">%di" % k, *v)
+                    return bytes(data)
+                i += n
+            raise AssertionError("no boundary found")
+        farm = self._farm(os.path.join(tmp, "farm"), edit_vendor_gds=move_first_boundary)
+        gds = os.path.join(tmp, "coil.gds")
+        make = textwrap.dedent("""
+            import sys
+            sys.path.insert(0, %r)
+            import klayout.db as db
+            import klayout_magic_pcells as kmp
+            assert kmp.register("sky130A") is not None, kmp.state.last_error
+            ly = db.Layout()
+            top = ly.create_cell("TOP")
+            c = ly.create_cell("sky130_fd_pr__rf_test_coil1", "sky130_magic", {})
+            top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
+            ly.write(sys.argv[1])
+            print("OK", kmp.state.generator.stats)
+        """ % os.path.join(REPO, "python"))
+        env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, "cache"), KMP_PDKS="sky130A",
+                   PYTHONPATH=os.path.join(REPO, "python"))
+        try:
+            rc, text = self._py(make, env, [gds])
+            self.assertEqual(rc, 0, text)
+            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds, "--regen"],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               env=dict(env, PDK_ROOT=farm), timeout=180)
+            text = p.stdout.decode()
+            self.assertEqual(p.returncode, 1, text)
+            self.assertIn("regenerated geometry differs on", text)
+            self.assertIn("generated with", text)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_audit_regen_replaces_a_stale_cache_entry(self):
+        # A cache entry whose GDS (with a matching sidecar digest) isn't what
+        # Magic generates now: audit --regen asks Magic anyway, reports the
+        # entry and replaces it, so the next session reads the new one.
+        import glob
+        import hashlib
+        import json
+        tmp = tempfile.mkdtemp(prefix="kmp-stale-")
+        make = textwrap.dedent("""
+            import sys
+            sys.path.insert(0, %r)
+            import klayout.db as db
+            import klayout_magic_pcells as kmp
+            assert kmp.register("sky130A") is not None, kmp.state.last_error
+            ly = db.Layout()
+            top = ly.create_cell("TOP")
+            for dev, p in (("sky130_fd_pr__res_generic_po", {}), ("sky130_fd_pr__res_generic_po", {"l": 5.0})):
+                c = ly.create_cell(dev, "sky130_magic", p)
+                top.insert(db.CellInstArray(c.cell_index(), db.Trans()))
+            ly.write(sys.argv[1])
+            print("OK", kmp.state.generator.stats)
+        """ % os.path.join(REPO, "python"))
+        gds = os.path.join(tmp, "res.gds")
+        env = dict(os.environ, KMP_CACHE_DIR=os.path.join(tmp, "cache"), KMP_PDKS="sky130A",
+                   PYTHONPATH=os.path.join(REPO, "python"))
+        try:
+            rc, text = self._py(make, env, [gds])
+            self.assertEqual(rc, 0, text)
+            entries = sorted(glob.glob(os.path.join(tmp, "cache", "v1", "*", "sky130_fd_pr__res_generic_po", "*.gds")))
+            self.assertEqual(len(entries), 2)
+            # Put one entry's GDS under the other's key, with a matching digest.
+            a, b = entries
+            shutil.copyfile(b, a)
+            side = a[:-4] + ".json"
+            with open(side) as f:
+                sc = json.load(f)
+            with open(a, "rb") as f:
+                sc["gds_sha256"] = hashlib.sha256(f.read()).hexdigest()
+            with open(side, "w") as f:
+                json.dump(sc, f)
+            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds, "--regen"],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=180)
+            text = p.stdout.decode()
+            self.assertEqual(p.returncode, 1, text)
+            self.assertIn("disk cache held a stale sky130_fd_pr__res_generic_po", text)
+            self.assertEqual(text.count("regenerated: same as stored"), 2, text)
+            # Replaced: a second audit finds nothing.
+            p = subprocess.run([sys.executable, "-m", "klayout_magic_pcells", "audit", gds, "--regen"],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, timeout=180)
+            self.assertEqual(p.returncode, 0, p.stdout.decode())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_a_missing_vendor_gds_is_named_in_the_marker(self):
         tmp = tempfile.mkdtemp(prefix="kmp-novendor-")
         farm = self._farm(os.path.join(tmp, "farm"), no_vendor_gds=True)
@@ -673,7 +918,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout.db as db
             import klayout_magic_pcells as kmp
-            assert kmp.register() is not None, kmp.state.last_error
+            assert kmp.register("sky130A") is not None, kmp.state.last_error
             ly = db.Layout()
             c = ly.create_cell("sky130_fd_pr__npn_05v5_W1p00L1p00", "sky130_magic", {})
             print("MARKER", [sh.text_string for sh in c.shapes(ly.layer(255, 0)).each() if sh.is_text()])
@@ -694,7 +939,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout.db as db
             import klayout_magic_pcells as kmp
-            assert kmp.register() is not None, kmp.state.last_error
+            assert kmp.register("sky130A") is not None, kmp.state.last_error
             ly = db.Layout()
             ly.dbu = float(sys.argv[2])
             top = ly.create_cell("TOP")
@@ -726,7 +971,7 @@ class GeneratorAndLibrary(unittest.TestCase):
             sys.path.insert(0, %r)
             import klayout_magic_pcells as kmp
             import klayout.db as db
-            assert kmp.register() is None
+            assert kmp.register("sky130A") is None
             assert db.Library.library_by_name("sky130_magic") is None
             print("ERR", kmp.state.last_error)
         """ % os.path.join(REPO, "python"))

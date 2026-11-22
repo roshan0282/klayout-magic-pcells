@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <klayout-macro>
- <description>sky130_magic: register the Magic-backed sky130A PCell library</description>
+ <description>klayout_magic_pcells: register the Magic-backed PCell libraries (one per installed PDK)</description>
  <version/>
  <category>pymacros</category>
  <prolog/>

@@ -4,7 +4,8 @@ import json
 import os
 from collections import Counter, OrderedDict
 
-FAMILY_ORDER = ("mos", "varactor", "res", "mim_cap", "diode", "photodiode", "fixed")
+FAMILY_ORDER = ("mos", "moscap", "varactor", "res", "mim_cap", "cap", "diode", "photodiode", "bjt",
+                "inductor", "special", "other", "fixed", "box_paint")
 MAX_DETAIL = 150
 
 
@@ -19,6 +20,8 @@ def point_failures(pt, r):
         f.append("geometry")
     if not r.get("texts", {}).get("identical", False):
         f.append("texts")
+    if not r.get("census", {}).get("ok", False):
+        f.append("census")
     if not r.get("bbox", {}).get("equal", False):
         f.append("bbox")
     if not r.get("magic_cell", {}).get("equal", False):
@@ -27,6 +30,8 @@ def point_failures(pt, r):
         f.append("checked")
     if r.get("cache") != "identical":
         f.append("cache")
+    if "menu" in r and r["menu"] != "identical":
+        f.append("menu")
     if r.get("placeholder") != "none":
         f.append("placeholder")
     st = r.get("stamp", "")
@@ -159,7 +164,8 @@ def markdown(rep):
     L.append("# Parity report\n")
     L.append("**%s**\n" % summary_line(rep))
     L.append("| | |\n|---|---|")
-    for k in ("image", "magic", "tech", "open_pdks", "klayout", "repo", "seed", "points", "seconds"):
+    for k in ("pdk", "library", "image", "magic", "tech", "pdk_commit", "klayout", "klayout_drc", "repo",
+              "seed", "points", "seconds"):
         L.append("| %s | `%s` |" % (k, m.get(k, "")))
     L.append("")
     if rep.get("harness_errors"):
@@ -251,10 +257,60 @@ def markdown(rep):
     exc = rep.get("exclusions", [])
     if exc:
         L.append("## Excluded from the sweep\n")
-        L.append("Every `_draw` proc in sky130A.tcl that has a `_defaults` proc is a PCell and is swept. "
-                 "These %d are not devices:\n" % len(exc))
+        L.append("Every `_draw` proc that has a `_defaults` proc (a device) and every `_draw` proc "
+                 "callable with no arguments (a box-paint generator) is a PCell and is swept. "
+                 "These %d are neither:\n" % len(exc))
         L.append("| proc | reason |\n|---|---|")
         for e in exc:
             L.append("| `%s` | %s |" % (e["proc"], e["reason"]))
         L.append("")
+    md = rep.get("menu_defects", [])
+    if md:
+        L.append("## Magic menu entries that call a generator the PDK doesn't define\n")
+        L.append("| entry | command | problem |\n|---|---|---|")
+        for e in md:
+            L.append("| %s | `%s` | %s |" % (e["entry"], e["command"], e["problem"]))
+        L.append("")
     return "\n".join(L) + "\n"
+
+
+def write_summary(reps, out):
+    """summary.json and summary.md over several PDKs; returns the exit status
+    (the worst of the PDKs')."""
+    rows = {}
+    status = 0
+    for pdk, rep in reps.items():
+        s = rep.get("summary", {})
+        st = rep.get("exit_status", 2)
+        status = max(status, st)
+        rows[pdk] = {"line": summary_line(rep), "exit_status": st, "pass": s.get("pass", 0),
+                     "fail": s.get("fail", 0), "points": s.get("points", 0),
+                     "by_family": s.get("by_family", {}), "by_check": s.get("by_check", {}),
+                     "tests_ok": s.get("tests_ok"), "manifest_ok": s.get("manifest_ok"),
+                     "klayout_drc": rep.get("meta", {}).get("klayout_drc"),
+                     "seconds": rep.get("meta", {}).get("seconds"),
+                     "library": rep.get("meta", {}).get("library"),
+                     "report": os.path.join(pdk, "report.md")}
+    doc = {"exit_status": status, "pdks": rows}
+    with open(os.path.join(out, "summary.json"), "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1)
+        f.write("\n")
+    L = ["# Parity summary\n", "| PDK | library | result | points | pass | fail | KLayout DRC | seconds |",
+         "|---|---|---|---|---|---|---|---|"]
+    for pdk, r in rows.items():
+        L.append("| %s | `%s` | %s | %d | %d | %d | %s | %s |"
+                 % (pdk, r["library"], r["line"], r["points"], r["pass"], r["fail"],
+                    r["klayout_drc"] or "-", r["seconds"]))
+    L.append("")
+    for pdk, r in rows.items():
+        L.append("## %s\n" % pdk)
+        L.append("| family | points | pass | fail | failed checks |\n|---|---|---|---|---|")
+        fam = r["by_family"]
+        for k in sorted(fam, key=lambda x: (FAMILY_ORDER.index(x) if x in FAMILY_ORDER else 99, x)):
+            v = fam[k]
+            L.append("| %s | %d | %d | %d | %s |" % (k, v["points"], v["pass"], v["fail"],
+                                                    _fmt_checks(v["checks"])))
+        L.append("\nDetails: `%s`\n" % r["report"])
+    with open(os.path.join(out, "summary.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(L) + "\n")
+    return status

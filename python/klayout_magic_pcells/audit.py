@@ -1,22 +1,30 @@
-"""Audit a layout file for sky130_magic cells without registering the library.
+"""Audit a layout file for this package's cells without registering a library.
+
+A cell belongs to a PDK by its title, ``<defunct><library>.<device>`` (the
+library names are in config.LIBRARY_NAMES), not by its cell name: rm1 is a
+device of three PDKs.
 
 Reports cells that hold a placeholder, cells with no stamp, empty cells,
 stamps from a different Magic or PDK than the installed one (including a
-locally edited sky130A.tcl, through the stamp's digest), a file dbu that
-doesn't divide 5 nm, and devices whose Magic output lies on a finer grid
-than the file's dbu (vendor cells with 1 nm coordinates in a 5 nm file).
-With ``regen=True`` it keeps a copy of every cell's stored geometry,
-registers the library (the cells revive and regenerate), and reports each
-cell whose regenerated geometry differs as a problem.
+locally edited generator file or vendor GDS, through the stamp's digest), a
+file dbu that doesn't divide 5 nm, and devices whose Magic output lies on a
+finer grid than the file's dbu (vendor cells with 1 nm coordinates in a
+5 nm file). With ``regen=True`` it keeps a copy of every cell's stored
+geometry, registers the libraries those cells need with every lookup going
+to Magic (not to the memo or the disk cache), and reports each cell whose
+regenerated geometry differs as a problem. A disk-cache entry that differs
+from what Magic generates now is reported too, and replaced.
 """
 
 from fractions import Fraction
 
-from .library import LIBRARY_NAME
+from .config import LIBRARY_NAMES
 from .pcell import PLACEHOLDER_LAYER
 from .stamp import describe, read_stamp, same_versions
 
-DEFUNCT = "<defunct>%s." % LIBRARY_NAME
+PDK_OF_LIBRARY = {lib: pdk for pdk, lib in LIBRARY_NAMES.items()}
+# Kept for code written against version 0.2.
+DEFUNCT = "<defunct>%s." % LIBRARY_NAMES["sky130A"]
 
 
 def _divides(dbu, grid_um=0.005):
@@ -29,10 +37,21 @@ def device_of(cell_name):
     return cell_name.split("__kmp_")[0]
 
 
-def _grid_problem(manifest, cell_name, dbu):
+def owner(title):
+    """(pdk, library, device) for a title '<defunct>LIB.device(...)', else None."""
+    if not title.startswith("<defunct>"):
+        return None
+    rest = title[len("<defunct>"):]
+    lib, _, dev = rest.partition(".")
+    if lib not in PDK_OF_LIBRARY:
+        return None
+    return PDK_OF_LIBRARY[lib], lib, dev.split("(")[0]
+
+
+def _grid_problem(manifest, device, dbu):
     """A message if the device's Magic output has coordinates on a grid that
     the file's dbu can't hold (from the manifest's defaults run)."""
-    spec = manifest.get(device_of(cell_name)) if manifest is not None else None
+    spec = manifest.get(device) if manifest is not None else None
     grid = spec.raw.get("defaults_run", {}).get("grid_nm") if spec is not None else None
     if not grid or _divides(dbu, grid / 1000.0):
         return None
@@ -79,31 +98,91 @@ def _diff_layers(ly_a, cell_a, ly_b, cell_b):
     return out
 
 
-def audit(path, current_stamp=None, regen=False, manifest=None):
-    """Return a dict report. ``current_stamp`` is a parsed stamp dict,
-    ``manifest`` a Manifest (for the per-device coordinate grid)."""
+def _gds_diff(path_a, path_b):
+    """Layers on which two single-top-cell GDS files differ."""
+    from ._kl import db
+    la, lb = db.Layout(), db.Layout()
+    la.read(path_a)
+    lb.read(path_b)
+    return _diff_layers(la, la.top_cells()[0], lb, lb.top_cells()[0])
+
+
+def current_stamps(pdks, notes=None):
+    """{pdk: parsed stamp of the installed Magic and PDK}, starting each
+    PDK's Magic once; a PDK that can't start is left out (with a note)."""
+    from .backend import MagicServer
+    from .config import Config
+    from .manifest import Manifest
+    from .stamp import make_stamp, parse_stamp
+    out = {}
+    for pdk in pdks:
+        try:
+            cfg = Config.load(pdk=pdk)
+            man = Manifest.load(cfg.manifest)
+            s = MagicServer(cfg, vendor_cells=man.vendor_cells())
+            try:
+                out[pdk] = parse_stamp(make_stamp(s.start()))
+            finally:
+                s.close()
+        except Exception as e:
+            if notes:
+                notes("note: cannot start Magic for %s to read the installed versions (%s)" % (pdk, e))
+    return out
+
+
+def audit(path, current=None, regen=False, manifests=None, notes=None):
+    """Return a dict report.
+
+    ``current`` is {pdk: parsed stamp} (read from the installed Magic when
+    None), ``manifests`` {pdk: Manifest} (for the per-device coordinate
+    grid; loaded when None). ``notes`` is called with messages about what
+    couldn't be checked."""
     from ._kl import db
     ly = db.Layout()
     ly.read(path)
     rep = {"file": path, "dbu": ly.dbu, "dbu_divides_5nm": _divides(ly.dbu), "cells": []}
-    cells = [c for c in ly.each_cell() if c.display_title().startswith(DEFUNCT)]
+    cells = []
+    for c in ly.each_cell():
+        o = owner(c.display_title())
+        if o is not None:
+            cells.append((c, o))
+    pdks = sorted({o[0] for _, o in cells})
+    if current is None:
+        current = current_stamps(pdks, notes)
+    if manifests is None:
+        from .config import Config
+        from .manifest import Manifest
+        manifests = {}
+        for pdk in pdks:
+            try:
+                manifests[pdk] = Manifest.load(Config.load(pdk=pdk).manifest)
+            except Exception as e:
+                if notes:
+                    notes("note: cannot read the %s manifest (%s); the coordinate grid isn't checked"
+                          % (pdk, e))
     snaps = {}
-    for c in cells:
-        rec = {"cell": c.name, "title": c.display_title(), "problems": []}
-        ph = ly.find_layer(*PLACEHOLDER_LAYER)
+    ph = ly.find_layer(*PLACEHOLDER_LAYER)
+    # Cell objects of cold proxies don't survive registration; their
+    # indices do.
+    indices = [c.cell_index() for c, _ in cells]
+    for c, (pdk, lib, dev) in cells:
+        rec = {"cell": c.name, "title": c.display_title(), "pdk": pdk, "library": lib,
+               "device": dev, "problems": []}
         if ph is not None and not c.shapes(ph).is_empty():
             rec["problems"].append("placeholder (generation failed when this file was saved)")
         if c.is_empty() or all(c.shapes(li).is_empty() for li in ly.layer_indices()):
             rec["problems"].append("empty cell")
         st = read_stamp(c)
         rec["stamp"] = st
+        cur = current.get(pdk)
         if st is None:
             if "empty cell" not in rec["problems"]:
                 rec["problems"].append("no generated-by stamp")
-        elif current_stamp and not same_versions(st, current_stamp):
-            rec["problems"].append("generated with %s; installed is %s"
-                                   % (describe(st), describe(current_stamp)))
-        gp = _grid_problem(manifest, c.name, ly.dbu)
+        elif st.get("pdk") and st.get("pdk") != pdk:
+            rec["problems"].append("stamped for %s, but the cell is in the %s library" % (st["pdk"], lib))
+        elif cur and not same_versions(st, cur):
+            rec["problems"].append("generated with %s; installed is %s" % (describe(st), describe(cur)))
+        gp = _grid_problem(manifests.get(pdk), dev, ly.dbu)
         if gp:
             rec["problems"].append(gp)
         rep["cells"].append(rec)
@@ -112,27 +191,58 @@ def audit(path, current_stamp=None, regen=False, manifest=None):
     if not rep["dbu_divides_5nm"]:
         rep["file_problems"] = ["dbu %g um doesn't divide 5 nm: Magic's coordinates get rounded"
                                 % ly.dbu]
-    indices = [c.cell_index() for c in cells]
     if regen and cells:
-        from . import register, state
-        if register() is None:
-            rep["regen"] = "library could not be registered"
-            rep.setdefault("file_problems", []).append(
-                "--regen: the library could not be registered (%s)" % state.last_error)
-        else:
-            for rec, ci in zip(rep["cells"], indices):
-                live = ly.cell(ci)
-                old_ly, old_c = snaps[ci]
-                diff = _diff_layers(old_ly, old_c, ly, live)
-                rec["regen"] = "same as stored" if not diff else "differs on " + ", ".join(diff)
-                rec["live_after_register"] = live.is_pcell_variant()
+        from . import register, state_for
+        from .config import Config
+        gens = {}
+        for pdk in pdks:
+            # "fresh": every variant comes from Magic, as if the memo and the
+            # disk cache were empty, and the disk cache gets the new entries.
+            # The cells revive and regenerate when the library registers.
+            cfg = Config.load(pdk=pdk)
+            cfg.fresh = True
+            if register(pdk, cfg=cfg) is None:
+                rep.setdefault("file_problems", []).append(
+                    "--regen: the %s library could not be registered (%s)"
+                    % (LIBRARY_NAMES[pdk], state_for(pdk).last_error))
+                continue
+            gens[pdk] = state_for(pdk).generator
+        for rec, ci, (_c, (pdk, lib, dev)) in zip(rep["cells"], indices, cells):
+            if pdk not in gens:
+                rec["regen"] = "library not registered"
+                continue
+            live = ly.cell(ci)
+            old_ly, old_c = snaps[ci]
+            diff = _diff_layers(old_ly, old_c, ly, live)
+            rec["regen"] = "same as stored" if not diff else "differs on " + ", ".join(diff)
+            rec["live_after_register"] = live.is_pcell_variant()
+            if diff:
+                rec["problems"].append("regenerated geometry differs on " + ", ".join(diff))
+            phl = ly.find_layer(*PLACEHOLDER_LAYER)
+            if phl is not None and not live.shapes(phl).is_empty():
+                texts = [sh.text_string for sh in live.shapes(phl).each() if sh.is_text()]
+                rec["problems"].append("regenerates as the error marker: %s"
+                                       % (texts[0] if texts else "?"))
+        # Disk-cache entries that differ from what Magic writes now.
+        for pdk, g in gens.items():
+            for key, old in sorted(g.replaced.items()):
+                res = g._memo.get(key)
+                if res is None:
+                    continue
+                try:
+                    diff = _gds_diff(old, res.gds_path)
+                except Exception as e:
+                    diff = ["unreadable (%s)" % e]
                 if diff:
-                    rec["problems"].append("regenerated geometry differs on " + ", ".join(diff))
-                ph = ly.find_layer(*PLACEHOLDER_LAYER)
-                if ph is not None and not live.shapes(ph).is_empty():
-                    texts = [sh.text_string for sh in live.shapes(ph).each() if sh.is_text()]
-                    rec["problems"].append("regenerates as the error marker: %s"
-                                           % (texts[0] if texts else "?"))
+                    rep.setdefault("file_problems", []).append(
+                        "the %s disk cache held a stale %s (differs on %s); replaced with what "
+                        "Magic generates now" % (pdk, res.sidecar.get("device"), ", ".join(diff)))
+                try:
+                    import os
+                    os.remove(old)
+                except OSError:
+                    pass
+            g.replaced.clear()
     return rep
 
 
@@ -142,12 +252,14 @@ def format_report(rep):
     for p in rep.get("file_problems", []):
         lines.append("  file: " + p)
     if not rep["cells"]:
-        lines.append("  no %s cells" % LIBRARY_NAME)
+        lines.append("  no cells of the %s libraries" % ", ".join(sorted(PDK_OF_LIBRARY)))
     for c in rep["cells"]:
         state = "; ".join(c["problems"]) or "ok"
         lines.append("  %s  %s" % (c["cell"], state))
         if "regen" in c:
             lines.append("      regenerated: %s" % c["regen"])
     n_bad = sum(1 for c in rep["cells"] if c["problems"])
-    lines.append("%d %s cells, %d with problems" % (len(rep["cells"]), LIBRARY_NAME, n_bad))
+    libs = sorted({c["library"] for c in rep["cells"]})
+    lines.append("%d %s cells, %d with problems" % (len(rep["cells"]), "/".join(libs) or "library",
+                                                    n_bad))
     return "\n".join(lines)
