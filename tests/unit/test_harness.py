@@ -20,6 +20,18 @@ FAKE_MAGIC = textwrap.dedent("""
     start = int(os.environ.get("KMP_START", "0"))
     os.makedirs(os.environ["KMP_OUT"], exist_ok=True)
     ix = open(os.path.join(os.environ["KMP_OUT"], "index.jsonl"), "a" if start else "w")
+    # "xerror:N": the first N starts die opening the window, as Magic does
+    # under Xvfb when it gets BadAlloc for its first pixmap.
+    xe = [pt["device"] for pt in pts[start:start + 1] if pt["device"].startswith("xerror:")]
+    if xe:
+        tries = os.path.join(os.environ["KMP_OUT"], "tries")
+        n = int(open(tries).read()) if os.path.exists(tries) else 0
+        open(tries, "w").write(str(n + 1))
+        if n < int(xe[0].split(":")[1]):
+            print("X Error of failed request:  BadAlloc (insufficient resources for operation)")
+            print("  Major opcode of failed request:  53 (X_CreatePixmap)")
+            sys.stdout.flush()
+            os._exit(1)
     for pt in pts[start:]:
         if pt["device"] == "crash":
             os._exit(139)
@@ -39,14 +51,20 @@ class PathAWatchdog(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.d, ignore_errors=True)
 
-    def run_fake(self, devices):
+    def run_fake(self, devices, stats=None):
         fake = os.path.join(self.d, "fake_magic.py")
         with open(fake, "w") as f:
             f.write(FAKE_MAGIC)
         sweep = os.path.join(self.d, "sweep.json")
         with open(sweep, "w") as f:
             json.dump({"points": [{"id": "%04d" % (i + 1), "device": d} for i, d in enumerate(devices)]}, f)
-        return run_sweep.path_a(self.d, sweep, cmd=[sys.executable, fake], stall=2)[0]
+        ref = os.path.join(self.d, "ref")
+        env = run_sweep.pdk_env(KMP_SWEEP=sweep, KMP_OUT=ref)
+        with open(sweep) as f:
+            pts = json.load(f)["points"]
+        return run_sweep.run_watched("path A", [sys.executable, fake], pts,
+                                     ref, os.path.join(self.d, "path_a.log"),
+                                     os.path.join(self.d, "run_a"), env, 2, stats=stats)[0]
 
     def test_a_crash_and_a_hang_become_errors_and_the_sweep_goes_on(self):
         recs = self.run_fake(["ok", "crash", "ok", "hang", "ok"])
@@ -62,6 +80,20 @@ class PathAWatchdog(unittest.TestCase):
     def test_a_broken_harness_is_a_harness_error(self):
         with self.assertRaises(run_sweep.HarnessError):
             self.run_fake(["crash"] * 5 + ["ok"])
+
+    def test_an_x_error_at_start_up_is_started_again_not_a_point_error(self):
+        # GitHub run 45232459515: Magic under Xvfb died with BadAlloc before
+        # its first point. That start is tried again; no point fails.
+        stats = {}
+        recs = self.run_fake(["xerror:3", "ok"], stats=stats)
+        self.assertEqual([recs[k]["rc"] for k in sorted(recs)], [0, 0])
+        self.assertEqual(stats["x_retries"], 3)
+        self.assertIn("BadAlloc", stats["x_errors"][0])
+
+    def test_an_x_error_at_every_start_is_a_harness_error(self):
+        with self.assertRaises(run_sweep.HarnessError) as cm:
+            self.run_fake(["xerror:%d" % (run_sweep.X_START_RETRIES + 1), "ok"])
+        self.assertIn("X error", str(cm.exception))
 
 
 def _rec(rt, dt, body=b""):

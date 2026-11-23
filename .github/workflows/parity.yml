@@ -1,5 +1,11 @@
 # Parity harness in the pinned iic-osic-tools image, referenced by digest,
-# one job per PDK. GitHub had not run this workflow as of 2026-11-21.
+# one job per PDK. GitHub's only run of this workflow so far, the weekly
+# schedule on 2026-11-23 (run 45232459515, on version 0.3),
+# passed sky130A and ihp-sg13g2. gf180mcuD and ihp-sg13cmos5l failed every
+# point of the menu check: Magic under Xvfb died opening its window with
+# "BadAlloc ... X_CreatePixmap". Since version 0.5.0, run_sweep.py starts
+# a Magic that dies this way again, up to X_START_RETRIES times; that code
+# hasn't run on GitHub yet.
 name: parity
 on:
   pull_request:

@@ -252,15 +252,22 @@ class Declarations(unittest.TestCase):
             for spec in man.devices:
                 pc = make_pcell(spec, St)
                 decls = pc.get_parameters()
-                self.assertEqual([d.name for d in decls], [p.name for p in spec.params] + ["kmp_created"])
+                # Devices also keep the form of Magic's dialog; box-paint
+                # generators have no dialog.
+                hidden = ["kmp_created"] + (["kmp_dialog"] if spec.kind != "box" else [])
+                self.assertEqual([d.name for d in decls], [p.name for p in spec.params] + hidden)
                 for d, p in zip(decls, spec.params):
                     self.assertEqual(d.type, types[p.type], (pdk, spec.name, p.name))
                     self.assertEqual(d.default, p.default_value())
                     if p.type == "choice":
                         self.assertEqual([c[1] if isinstance(c, (list, tuple)) else c
                                           for c in d.choice_values()], p.choices)
-                self.assertTrue(decls[-1].hidden)
-                self.assertEqual(decls[-1].default, St.created_stamp)
+                tail = decls[len(spec.params):]
+                self.assertTrue(all(d.hidden for d in tail))
+                self.assertEqual(tail[0].default, St.created_stamp)
+                if spec.kind != "box":
+                    self.assertEqual((tail[1].type, tail[1].default),
+                                     (db.PCellParameterDeclaration.TypeString, ""))
 
     def test_classes_are_not_shared(self):
         from klayout_magic_pcells.config import SHIPPED_MANIFEST

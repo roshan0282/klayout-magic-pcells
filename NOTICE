@@ -1,0 +1,20 @@
+klayout-magic-pcells
+Copyright 2026 The klayout-magic-pcells authors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The device manifests in python/klayout_magic_pcells/data/ hold data that
+tools/build_manifest.py reads out of each PDK's Magic device generator code
+by running it in Magic: device and parameter names, default values, the
+labels, order and callbacks of Magic's parameter dialogs, what each _check
+proc does to some probe values, and a summary of what Magic draws for the
+defaults. The generator code is not included. It comes from:
+
+  sky130A        sky130A.tcl, installed by open_pdks; written by
+                 Tim Edwards. The file states no licence.
+  gf180mcuD      gf180mcuD.tcl, installed by open_pdks; written by
+                 Tim Edwards. The file states no licence.
+  ihp-sg13g2     ihp-sg13g2.tcl and the ihp-sg13g2-*.tcl files it sources,
+                 Copyright 2025 IHP PDK Authors, Apache License 2.0.
+  ihp-sg13cmos5l ihp-sg13cmos5l.tcl and the ihp-sg13cmos5l-*.tcl files it
+                 sources, Copyright 2026 IHP PDK Authors, Apache License 2.0.

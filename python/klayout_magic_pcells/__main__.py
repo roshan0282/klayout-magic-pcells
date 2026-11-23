@@ -146,12 +146,44 @@ def cmd_doctor(args):
     return 0 if ok else 1
 
 
+class _Direct:
+    """dialog.correct()'s generator, straight to one MagicServer, with no
+    cache."""
+
+    def __init__(self, server):
+        self.server = server
+        self.n = 0
+
+    def dialog(self, spec, form, edits, want_apply_name=False):
+        rep = self.server.dialog(spec, form, edits, want_apply_name=want_apply_name)
+        return {"form": rep.form, "numbers": rep.numbers, "log": rep.log, "source": "magic",
+                "apply_name": rep.apply_name}
+
+    def get(self, spec, request):
+        from .backend import Result, _json_kv, split_apply
+        params, apply = split_apply(request)
+        self.n += 1
+        out = os.path.join(self.server.run_dir, "check%d.gds" % self.n)
+        g = self.server.generate(spec.name, params, spec.form, out, apply=apply)
+        side = {"request": dict(request), "checked": g.checked, "messages": g.log,
+                "magic_cell": g.cell}
+        if "opened" in g.kv:
+            side.update({"opened": _json_kv(g.kv, "opened", {}),
+                         "opened_numbers": _json_kv(g.kv, "opened_numbers", {}),
+                         "checked_numbers": _json_kv(g.kv, "checked_numbers", {}),
+                         "opened_type": g.kv.get("opened_type", ""),
+                         "opened_note": g.kv.get("opened_note", "")})
+        return Result("", out, side, "magic")
+
+
 def cmd_check(args):
-    """Run _check once and show what it changes, then generate the device
-    once to see whether Magic draws anything with the checked values (a
-    _check can hand _draw a value it fails on, such as the SPICE string
-    "68.465u"). Exits 1 when Magic draws nothing, 2 for a refused value."""
+    """For a device: type the values into Magic's dialog (as the PCell form
+    does), press Create, and show what the dialog then shows and whether
+    Magic drew anything (a _check can hand _draw a value it fails on, such
+    as the SPICE string "1.218u"). For a box-paint generator: the box Magic
+    paints. Exits 1 when Magic draws nothing, 2 for a refused value."""
     from .backend import BackendError, MagicServer
+    from .dialog import correct
     from .importer import gds_has_shapes
     from .manifest import InvalidValue
     from .pcell import changed_params
@@ -164,20 +196,30 @@ def cmd_check(args):
         print("error: %s" % e)
         return 2
     s = MagicServer(cfg, vendor_cells=man.vendor_cells())
+    corr = None
     try:
         s.start()
+        if spec.kind != "box":
+            corr = correct(spec, vals, "", _Direct(s))
+            req = corr.request
+            out = corr.result.gds_path
+            glog = corr.result.messages
+        else:
+            out = os.path.join(s.run_dir, "check.gds")
+            glog = s.generate(spec.name, req, spec.form, out).log
         r = s.check(spec.name, req, spec.form if spec.kind == "box" else None)
-        out = os.path.join(s.run_dir, "check.gds")
-        g = s.generate(spec.name, req, spec.form, out)
         drawn = gds_has_shapes(out)
+    except InvalidValue as e:
+        print("error: %s" % e)
+        return 2
     except BackendError as e:
         print("error: %s" % e)
         return 1
     finally:
         s.close()
     ch = changed_params(req, r.checked)
-    messages = [ln for ln in (g.log if not drawn else r.log).strip().splitlines() if ln.strip()]
     if spec.kind == "box":
+        messages = [ln for ln in (glog if not drawn else r.log).strip().splitlines() if ln.strip()]
         size = "%s x %s um" % (r.checked.get("w", req["w"]), r.checked.get("h", req["h"]))
         entered = " (entered %s x %s)" % (req["w"], req["h"]) if ch else ""
         if drawn:
@@ -185,16 +227,21 @@ def cmd_check(args):
         else:
             print("%s: Magic paints nothing on a %s box%s" % (spec.name, size, entered))
     else:
-        verb = "Magic draws" if drawn else "_check sets"
+        messages = []
+        for ln in corr.log.strip().splitlines():
+            if ln.strip() and ln not in messages:
+                messages.append(ln)
         if r.kv.get("check") == "none":
             print("%s: the PDK has no _check proc for it; Magic draws the values unchecked" % spec.name)
         elif r.kv.get("check") == "failed":
             print("%s: _check failed (%s); Magic draws the values unchecked"
                   % (spec.name, r.kv.get("check_error", "")))
-        elif not ch:
-            print("%s: _check changes nothing" % spec.name)
-        for k, v in ch.items():
-            print("%s: %s %s=%s (entered %s)" % (spec.name, verb, k, v, req[k]))
+        if not corr.corrected and not corr.changed:
+            print("%s: Magic's dialog changes nothing" % spec.name)
+        for k, (typed, shown) in corr.corrected.items():
+            print("%s: Magic's dialog shows %s=%s (entered %s)" % (spec.name, k, corr.shows[k], typed))
+        for k, (before, shown) in corr.changed.items():
+            print("%s: Magic's dialog sets %s=%s" % (spec.name, k, corr.shows[k]))
         if not drawn:
             print("%s: Magic draws nothing for these values" % spec.name)
     for line in messages:
@@ -213,7 +260,16 @@ def cmd_generate(args):
     ly = db.Layout()
     ly.dbu = 0.001
     top = ly.create_cell(args.top)
-    pc = ly.create_cell(spec.name, lib.name(), _kv(args.params, spec))
+    params = _kv(args.params, spec)
+    if spec.kind != "box":
+        # Store what Magic's dialog shows, as the GUI does.
+        from . import dialog_values
+        try:
+            params = dialog_values(spec.name, params, pdk=cfg.pdk)
+        except Exception as e:
+            # The PCell then draws the error marker and says why.
+            print("warning: Magic's dialog failed (%s); the values are stored as typed" % e)
+    pc = ly.create_cell(spec.name, lib.name(), params)
     top.insert(db.CellInstArray(pc.cell_index(), db.Trans()))
     ly.write(args.output)
     print("wrote %s: %s (%s), bbox %s um" % (args.output, pc.name, pc.display_title(), pc.dbbox()))

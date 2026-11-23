@@ -786,6 +786,44 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ctot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "checkbox",
+     "square"
+    ],
+    [
+     "checkbox",
+     "bconnect"
+    ],
+    [
+     "checkbox",
+     "tconnect"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::cap_recalc",
@@ -793,7 +831,8 @@
       "l",
       "w",
       "val"
-     ]
+     ],
+     "after": 9
     }
    ],
    "check_on_defaults": {
@@ -1132,6 +1171,68 @@
     "diode_nd2ps_03v3",
     "diode_nd2ps_06v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::diode_recalc",
@@ -1140,7 +1241,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 15
     }
    ],
    "check_on_defaults": {
@@ -1481,6 +1583,68 @@
     "diode_nd2ps_03v3",
     "diode_nd2ps_06v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::diode_recalc",
@@ -1489,7 +1653,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 15
     }
    ],
    "check_on_defaults": {
@@ -1879,6 +2044,84 @@
     "diode_pd2nw_03v3",
     "diode_pd2nw_06v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::diode_recalc",
@@ -1887,7 +2130,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 19
     }
    ],
    "check_on_defaults": {
@@ -2293,6 +2537,84 @@
     "diode_pd2nw_03v3",
     "diode_pd2nw_06v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::diode_recalc",
@@ -2301,7 +2623,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 19
     }
    ],
    "check_on_defaults": {
@@ -2542,6 +2865,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -2911,6 +3252,84 @@
     "nfet_05v0",
     "nfet_06v0",
     "nfet_06v0_nvt"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -3352,6 +3771,84 @@
    "device_type_switch": [
     "nfet_03v3_dss",
     "nfet_06v0_dss"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -3810,6 +4307,84 @@
     "nfet_06v0",
     "nfet_06v0_nvt"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -4259,6 +4834,84 @@
     "nfet_06v0",
     "nfet_06v0_nvt"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -4700,6 +5353,84 @@
    "device_type_switch": [
     "nfet_03v3_dss",
     "nfet_06v0_dss"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -5148,6 +5879,84 @@
     "nfet_06v0",
     "nfet_06v0_nvt"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -5568,6 +6377,80 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -6003,6 +6886,84 @@
    "device_type_switch": [
     "nmoscap_3p3",
     "nmoscap_6p0"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -6446,6 +7407,84 @@
     "nmoscap_3p3",
     "nmoscap_6p0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -6876,6 +7915,68 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -6885,7 +7986,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 15
     }
    ],
    "check_on_defaults": {
@@ -7328,6 +8430,68 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -7337,7 +8501,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 15
     }
    ],
    "check_on_defaults": {
@@ -7595,6 +8760,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -7859,6 +9042,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -8123,6 +9324,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -8299,6 +9518,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -8475,6 +9712,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -8739,6 +9994,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -9201,6 +10474,72 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "selectlist",
+     "guard_type"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -9210,7 +10549,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 16
     }
    ],
    "check_on_defaults": {
@@ -9665,6 +11005,72 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "selectlist",
+     "guard_type"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -9674,7 +11080,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 16
     }
    ],
    "check_on_defaults": {
@@ -10133,6 +11540,84 @@
     "nvaractor_3p3",
     "nvaractor_6p0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -10576,6 +12061,84 @@
     "nvaractor_3p3",
     "nvaractor_6p0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -10962,6 +12525,44 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -10971,7 +12572,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 9
     }
    ],
    "check_on_defaults": {
@@ -11412,6 +13014,84 @@
     "pfet_03v3",
     "pfet_05v0",
     "pfet_06v0"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -11854,6 +13534,84 @@
     "pfet_03v3_dss",
     "pfet_05v0",
     "pfet_06v0_dss"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -12311,6 +14069,84 @@
     "pfet_05v0",
     "pfet_06v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -12759,6 +14595,84 @@
     "pfet_05v0",
     "pfet_06v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -13201,6 +15115,84 @@
     "pfet_03v3_dss",
     "pfet_06v0_dss"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -13633,6 +15625,80 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -14072,6 +16138,84 @@
    "device_type_switch": [
     "pmoscap_3p3",
     "pmoscap_6p0"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -14515,6 +16659,84 @@
     "pmoscap_3p3",
     "pmoscap_6p0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -14762,6 +16984,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -15007,6 +17247,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -15252,6 +17510,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -15497,6 +17773,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -15925,6 +18219,68 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -15934,7 +18290,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 15
     }
    ],
    "check_on_defaults": {
@@ -16377,6 +18734,68 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -16386,7 +18805,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 15
     }
    ],
    "check_on_defaults": {
@@ -16842,6 +19262,72 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "selectlist",
+     "guard_type"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -16851,7 +19337,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 16
     }
    ],
    "check_on_defaults": {
@@ -17315,6 +19802,76 @@
     "ppolyf_u_1k",
     "ppolyf_u_1k_6p0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "selectlist",
+     "guard_type"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -17324,7 +19881,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 17
     }
    ],
    "check_on_defaults": {
@@ -17801,6 +20359,76 @@
     "ppolyf_u_1k",
     "ppolyf_u_1k_6p0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "selectlist",
+     "guard_type"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -17810,7 +20438,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 17
     }
    ],
    "check_on_defaults": {
@@ -18276,6 +20905,72 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "selectlist",
+     "guard_type"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -18285,7 +20980,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 16
     }
    ],
    "check_on_defaults": {
@@ -18743,6 +21439,84 @@
     "pvaractor_3p3",
     "pvaractor_6p0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -19186,6 +21960,84 @@
     "pvaractor_3p3",
     "pvaractor_6p0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -19502,6 +22354,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -19510,7 +22388,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -19789,6 +22668,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -19797,7 +22702,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -20076,6 +22982,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -20084,7 +23016,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -20363,6 +23296,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -20371,7 +23330,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -20650,6 +23610,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "gf180mcu::res_recalc",
@@ -20658,7 +23644,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {

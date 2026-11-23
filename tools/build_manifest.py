@@ -268,8 +268,17 @@ def build(cfg, work):
         name = d["name"]
         fam = family(name, d["defaults"])
         widgets = {w["name"]: w for w in d["widgets"] if w["kind"] != "dependency"}
-        deps = [{"callback": w["name"], "params": w["extra"].split()}
-                for w in d["widgets"] if w["kind"] == "dependency"]
+        # The dialog's widgets in the order _dialog creates them, which is
+        # the order of its rows; and each add_dependency call with the
+        # number of widgets that existed when it ran (add_dependency binds
+        # only widgets that exist already).
+        order = [[w["kind"], w["name"]] for w in d["widgets"] if w["kind"] != "dependency"]
+        deps, made = [], 0
+        for w in d["widgets"]:
+            if w["kind"] == "dependency":
+                deps.append({"callback": w["name"], "params": w["extra"].split(), "after": made})
+            else:
+                made += 1
         probes = {}
         for pr in d["probes"]:
             probes.setdefault(pr["param"], {})[pr["value"]] = pr
@@ -317,6 +326,7 @@ def build(cfg, work):
             "defaults": d["defaults"],
             "params": params,
             "device_type_switch": json.loads(gsel["extra"]) if gsel else None,
+            "dialog_widgets": order,
             "dialog_dependencies": deps,
             "check_on_defaults": {
                 "changes": [c for c in d["check_on_defaults"]["changes"]],

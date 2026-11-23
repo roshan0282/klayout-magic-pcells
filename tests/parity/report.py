@@ -16,6 +16,14 @@ def point_failures(pt, r):
         return ["error"]
     if not r.get("sent", {}).get("equal", False):
         f.append("request")
+    if "dialog" in r and not r["dialog"].get("equal"):
+        f.append("dialog")
+    if "typed" in r and not r["typed"].get("same"):
+        f.append("typed")
+    if "bindings" in r and not r["bindings"].get("same"):
+        f.append("bindings")
+    if "gencell" in r and not r["gencell"].get("ok"):
+        f.append("gencell")
     if not r.get("geometry", {}).get("identical", False):
         f.append("geometry")
     if not r.get("texts", {}).get("identical", False):
@@ -119,7 +127,20 @@ def observations(pts):
     empty = []
     second = []
     known_ext = []
+    gstat = Counter({"devices": 0, "applies": 0, "applies_identical": 0, "not_applicable": 0,
+                     "n/a_same_geometry": 0, "single": 0, "single_checked_differs": 0,
+                     "single_geometry_differs": 0})
+    gdiff = []
+    drc_skipped = []
+    edits = Counter()
     for p in pts:
+        if p["kind"].startswith("edit:"):
+            edits["points"] += 1
+            edits["pass" if p.get("result") == "pass" else "fail"] += 1
+            if p.get("apply_kept"):
+                edits["apply_kept"] += 1
+            if (p.get("dialog") or {}).get("button") == "Create":
+                edits["create_again"] += 1
         ident = (p.get("extract") or {}).get("identity", "")
         if ident.startswith("known Magic behaviour"):
             known_ext.append([p["id"], p["device"], p["kind"], p["extract"]["ref"]])
@@ -130,12 +151,38 @@ def observations(pts):
                 msgs[line.strip()] += 1
         if p.get("empty_output"):
             empty.append(p["id"])
-        if p.get("second_check_changes"):
-            second.append([p["id"], p["device"], p["kind"], p["second_check_changes"]])
+        if p.get("drc_skipped"):
+            drc_skipped.append([p["id"], p["device"], p["kind"], p["drc_skipped"]])
+        if p.get("create_check_changes"):
+            second.append([p["id"], p["device"], p["kind"], p["create_check_changes"]])
+        g = p.get("gencell")
+        if g is not None and "error" not in p and g.get("single_entry"):
+            gstat["single"] += 1
+            if not g.get("applies"):
+                gstat["single_checked_differs"] += 1
+            if not g.get("same_geometry"):
+                gstat["single_geometry_differs"] += 1
+        if g is not None and "error" not in p:
+            gstat["devices"] += 1
+            if g.get("applies"):
+                gstat["applies"] += 1
+                if g.get("ok"):
+                    gstat["applies_identical"] += 1
+            else:
+                gstat["not_applicable"] += 1
+                if g.get("same_geometry"):
+                    gstat["n/a_same_geometry"] += 1
+                else:
+                    gdiff.append([p["id"], p["device"], p["kind"], p.get("request"),
+                                  g.get("diff_layers")])
     return {"points_with_check_messages": with_msgs,
             "messages": [[k, v] for k, v in msgs.most_common(40)],
             "empty_outputs": empty,
-            "second_check_changes": second,
+            "create_check_changes": second,
+            "gencell": dict(gstat),
+            "gencell_differs": gdiff,
+            "drc_skipped": drc_skipped,
+            "edit_points": dict(edits),
             "known_extraction": known_ext}
 
 
@@ -221,8 +268,8 @@ def markdown(rep):
             t = p.get("texts", {})
             if t.get("only_ref") or t.get("only_pcell"):
                 L.append("- texts only in Magic: `%s`; only in the PCell: `%s`" % (t.get("only_ref"), t.get("only_pcell")))
-            for key in ("sent", "bbox", "magic_cell", "checked", "cache", "stamp", "roundtrip", "drc",
-                        "extract"):
+            for key in ("sent", "dialog", "typed", "bindings", "gencell", "bbox", "magic_cell", "checked",
+                        "cache", "stamp", "roundtrip", "drc", "extract"):
                 if key in p["failures"] or (key == "drc" and "drc_baseline" in p["failures"]) or \
                         (key == "extract" and "extract_identity" in p["failures"]) or \
                         (key == "sent" and "request" in p["failures"]):
@@ -237,10 +284,36 @@ def markdown(rep):
         if obs.get("empty_outputs"):
             L.append("- points where Magic wrote a cell with no shapes (the PCell reproduces them): %d (%s)"
                      % (len(obs["empty_outputs"]), ", ".join(obs["empty_outputs"][:40])))
-        if obs.get("second_check_changes"):
-            L.append("- `below:` points where a second `_check` would change Magic's checked values: %d"
-                     % len(obs["second_check_changes"]))
-            for pid, dev, kind, diff in obs["second_check_changes"][:30]:
+        g = obs.get("gencell")
+        if g and g.get("devices"):
+            L.append("- the second reference, `magic::gencell` with the typed values (path A), on %d device "
+                     "points: it applies (the same checked values reach `_draw`) on %d, identical on %d; "
+                     "it doesn't apply on %d, of which %d draw the same shapes and %d differ"
+                     % (g["devices"], g["applies"], g["applies_identical"], g["not_applicable"],
+                        g["n/a_same_geometry"], g["not_applicable"] - g["n/a_same_geometry"]))
+            if g.get("single"):
+                L.append("  - on the %d points with one value typed (devices whose dialog has no widget "
+                         "beyond their parameters), this is also Magic's dialog with the value typed "
+                         "and Create pressed without Return: other checked values on %d, other "
+                         "shapes on %d" % (g["single"], g["single_checked_differs"],
+                                           g["single_geometry_differs"]))
+            for pid, dev, kind, req, layers in obs.get("gencell_differs", [])[:40]:
+                L.append("  - %s `%s` %s `%s`: differs on %s" % (pid, dev, kind, json.dumps(req),
+                                                                 ", ".join(layers or []) or "texts"))
+        ep = obs.get("edit_points") or {}
+        if ep.get("points"):
+            L.append("- edit points (Create, then Magic's Edit device dialog and Apply): %d, %d passing; "
+                     "Apply kept the instance (its new values give the same cell name) on %d; the "
+                     "dialog didn't reopen on the instance, so the edit pressed Create again, on %d"
+                     % (ep["points"], ep.get("pass", 0), ep.get("apply_kept", 0), ep.get("create_again", 0)))
+        if obs.get("drc_skipped"):
+            L.append("- points too large for the DRC sheets (no DRC run): %d" % len(obs["drc_skipped"]))
+            for pid, dev, kind, why in obs["drc_skipped"]:
+                L.append("  - %s `%s` %s: %s" % (pid, dev, kind, why))
+        if obs.get("create_check_changes"):
+            L.append("- points where Create's own `_check` (one pass more than the dialog's) changes "
+                     "the dialog's form (the stored values are Create's): %d" % len(obs["create_check_changes"]))
+            for pid, dev, kind, diff in obs["create_check_changes"][:30]:
                 L.append("  - %s `%s` %s: `%s`" % (pid, dev, kind, json.dumps(diff)))
         if obs.get("known_extraction"):
             L.append("- MOSFET points whose Magic extraction differs from the checked values in a known "

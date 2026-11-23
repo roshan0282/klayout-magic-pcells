@@ -1604,6 +1604,120 @@
     "sky130_fd_pr__nfet_05v0_nvt",
     "sky130_fd_pr__nfet_03v3_nvt"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -2061,6 +2175,52 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ctot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "checkbox",
+     "square"
+    ],
+    [
+     "checkbox",
+     "bconnect"
+    ],
+    [
+     "checkbox",
+     "tconnect"
+    ],
+    [
+     "entry",
+     "ccov"
+    ],
+    [
+     "checkbox",
+     "stack"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::cap_recalc",
@@ -2068,7 +2228,8 @@
       "l",
       "w",
       "val"
-     ]
+     ],
+     "after": 11
     }
    ],
    "check_on_defaults": {
@@ -2455,6 +2616,48 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ctot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "checkbox",
+     "square"
+    ],
+    [
+     "checkbox",
+     "bconnect"
+    ],
+    [
+     "checkbox",
+     "tconnect"
+    ],
+    [
+     "entry",
+     "ccov"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::cap_recalc",
@@ -2462,7 +2665,8 @@
       "l",
       "w",
       "val"
-     ]
+     ],
+     "after": 10
     }
    ],
    "check_on_defaults": {
@@ -3053,6 +3257,124 @@
     "sky130_fd_pr__cap_var_lvt",
     "sky130_fd_pr__cap_var_hvt",
     "sky130_fd_pr__cap_var"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gshield"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -3681,6 +4003,124 @@
     "sky130_fd_pr__cap_var_hvt",
     "sky130_fd_pr__cap_var"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gshield"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -4294,6 +4734,120 @@
     "sky130_fd_pr__cap_var_hvt",
     "sky130_fd_pr__cap_var"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gshield"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -4574,6 +5128,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -4785,6 +5357,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -4996,6 +5586,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -5205,6 +5813,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -5659,6 +6285,100 @@
     "sky130_fd_pr__diode_pd2nw_05v5_hvt",
     "sky130_fd_pr__diode_pd2nw_11v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::diode_recalc",
@@ -5667,7 +6387,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 23
     }
    ],
    "check_on_defaults": {
@@ -6187,6 +6908,100 @@
     "sky130_fd_pr__diode_pd2nw_05v5_hvt",
     "sky130_fd_pr__diode_pd2nw_11v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::diode_recalc",
@@ -6195,7 +7010,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 23
     }
    ],
    "check_on_defaults": {
@@ -6716,6 +7532,100 @@
     "sky130_fd_pr__diode_pd2nw_05v5_hvt",
     "sky130_fd_pr__diode_pd2nw_11v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::diode_recalc",
@@ -6724,7 +7634,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 23
     }
    ],
    "check_on_defaults": {
@@ -7251,6 +8162,100 @@
     "sky130_fd_pr__diode_pd2nw_05v5_hvt",
     "sky130_fd_pr__diode_pd2nw_11v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::diode_recalc",
@@ -7259,7 +8264,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 23
     }
    ],
    "check_on_defaults": {
@@ -7732,6 +8738,84 @@
     "sky130_fd_pr__diode_pw2nd_05v5_nvt",
     "sky130_fd_pr__diode_pw2nd_11v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::diode_recalc",
@@ -7740,7 +8824,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 19
     }
    ],
    "check_on_defaults": {
@@ -8195,6 +9280,84 @@
     "sky130_fd_pr__diode_pw2nd_05v5_nvt",
     "sky130_fd_pr__diode_pw2nd_11v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::diode_recalc",
@@ -8203,7 +9366,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 19
     }
    ],
    "check_on_defaults": {
@@ -8665,6 +9829,84 @@
     "sky130_fd_pr__diode_pw2nd_05v5_nvt",
     "sky130_fd_pr__diode_pw2nd_11v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::diode_recalc",
@@ -8673,7 +9915,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 19
     }
    ],
    "check_on_defaults": {
@@ -9137,6 +10380,84 @@
     "sky130_fd_pr__diode_pw2nd_05v5_nvt",
     "sky130_fd_pr__diode_pw2nd_11v0"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::diode_recalc",
@@ -9145,7 +10466,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 19
     }
    ],
    "check_on_defaults": {
@@ -9760,6 +11082,120 @@
     "sky130_fd_pr__nfet_g5v0d10v5",
     "sky130_fd_pr__nfet_05v0_nvt",
     "sky130_fd_pr__nfet_03v3_nvt"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -10412,6 +11848,120 @@
     "sky130_fd_pr__nfet_05v0_nvt",
     "sky130_fd_pr__nfet_03v3_nvt"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -11063,6 +12613,120 @@
     "sky130_fd_pr__nfet_g5v0d10v5",
     "sky130_fd_pr__nfet_05v0_nvt",
     "sky130_fd_pr__nfet_03v3_nvt"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -11719,6 +13383,120 @@
     "sky130_fd_pr__nfet_05v0_nvt",
     "sky130_fd_pr__nfet_03v3_nvt"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -12373,6 +14151,120 @@
     "sky130_fd_pr__nfet_05v0_nvt",
     "sky130_fd_pr__nfet_03v3_nvt"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -12999,6 +14891,116 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -13299,6 +15301,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -13492,6 +15512,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -13685,6 +15723,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -14240,6 +16296,120 @@
     "sky130_fd_pr__pfet_01v8_lvt",
     "sky130_fd_pr__pfet_01v8_hvt",
     "sky130_fd_pr__pfet_g5v0d10v5"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -14890,6 +17060,120 @@
     "sky130_fd_pr__pfet_01v8_lvt",
     "sky130_fd_pr__pfet_01v8_hvt",
     "sky130_fd_pr__pfet_g5v0d10v5"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -15542,6 +17826,120 @@
     "sky130_fd_pr__pfet_01v8_hvt",
     "sky130_fd_pr__pfet_g5v0d10v5"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -16193,6 +18591,120 @@
     "sky130_fd_pr__pfet_01v8_hvt",
     "sky130_fd_pr__pfet_g5v0d10v5"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -16829,6 +19341,116 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "nf"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -17122,6 +19744,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -17308,6 +19948,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -17601,6 +20259,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -17905,6 +20581,40 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -17914,7 +20624,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 8
     }
    ],
    "check_on_defaults": {
@@ -18219,6 +20930,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -18227,7 +20964,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -18534,6 +21272,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -18542,7 +21306,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -18849,6 +21614,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -18857,7 +21648,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -19164,6 +21956,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -19172,7 +21990,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -19476,6 +22295,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -19484,7 +22329,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 6
     }
    ],
    "check_on_defaults": {
@@ -19986,6 +22832,88 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -19995,7 +22923,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 20
     }
    ],
    "check_on_defaults": {
@@ -20573,6 +23502,88 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -20582,7 +23593,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 20
     }
    ],
    "check_on_defaults": {
@@ -21158,6 +24170,88 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -21167,7 +24261,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 20
     }
    ],
    "check_on_defaults": {
@@ -21745,6 +24840,88 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -21754,7 +24931,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 20
     }
    ],
    "check_on_defaults": {
@@ -22354,6 +25532,96 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -22363,7 +25631,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 22
     }
    ],
    "check_on_defaults": {
@@ -22976,6 +26245,92 @@
     "sky130_fd_pr__res_high_po_2p85",
     "sky130_fd_pr__res_high_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -22985,7 +26340,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -23596,6 +26952,92 @@
     "sky130_fd_pr__res_high_po_2p85",
     "sky130_fd_pr__res_high_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -23605,7 +27047,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -24216,6 +27659,92 @@
     "sky130_fd_pr__res_high_po_2p85",
     "sky130_fd_pr__res_high_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -24225,7 +27754,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -24836,6 +28366,92 @@
     "sky130_fd_pr__res_high_po_2p85",
     "sky130_fd_pr__res_high_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -24845,7 +28461,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -25456,6 +29073,92 @@
     "sky130_fd_pr__res_high_po_2p85",
     "sky130_fd_pr__res_high_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -25465,7 +29168,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -25958,6 +29662,60 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -25966,7 +29724,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 13
     }
    ],
    "check_on_defaults": {
@@ -26540,6 +30299,92 @@
     "sky130_fd_pr__res_xhigh_po_2p85",
     "sky130_fd_pr__res_xhigh_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -26549,7 +30394,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -27160,6 +31006,92 @@
     "sky130_fd_pr__res_xhigh_po_2p85",
     "sky130_fd_pr__res_xhigh_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -27169,7 +31101,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -27780,6 +31713,92 @@
     "sky130_fd_pr__res_xhigh_po_2p85",
     "sky130_fd_pr__res_xhigh_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -27789,7 +31808,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -28400,6 +32420,92 @@
     "sky130_fd_pr__res_xhigh_po_2p85",
     "sky130_fd_pr__res_xhigh_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -28409,7 +32515,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -29020,6 +33127,92 @@
     "sky130_fd_pr__res_xhigh_po_2p85",
     "sky130_fd_pr__res_xhigh_po_5p73"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sky130::res_recalc",
@@ -29029,7 +33222,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -29341,6 +33535,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -29528,6 +33740,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -29715,6 +33945,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],

@@ -30,6 +30,17 @@ check of a formatter that keeps fewer than 12 digits, and the round trips
 (which always include them) fail when a reopened file sends a different
 text.
 
+Each device also gets edit points, which test the "Edit device" dialog that
+Magic opens on an instance after Create: the default device created and then
+edited to the values of one of its other points (up to EDITS_PER_DEVICE of
+them, random, zero, min, max and below points first), and each random point
+created and then edited to the next random point's values. An edit point's
+``first`` holds the New device values (request and value, as above); its
+``request`` and ``value`` are what is then typed into the Edit device dialog.
+The many-digit points are left out: an edit types only the fields whose
+value changes, which path D (Magic's dialog) tells by Magic's number for
+the field and the PCell by its 12-digit text.
+
 No point may give a MOSFET or varactor both w and l above 28 um: Magic's
 mos_check then loops forever (sky130A.tcl and the IHP fet code, the
 tap-spacing loop), on path A as in Magic's own dialog. The backend stops
@@ -59,6 +70,32 @@ OFFGRID = 0.0034
 # Kinds dropped first when a device has more points than --max-per-device.
 DROP_ORDER = ("random", "anchor", "space", "choice", "numlist", "offgrid", "int", "below", "flip",
               "min", "max")
+# Edit points: the kinds whose values the default device is edited to, in
+# the order they are taken, and how many per device.
+EDIT_KINDS = ("random", "zero", "min", "max", "below", "flip", "int", "choice", "anchor", "numlist")
+EDITS_PER_DEVICE = 12
+RANDOM_CHAINS = 4
+
+
+def edit_points(spec, dev_pts):
+    """(kind, first point, second point) for the device's edit points."""
+    if spec.kind == "box":
+        return []
+    by_kind = {}
+    for pt in dev_pts:
+        if pt["request"]:
+            by_kind.setdefault(pt["kind"].split(":")[0], []).append(pt)
+    out = []
+    for fam in EDIT_KINDS:
+        for pt in by_kind.get(fam, []):
+            if len(out) < EDITS_PER_DEVICE:
+                out.append(("edit:" + pt["kind"], None, pt))
+    rnd = {pt["kind"]: pt for pt in by_kind.get("random", [])}
+    for k in range(1, RANDOM_CHAINS + 1):
+        a, b = rnd.get("random:%d" % k), rnd.get("random:%d" % (k + 1))
+        if a and b:
+            out.append(("edit:random:%d>%d" % (k, k + 1), a, b))
+    return out
 
 
 def num(text):
@@ -304,7 +341,18 @@ def gen(manifest, cfg, seed, n_random, max_per_device, quick, patterns):
                     break
                 dev_pts.pop(idx[-1])
                 dropped += 1
-        summary[spec.name] = {"points": len(dev_pts), "dropped": dropped}
+        edits = [] if quick else edit_points(spec, dev_pts)
+        for kind, first, second in edits:
+            dev_pts.append({"device": spec.name, "family": spec.family, "form": spec.form, "kind": kind,
+                            "edit": True,
+                            "first": {"request": dict(first["request"]) if first else {},
+                                      "value": dict(first["value"]) if first else {}},
+                            "request": dict(second["request"]), "value": dict(second["value"]),
+                            # Path D compares a number field with Magic's
+                            # number for it, any other field as text.
+                            "types": {k: spec.param(k).type for k in second["request"]},
+                            "aliases": []})
+        summary[spec.name] = {"points": len(dev_pts), "dropped": dropped, "edit_points": len(edits)}
         points.extend(dev_pts)
     for i, pt in enumerate(points):
         pt["id"] = "%04d" % (i + 1)

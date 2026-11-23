@@ -17,7 +17,7 @@ import logging
 import os
 import tempfile
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 # The sky130A library's name, kept for code written against version 0.2.
 LIBRARY_NAME = "sky130_magic"
 
@@ -200,6 +200,15 @@ def start_backend(cfg=None, pdk=None, server=None, manifest=None):
                 "the rcfile %s loaded the generator namespace %s, but the manifest %s is for %s"
                 % (cfg.magicrc, versions.namespace, cfg.manifest, manifest.namespace),
                 hint=_hint_devices(cfg.pdk))
+        # The namespace doesn't tell the variants of one PDK apart: sky130A
+        # and sky130B both load ::sky130, and gf180mcu A to F ::gf180mcu.
+        # Magic's technology name does (sky130A, gf180mcuD, ...).
+        want_tech = (manifest.data.get("built_with") or {}).get("tech_name") or cfg.pdk
+        if versions.tech_name != want_tech:
+            raise StartError(
+                "the rcfile %s loaded the Magic technology %s, not %s: the manifest %s is for %s"
+                % (cfg.magicrc, versions.tech_name or "(none)", want_tech, cfg.manifest, cfg.pdk),
+                hint=_hint_devices(cfg.pdk))
         missing = missing_devices(manifest, versions.defaults, versions.boxpaint)
         if missing:
             n = len(manifest.devices)
@@ -349,3 +358,48 @@ def shutdown(pdk=None):
 
 def generator(pdk=None):
     return state_for(pdk or primary_pdk()).generator
+
+
+def dialog_values(device, params=None, pdk=None):
+    """The parameters the GUI would store for ``params`` typed into the
+    device's PCell form: what Magic's dialog shows after those edits and
+    Create, plus the hidden ``kmp_dialog`` state, as a dict for
+    ``Layout.create_cell``. Given such a dict with some values changed, the
+    edit is one in Magic's "Edit device" dialog followed by Apply.
+
+    ``Layout.create_cell(device, library, params)`` stores ``params`` as
+    given (KLayout keeps a PCell's coerced values only in the GUI form and
+    on a library refresh) and draws the corrected ones; passing
+    ``dialog_values(device, params)`` instead stores the corrected values
+    too. ``pdk`` picks the PDK when several registered libraries have the
+    device (``rm1``, ``via1``). Raises KeyError for a device no registered
+    library has, ValueError for a name several have, and the error that
+    stopped Magic's dialog (a refused value, a backend failure) otherwise.
+    """
+    from .dialog import DIALOG_PARAM, correct
+    cands = [pdk] if pdk else [p for p, st in states.items()
+                               if st.library is not None and st.manifest is not None
+                               and device in st.manifest]
+    if not cands:
+        raise KeyError("no registered library has a device %r" % device)
+    if len(cands) > 1:
+        raise ValueError("%s is a device of %s; pass pdk=" % (device, ", ".join(sorted(cands))))
+    st = state_for(cands[0])
+    if st.library is None or st.manifest is None or device not in st.manifest:
+        raise KeyError("the %s library is not registered or has no device %r" % (cands[0], device))
+    spec = st.manifest[device]
+    lib_layout = st.library.layout()
+    decl = lib_layout.pcell_declaration(device)
+    given = dict(params or {})
+    plist = [given.get(pd.name, pd.default) for pd in decl.get_parameters()]
+    names = [pd.name for pd in decl.get_parameters()]
+    if spec.kind != "box":
+        # coerce_parameters swallows failures (produce reports them); here
+        # the caller gets the reason.
+        vals = {p.name: plist[names.index(p.name)] for p in spec.params}
+        dtext = plist[names.index(DIALOG_PARAM)] if DIALOG_PARAM in names else ""
+        correct(spec, vals, dtext or "", st.generator)
+    out = decl.coerce_parameters(lib_layout, plist)
+    if out is None:  # PCellDeclarationHelper returns the list; be safe
+        out = plist
+    return dict(zip(names, out))

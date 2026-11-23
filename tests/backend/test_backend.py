@@ -66,7 +66,7 @@ DEV = {
         mos="sky130_fd_pr__nfet_01v8", loop=("sky130_fd_pr__nfet_01v8", "sky130_fd_pr__cap_var_lvt"),
         small=("0.15", "0.42"), fixed="sky130_fd_pr__npn_05v5_W1p00L1p00",
         res="sky130_fd_pr__res_high_po_0p69", other="sky130_fd_pr__cap_mim_m3_1",
-        empty=("sky130_fd_pr__res_generic_po", "l"),
+        empty=("sky130_fd_pr__res_generic_l1", "l"),
         refused=(("sky130_fd_pr__nfet_01v8", "viagb"), ("sky130_fd_pr__res_high_po_0p35", "viagb"),
                  ("sky130_fd_pr__cap_mim_m3_1", "ccov"), ("sky130_fd_pr__diode_pw2nd_05v5", "viagt")),
         vendor="sky130_fd_pr", script=None),
@@ -76,12 +76,12 @@ DEV = {
         refused=(("ppolyf_u", "guard_type"),), vendor="gf180mcu_fd_pr", script=None),
     "ihp-sg13g2": dict(
         mos="sg13_lv_nmos", loop=("sg13_lv_nmos",), small=("0.13", "0.15"), fixed="diodevdd_2kv",
-        res="rsil", other="cap_cmim", empty=("rsil", "l"),
+        res="rsil", other="cap_cmim", empty=("rm1", "l"),
         refused=(("dantenna", "viagb"), ("cap_cmim", "ccov"), ("via", "nxcuts"), ("via", "metalbot")),
         vendor=None, script="diodevdd_2kv.tcl"),
     "ihp-sg13cmos5l": dict(
         mos="sg13_lv_nmos", loop=("sg13_lv_nmos",), small=("0.13", "0.15"), fixed="diodevdd_2kv",
-        res="rsil", other="cap_cmomf", empty=("rsil", "l"),
+        res="rsil", other="cap_cmomf", empty=("rm1", "l"),
         refused=(("dantenna", "viagb"), ("via", "nxcuts")), vendor=None, script="diodevdd_2kv.tcl"),
 }
 D = DEV.get(PDK, DEV["sky130A"])
@@ -631,18 +631,20 @@ class GeneratorAndLibrary(unittest.TestCase):
             assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
             st = kmp.state_for(PDK)
             res, other = sys.argv[2], sys.argv[3]
+            def gstats():
+                return {k: st.generator.stats[k] for k in ("memo", "disk", "magic", "evicted")}
             def place(dev):
                 ly = db.Layout()
                 c = ly.create_cell(dev, LIB, {})
                 ph = ly.find_layer(255, 0)
                 return "%s %s %s" % (dev, c.dbbox(), ph is not None and not c.shapes(ph).is_empty())
-            print("PLACE", place(res), st.generator.stats)
-            print("PLACE", place(other), st.generator.stats)
+            print("PLACE", place(res), gstats())
+            print("PLACE", place(other), gstats())
             path = glob.glob(os.path.join(os.environ["KMP_CACHE_DIR"], "v1/*/%s/*.gds" % res))[0]
             if sys.argv[1] == "live":
                 # damage the file under the memo of this session
                 open(path, "wb").write(b"not a GDS file")
-                print("PLACE", place(res), st.generator.stats)
+                print("PLACE", place(res), gstats())
             elif sys.argv[1] != "none":
                 oth = glob.glob(os.path.join(os.environ["KMP_CACHE_DIR"], "v1/*/%s/*.gds" % other))[0]
                 if sys.argv[1] == "swap":
@@ -670,13 +672,15 @@ class GeneratorAndLibrary(unittest.TestCase):
                 if PDK == "sky130A":
                     self.assertEqual(good, "sky130_fd_pr__res_high_po_0p69 (-1.12,-3.355;1.12,3.355) False")
             self.assertEqual(g, good)
+            # Coerce makes each variant (Magic's Create shows the values) and
+            # produce takes it from the memo.
             if damage == "live":
                 self.assertIn("can't be read", first)
-                self.assertIn("PLACE " + good + " {'memo': 1, 'disk': 0, 'magic': 3, 'evicted': 1}", first)
+                self.assertIn("PLACE " + good + " {'memo': 4, 'disk': 0, 'magic': 3, 'evicted': 1}", first)
             # The next session sees the damage, deletes the entry and asks Magic.
-            self.assertIn("PLACE " + good + " {'memo': 0, 'disk': 0, 'magic': 1, 'evicted': 0}"
+            self.assertIn("PLACE " + good + " {'memo': 1, 'disk': 0, 'magic': 1, 'evicted': 0}"
                           if damage != "live" else
-                          "PLACE " + good + " {'memo': 0, 'disk': 1, 'magic': 0, 'evicted': 0}", second, damage)
+                          "PLACE " + good + " {'memo': 1, 'disk': 1, 'magic': 0, 'evicted': 0}", second, damage)
 
     def test_the_cache_removed_under_a_running_session(self):
         # gf180mcuD tester's case: "cache clear" or "cache prune" from
@@ -815,6 +819,214 @@ class GeneratorAndLibrary(unittest.TestCase):
                 self.assertIn(" True KMP_ERROR ", ln, step)
                 self.assertIn("not sent to Magic", ln, step)
 
+    def test_dialog_values_survive_reopen_and_refresh(self):
+        # The stored values are what Magic's dialog shows; the cell is what
+        # its Create makes of them. Magic's _check isn't idempotent, so a
+        # reopened file or a library refresh must not run the dialog on the
+        # stored values again. On sky130A, res_xhigh_po_5p73 with a typed
+        # val shows l 5.997, and typing that val again gives l 5.994 (another
+        # cell); res_high_po_0p35 with l 0 and val 10000 shows val 1113.259
+        # (Magic draws nothing for it), and typing its l again gives
+        # 1113.258. res_high_po_0p69 with w 1.0 and cap_mim_m3_1 with l 0 and
+        # val 50 are the cases where one _check on Magic's own output changed
+        # val. Four processes, each with the disk cache off: make and save
+        # GDS and OASIS, reopen the GDS (refresh, save again), reopen the
+        # OASIS, reopen the second save.
+        if PDK == "sky130A":
+            cases = [("sky130_fd_pr__res_high_po_0p69", {"w": 1.0}),
+                     ("sky130_fd_pr__cap_mim_m3_1", {"l": 0.0, "val": 50.0}),
+                     ("sky130_fd_pr__res_high_po_0p35", {"l": 0.0, "val": 10000.0}),
+                     ("sky130_fd_pr__res_xhigh_po_5p73", {"val": 1000.0})]
+        else:
+            cases = [(D["res"], {"l": 0.1}), (D["mos"], {"l": 0.1, "w": 0.1})]
+        body = """
+            import json
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+            st = kmp.state_for(PDK)
+            lib = db.Library.library_by_name(LIB)
+            step, path, out = sys.argv[1], sys.argv[2], sys.argv[3]
+            cases = json.loads(sys.argv[4])
+
+            def sig(ly, c):
+                rows = []
+                for li in ly.layer_indices():
+                    r = db.Region(c.begin_shapes_rec(li))
+                    t = sorted(str(x) for x in db.Texts(c.begin_shapes_rec(li)).each())
+                    if not r.is_empty() or t:
+                        rows.append([ly.get_info(li).to_s(), sorted(str(p) for p in r.merged().each()), t])
+                return sorted(rows)
+
+            def norm(params):
+                # A double as the 15 digits KLayout saves it with.
+                return {k: ("%.15g" % v if isinstance(v, float) else v) for k, v in params.items()}
+
+            def snap(ly):
+                return {c.name: [c.pcell_declaration().name(), norm(c.pcell_parameters_by_name()), sig(ly, c)]
+                        for c in ly.each_cell() if c.is_pcell_variant()}
+
+            ly = db.Layout()
+            before = dict(st.generator.stats)
+            if step == "make":
+                top = ly.create_cell("TOP")
+                extra = {}
+                for i, (dev, typed) in enumerate(cases):
+                    v = kmp.dialog_values(dev, typed)
+                    c = ly.create_cell(dev, LIB, v)
+                    top.insert(db.CellInstArray(c.cell_index(), db.Trans(db.Vector(i * 50000, 0))))
+                    spec = st.manifest[dev]
+                    form = json.loads(v["kmp_dialog"])["form"]
+                    # What magic::gencell makes of the typed values (one _check)
+                    # and what typing each edited field again would show.
+                    raw = st.server.check(dev, dict(spec.build_request(dict(spec.defaults_values(), **typed))))
+                    again = {}
+                    for n in typed:
+                        rep = st.server.dialog(spec, form, [(n, form[n])])
+                        again[n] = {k: [form[k], rep.form[k]] for k in form if rep.form[k] != form[k]}
+                    extra[c.name] = {"typed": typed, "form": form, "gencell_checked": raw.checked,
+                                     "again": again}
+                ly.write(path)
+                ly.write(path + ".oas")
+                print("EXTRA", json.dumps(extra, sort_keys=True))
+            else:
+                ly.read(path)
+            a = snap(ly)
+            lib.refresh()
+            b = snap(ly)
+            if out:
+                ly.write(out)
+            print("SNAP", json.dumps({"opened": a, "refreshed": b}, sort_keys=True, default=str))
+            print("STATS", json.dumps({k: st.generator.stats[k] - before.get(k, 0) for k in st.generator.stats}))
+        """
+        gds = os.path.join(self.tmp, "dlg.gds")
+        resaved = os.path.join(self.tmp, "dlg2.gds")
+        runs = []
+        for step, path, out in (("make", gds, ""), ("open", gds, resaved), ("open2", gds + ".oas", ""),
+                                ("open3", resaved, "")):
+            env = self.env(KMP_CACHE="0")
+            rc, text = run_py(body, env, [step, path, out, json.dumps(cases)])
+            self.assertEqual(rc, 0, text)
+            snap = json.loads([ln for ln in text.splitlines() if ln.startswith("SNAP ")][0][5:])
+            stats = json.loads([ln for ln in text.splitlines() if ln.startswith("STATS ")][0][6:])
+            runs.append((step, snap, stats, text))
+        made = runs[0][1]["opened"]
+        extra = json.loads([ln for ln in runs[0][3].splitlines() if ln.startswith("EXTRA ")][0][6:])
+        self.assertEqual(len(made), len(cases), runs[0][3])
+        for step, snap, stats, text in runs:
+            want = {v[0]: v[1:] for v in made.values()}
+            for when in ("opened", "refreshed"):
+                # By device: the cell names may differ.
+                got = {v[0]: v[1:] for v in snap[when].values()}
+                self.assertEqual(sorted(got), sorted(want), (step, when))
+                for dev in want:
+                    pa, ga = got[dev]
+                    pb, gb = want[dev]
+                    self.assertEqual(pa, pb, (step, when, dev))
+                    self.assertEqual([g[0] for g in ga], [g[0] for g in gb], (step, when, dev))
+                    for x, y in zip(ga, gb):
+                        self.assertEqual(x, y, (step, when, dev, x[0]))
+            if step != "make":
+                # Nothing was typed into Magic's dialog again, and every
+                # variant came from Magic in this process.
+                self.assertEqual(stats.get("dialog_magic"), 0, (step, stats))
+                self.assertGreater(stats.get("magic"), 0, (step, stats))
+        for name, (dev, params, geo) in made.items():
+            e = extra[name]
+            if dev != "sky130_fd_pr__res_high_po_0p35":
+                self.assertTrue(geo, name)
+            if PDK == "sky130A" or dev == D["mos"]:
+                for n, typed in e["typed"].items():
+                    self.assertNotEqual(float(params[n]), typed, (name, n))   # the dialog corrected it
+            if PDK == "sky130A":
+                # One _check (magic::gencell) on the typed values gives other
+                # values than the dialog's form.
+                diff = [k for k in e["form"] if e["gencell_checked"].get(k) != e["form"][k]]
+                self.assertTrue(diff, (name, e))
+        if PDK == "sky130A":
+            def again(dev):
+                return extra[[n for n in extra if n.startswith(dev + "__")][0]]["again"]
+            self.assertEqual(again("sky130_fd_pr__res_high_po_0p35")["l"], {"val": ["1113.259", "1113.258"]})
+            self.assertEqual(again("sky130_fd_pr__res_xhigh_po_5p73")["val"],
+                             {"l": ["5.997", "5.994"], "val": ["2.158k", "2.157k"]})
+
+    def test_a_command_in_a_stored_dialog_form_never_runs(self):
+        # kmp_dialog is text in the file: a form value that is not a number
+        # is not used (the values are typed into the dialog again instead),
+        # and never reaches Magic.
+        marker = os.path.join(self.tmp, "INJECTED")
+        body = """
+            import json
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+            dev, marker = sys.argv[1], sys.argv[2]
+            v0 = kmp.dialog_values(dev, {"l": 0.1})
+            # In the form Create was pressed with, and in what the dialog
+            # shows afterwards (where a later edit starts).
+            for part in ("form", "shows"):
+                v = dict(v0)
+                d = json.loads(v["kmp_dialog"])
+                for k in d[part]:
+                    if k != "l":
+                        d[part][k] = "[exec touch %s]" % marker
+                        break
+                v["kmp_dialog"] = json.dumps(d)
+                ly = db.Layout()
+                c = ly.create_cell(dev, LIB, v)
+                ph = ly.layer(255, 0)
+                print("CELL", part, c.dbbox().empty(), c.shapes(ph).is_empty())
+                v["l"] = 0.2  # an edit, which would start from "shows"
+                c = ly.create_cell(dev, LIB, v)
+                print("EDIT", part, c.dbbox().empty(), c.shapes(ph).is_empty())
+            print("MARKER", os.path.exists(marker))
+        """
+        rc, text = run_py(body, self.env(KMP_CACHE="0"), [D["mos"], marker])
+        self.assertEqual(rc, 0, text)
+        for part in ("form", "shows"):
+            self.assertIn("CELL %s False True" % part, text)
+            self.assertIn("EDIT %s False True" % part, text)
+        self.assertIn("MARKER False", text)
+
+    @sky130_only
+    def test_magic_behaviour_the_dialog_model_leaves_out(self):
+        # Review 3, findings 1 and 2, pinned as Magic's own behaviour (the
+        # README says which interaction the PCell reproduces):
+        # - sky130's res_check flips w on a snake resistor shorter than
+        #   5.73 um: the wmin clamp sets w to 5.73, the "Snake resistor
+        #   width must be < length" test sets it back to l, and each pass
+        #   reads the other's result. So the drawn w depends on how many
+        #   bindings a user's Returns, Tabs and clicks run.
+        # - A value typed with no Return before Create runs no binding:
+        #   Create's one _check is magic::gencell's. res_generic_po with
+        #   l 0 then makes an empty cell; with Return, the dialog shows
+        #   l 1.65 and Create draws it.
+        body = """
+            import json
+            assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
+            st = kmp.state_for(PDK)
+            spec = st.manifest["sky130_fd_pr__res_high_po_5p73"]
+            p = dict(spec.build_request(dict(spec.defaults_values(), l=1.87, snake=True)))
+            ws = []
+            for i in range(4):
+                p = dict(st.server.check(spec.name, p).checked)
+                ws.append(p["w"])
+            print("SNAKE", json.dumps(ws))
+            spec = st.manifest["sky130_fd_pr__res_generic_po"]
+            once = st.server.check(spec.name, spec.build_request(dict(spec.defaults_values(), l=0.0)))
+            print("ONCE", once.checked["l"])
+            v = kmp.dialog_values(spec.name, {"l": 0.0})
+            ly = db.Layout()
+            c = ly.create_cell(spec.name, LIB, v)
+            print("RETURN", v["l"], c.dbbox().empty())
+            req = spec.build_request(dict(spec.defaults_values(), l=0.0))
+            r = st.generator.get(spec, req)
+            from klayout_magic_pcells.importer import gds_has_shapes
+            print("NORETURN", gds_has_shapes(r.gds_path))
+        """
+        rc, text = run_py(body, self.env(KMP_CACHE="0"))
+        self.assertEqual(rc, 0, text)
+        ws = json.loads([ln for ln in text.splitlines() if ln.startswith("SNAKE ")][0][6:])
+        self.assertEqual([float(w) for w in ws], [1.87, 5.73, 1.87, 5.73], text)
+        self.assertIn("RETURN 1.65 False", text)
+        self.assertIn("NORETURN False", text)
+
     def test_register_fails_cleanly_on_a_bad_manifest(self):
         with open(CFG.manifest) as f:
             man = json.load(f)
@@ -861,6 +1073,40 @@ class GeneratorAndLibrary(unittest.TestCase):
             self.assertNotIn("namespace sky130,", text)
             self.assertIn("KMP_MANIFEST", text)
 
+    def test_register_refuses_another_variants_technology(self):
+        # sky130A and sky130B share the generator namespace sky130, and the
+        # gf180mcu variants A to F share gf180mcu; only Magic's technology
+        # name tells them apart. No other variant is installed in the image,
+        # so this rcfile loads the PDK and then a copy of its tech file that
+        # names another technology.
+        other = {"sky130A": "sky130B", "gf180mcuD": "gf180mcuC"}.get(PDK, PDK + "x")
+        techdir = os.path.join(self.tmp, "magic")
+        shutil.copytree(os.path.dirname(CFG.magicrc), techdir)
+        tech = os.path.join(techdir, PDK + ".tech")
+        with open(tech, encoding="utf-8") as f:
+            text = f.read()
+        text, n = re.subn(r"(?m)^(tech\s*\n\s*format\s+\d+\s*\n\s*)%s\b" % re.escape(PDK),
+                          r"\g<1>" + other, text, count=1)
+        self.assertEqual(n, 1, "no tech section naming %s" % PDK)
+        with open(tech, "w", encoding="utf-8") as f:
+            f.write(text)
+        rc_file = os.path.join(self.tmp, "variant.magicrc")
+        with open(rc_file, "w") as f:
+            f.write("source %s\ntech load %s\n" % (CFG.magicrc, tech))
+        body = """
+            assert kmp.register(PDK) is None
+            assert db.Library.library_by_name(LIB) is None
+            print("ERR", kmp.state_for(PDK).last_error)
+        """
+        rc, text = run_py(body, self.env(KMP_MAGICRC=rc_file))
+        self.assertEqual(rc, 0, text)
+        self.assertIn("loaded the Magic technology %s, not %s" % (other, PDK), text)
+        # The same rcfile without the second tech load registers.
+        with open(rc_file, "w") as f:
+            f.write("source %s\n" % CFG.magicrc)
+        rc, text = run_py("assert kmp.register(PDK) is not None", self.env(KMP_MAGICRC=rc_file))
+        self.assertEqual(rc, 0, text)
+
     def test_an_unwritable_cache_dir_only_turns_the_cache_off(self):
         ro = os.path.join(self.tmp, "ro")
         os.makedirs(ro)
@@ -901,17 +1147,21 @@ class GeneratorAndLibrary(unittest.TestCase):
         rc, text = cli(env, "generate", dev, "%s=0" % name, "-o", out, cwd=self.tmp)
         self.assertEqual(rc, 1, text)
         self.assertIn("Magic drew nothing", text)
-        # check generates once too: Magic draws nothing here, although
-        # _check hands back a value (sky130A res_generic_po: l=1.65 with val
-        # 10000 turns into the SPICE string 68.465u, which _draw fails on).
+        # check presses Create once too: Magic draws nothing here, although
+        # its dialog hands back a value (sky130A res_high_po_0p35: val 10000,
+        # then l 0, which the dialog turns into the SPICE string 1.218u,
+        # which _draw fails on).
         rc, text = cli(env, "check", dev, "%s=0" % name, cwd=self.tmp)
         self.assertEqual(rc, 1, text)
         self.assertIn("Magic draws nothing for these values", text)
         if PDK == "sky130A":
-            rc, text = cli(env, "check", "sky130_fd_pr__res_generic_po", "val=10000", "l=0", cwd=self.tmp)
+            rc, text = cli(env, "check", "sky130_fd_pr__res_high_po_0p35", "val=10000", "l=0", cwd=self.tmp)
             self.assertEqual(rc, 1, text)
-            self.assertIn("_check sets l=68.465u (entered 0.0)", text)
-            self.assertNotIn("Magic draws l=", text)
+            self.assertIn("Magic's dialog shows l=1.218u (entered 0.0)", text)
+            self.assertIn("Magic draws nothing for these values", text)
+            rc, text = cli(env, "check", "sky130_fd_pr__res_generic_po", "l=0", cwd=self.tmp)
+            self.assertEqual(rc, 0, text)
+            self.assertIn("Magic's dialog shows l=1.650 (entered 0.0)", text)
         dev, name = D["refused"][0]
         rc, text = cli(env, "generate", dev, "%s=abc" % name, "-o", out, cwd=self.tmp)
         self.assertEqual(rc, 1, text)
@@ -945,8 +1195,7 @@ class GeneratorAndLibrary(unittest.TestCase):
         # The GUI form's callback (driven here with PCellParameterStates, as
         # KLayout's form calls it): a box below its minimum on one side gets
         # the icon on that side only; a device Magic draws nothing for says
-        # so, on the value _check changed; a clamped value says what Magic
-        # draws.
+        # so; a value Magic's dialog clamps says what the dialog shows.
         body = """
             assert kmp.register(PDK) is not None, kmp.state_for(PDK).last_error
             ly = db.Library.library_by_name(LIB).layout()
@@ -992,7 +1241,9 @@ class GeneratorAndLibrary(unittest.TestCase):
         self.assertTrue(all(v[0] == "WARN" and v[1].startswith("Magic draws nothing") for v in empty.values()),
                         text)
         self.assertEqual(sorted(small), ["l"], text)
-        self.assertIn("Magic draws %s (entered 0.1)" % D["small"][0], small["l"][1])
+        m = re.search(r"Magic's dialog shows ([0-9.]+) \(entered 0\.1\)", small["l"][1])
+        self.assertTrue(m, small)
+        self.assertEqual(float(m.group(1)), float(D["small"][0]), small)
         self.assertEqual(list(refused.values())[0][0], "ERR", text)
 
     def _make_and_audit(self, devices, dbu="0.001", env=None, audit_env=None, regen=True):
@@ -1131,6 +1382,11 @@ class GeneratorAndLibrary(unittest.TestCase):
             ly = db.Layout()
             c = ly.create_cell(sys.argv[1], LIB, {})
             print("MARKER", [sh.text_string for sh in c.shapes(ly.layer(255, 0)).each() if sh.is_text()])
+            # The same request again (coerce and produce each ask): what the
+            # failed one left in Magic must not make this one succeed.
+            ly2 = db.Layout()
+            c1 = ly2.create_cell(sys.argv[1], LIB, {})
+            print("AGAIN", not c1.shapes(ly2.layer(255, 0)).is_empty())
             c2 = ly.create_cell(sys.argv[2], LIB, {})
             print("NEXT", c2.dbbox().empty(), not c2.shapes(ly.layer(255, 0)).is_empty())
         """
@@ -1143,6 +1399,7 @@ class GeneratorAndLibrary(unittest.TestCase):
         if D["script"]:
             self.assertIn(D["script"] + '": no such file or directory', marker)
             self.assertNotIn("-errorstack", marker)
+        self.assertIn("AGAIN True", text)
         self.assertIn("NEXT False False", text)
 
     def test_audit_flags_cells_rounded_by_the_file_dbu(self):

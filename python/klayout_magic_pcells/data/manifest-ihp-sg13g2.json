@@ -1390,6 +1390,28 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -1606,6 +1628,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "width"
+    ],
+    [
+     "entry",
+     "height"
+    ],
+    [
+     "entry",
+     "depth"
+    ],
+    [
+     "selectlist",
+     "shape"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -1963,6 +2003,64 @@
     "cap_cmim",
     "cap_rfcmim"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ctot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "square"
+    ],
+    [
+     "checkbox",
+     "upcontact"
+    ],
+    [
+     "entry",
+     "tabwidth"
+    ],
+    [
+     "checkbox",
+     "bconnect"
+    ],
+    [
+     "checkbox",
+     "tconnect"
+    ],
+    [
+     "entry",
+     "ccov"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::cap_recalc",
@@ -1970,7 +2068,8 @@
       "l",
       "w",
       "val"
-     ]
+     ],
+     "after": 13
     }
    ],
    "check_on_defaults": {
@@ -2412,6 +2511,64 @@
     "cap_cmim",
     "cap_rfcmim"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ctot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "square"
+    ],
+    [
+     "checkbox",
+     "upcontact"
+    ],
+    [
+     "entry",
+     "tabwidth"
+    ],
+    [
+     "checkbox",
+     "bconnect"
+    ],
+    [
+     "checkbox",
+     "tconnect"
+    ],
+    [
+     "entry",
+     "ccov"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::cap_recalc",
@@ -2419,7 +2576,8 @@
       "l",
       "w",
       "val"
-     ]
+     ],
+     "after": 13
     }
    ],
    "check_on_defaults": {
@@ -2865,6 +3023,84 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::diode_recalc",
@@ -2873,7 +3109,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 18
     }
    ],
    "check_on_defaults": {
@@ -3155,6 +3392,28 @@
     "diodevss_2kv",
     "diodevss_4kv"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -3390,6 +3649,28 @@
     "diodevdd_4kv",
     "diodevss_2kv",
     "diodevss_4kv"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -3627,6 +3908,28 @@
     "diodevss_2kv",
     "diodevss_4kv"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -3862,6 +4165,28 @@
     "diodevdd_4kv",
     "diodevss_2kv",
     "diodevss_4kv"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -4253,6 +4578,84 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::diode_recalc",
@@ -4261,7 +4664,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 18
     }
    ],
    "check_on_defaults": {
@@ -4560,6 +4964,32 @@
     "inductor2",
     "inductor3"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "width"
+    ],
+    [
+     "entry",
+     "space"
+    ],
+    [
+     "entry",
+     "diameter"
+    ],
+    [
+     "entry",
+     "turns"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -4820,6 +5250,32 @@
     "inductor2",
     "inductor3"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "width"
+    ],
+    [
+     "entry",
+     "space"
+    ],
+    [
+     "entry",
+     "diameter"
+    ],
+    [
+     "entry",
+     "turns"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -5067,6 +5523,28 @@
     "nmoscl_2",
     "nmoscl_4"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -5301,6 +5779,28 @@
    "device_type_switch": [
     "nmoscl_2",
     "nmoscl_4"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -5604,6 +6104,44 @@
     "npn13g2l",
     "npn13g2v"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "message",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::diode_recalc",
@@ -5612,7 +6150,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 8
     }
    ],
    "check_on_defaults": {
@@ -5938,6 +6477,44 @@
     "npn13g2l",
     "npn13g2v"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "message",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::diode_recalc",
@@ -5946,7 +6523,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 8
     }
    ],
    "check_on_defaults": {
@@ -6263,6 +6841,44 @@
     "npn13g2l",
     "npn13g2v"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "message",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::diode_recalc",
@@ -6271,7 +6887,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 8
     }
    ],
    "check_on_defaults": {
@@ -6677,6 +7294,84 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "area"
+    ],
+    [
+     "entry",
+     "peri"
+    ],
+    [
+     "message",
+     "atot"
+    ],
+    [
+     "message",
+     "ptot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "elc"
+    ],
+    [
+     "checkbox",
+     "erc"
+    ],
+    [
+     "checkbox",
+     "etc"
+    ],
+    [
+     "checkbox",
+     "ebc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::diode_recalc",
@@ -6685,7 +7380,8 @@
       "w",
       "area",
       "peri"
-     ]
+     ],
+     "after": 18
     }
    ],
    "check_on_defaults": {
@@ -7245,6 +7941,96 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "bar"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -7254,7 +8040,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -7662,6 +8449,40 @@
     "rm6",
     "rm7"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -7670,7 +8491,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 7
     }
    ],
    "check_on_defaults": {
@@ -8001,6 +8823,40 @@
     "rm6",
     "rm7"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -8009,7 +8865,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 7
     }
    ],
    "check_on_defaults": {
@@ -8340,6 +9197,40 @@
     "rm6",
     "rm7"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -8348,7 +9239,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 7
     }
    ],
    "check_on_defaults": {
@@ -8679,6 +9571,40 @@
     "rm6",
     "rm7"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -8687,7 +9613,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 7
     }
    ],
    "check_on_defaults": {
@@ -9018,6 +9945,40 @@
     "rm6",
     "rm7"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -9026,7 +9987,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 7
     }
    ],
    "check_on_defaults": {
@@ -9335,6 +10297,40 @@
     "rm6",
     "rm7"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -9343,7 +10339,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 7
     }
    ],
    "check_on_defaults": {
@@ -9646,6 +10643,40 @@
     "rm6",
     "rm7"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -9654,7 +10685,8 @@
       "w",
       "val",
       "nx"
-     ]
+     ],
+     "after": 7
     }
    ],
    "check_on_defaults": {
@@ -10166,6 +11198,96 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "bar"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -10175,7 +11297,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 21
     }
    ],
    "check_on_defaults": {
@@ -10794,6 +11917,104 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "val"
+    ],
+    [
+     "message",
+     "ltot"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "entry",
+     "endcov"
+    ],
+    [
+     "checkbox",
+     "snake"
+    ],
+    [
+     "checkbox",
+     "bar"
+    ],
+    [
+     "checkbox",
+     "roverlap"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "hv_guard"
+    ],
+    [
+     "checkbox",
+     "n_guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "vias"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [
     {
      "callback": "sg13g2::res_recalc",
@@ -10803,7 +12024,8 @@
       "val",
       "nx",
       "snake"
-     ]
+     ],
+     "after": 23
     }
    ],
    "check_on_defaults": {
@@ -11120,6 +12342,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -11349,6 +12589,24 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "entry",
+     "nx"
+    ],
+    [
+     "entry",
+     "ny"
+    ],
+    [
+     "entry",
+     "deltax"
+    ],
+    [
+     "entry",
+     "deltay"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -11931,6 +13189,132 @@
    "device_type_switch": [
     "sg13_lv_nmos",
     "sg13_hv_nmos"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "ng"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "entry",
+     "ccols"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "gate_ring"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -12604,6 +13988,132 @@
     "sg13_lv_pmos",
     "sg13_hv_pmos"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "ng"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "entry",
+     "ccols"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "gate_ring"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -13218,6 +14728,120 @@
     "sg13_lv_rfnmos",
     "sg13_hv_rfnmos"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "ng"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "entry",
+     "ccols"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -13824,6 +15448,120 @@
    "device_type_switch": [
     "sg13_lv_rfpmos",
     "sg13_hv_rfpmos"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "ng"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "entry",
+     "ccols"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -14492,6 +16230,132 @@
    "device_type_switch": [
     "sg13_lv_nmos",
     "sg13_hv_nmos"
+   ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "ng"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "entry",
+     "ccols"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "gate_ring"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
    ],
    "dialog_dependencies": [],
    "check_on_defaults": {
@@ -15164,6 +17028,132 @@
     "sg13_lv_pmos",
     "sg13_hv_pmos"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "ng"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "entry",
+     "ccols"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "conn_gates"
+    ],
+    [
+     "checkbox",
+     "gate_ring"
+    ],
+    [
+     "checkbox",
+     "guard"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -15777,6 +17767,120 @@
     "sg13_lv_rfnmos",
     "sg13_hv_rfnmos"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "ng"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "entry",
+     "ccols"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -16383,6 +18487,120 @@
     "sg13_lv_rfpmos",
     "sg13_hv_rfpmos"
    ],
+   "dialog_widgets": [
+    [
+     "entry",
+     "w"
+    ],
+    [
+     "entry",
+     "l"
+    ],
+    [
+     "entry",
+     "ng"
+    ],
+    [
+     "entry",
+     "m"
+    ],
+    [
+     "selectlist",
+     "gencell"
+    ],
+    [
+     "message",
+     "minfo"
+    ],
+    [
+     "entry",
+     "diffcov"
+    ],
+    [
+     "entry",
+     "polycov"
+    ],
+    [
+     "entry",
+     "rlcov"
+    ],
+    [
+     "entry",
+     "tbcov"
+    ],
+    [
+     "entry",
+     "ccols"
+    ],
+    [
+     "checkbox",
+     "poverlap"
+    ],
+    [
+     "checkbox",
+     "doverlap"
+    ],
+    [
+     "checkbox",
+     "topc"
+    ],
+    [
+     "checkbox",
+     "botc"
+    ],
+    [
+     "checkbox",
+     "full_metal"
+    ],
+    [
+     "checkbox",
+     "glc"
+    ],
+    [
+     "checkbox",
+     "grc"
+    ],
+    [
+     "checkbox",
+     "gbc"
+    ],
+    [
+     "checkbox",
+     "gtc"
+    ],
+    [
+     "entry",
+     "viasrc"
+    ],
+    [
+     "entry",
+     "viadrn"
+    ],
+    [
+     "entry",
+     "viagate"
+    ],
+    [
+     "entry",
+     "viagb"
+    ],
+    [
+     "entry",
+     "viagt"
+    ],
+    [
+     "entry",
+     "viagr"
+    ],
+    [
+     "entry",
+     "viagl"
+    ],
+    [
+     "checkbox",
+     "doports"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],
@@ -16683,6 +18901,32 @@
     }
    ],
    "device_type_switch": null,
+   "dialog_widgets": [
+    [
+     "selectlist",
+     "metalbot"
+    ],
+    [
+     "selectlist",
+     "metaltop"
+    ],
+    [
+     "selectlist",
+     "orient"
+    ],
+    [
+     "selectlist",
+     "pattern"
+    ],
+    [
+     "entry",
+     "nxcuts"
+    ],
+    [
+     "entry",
+     "nycuts"
+    ]
+   ],
    "dialog_dependencies": [],
    "check_on_defaults": {
     "changes": [],

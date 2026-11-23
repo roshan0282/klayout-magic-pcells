@@ -4,11 +4,21 @@
       klayout -b -rm pymacros/klayout_magic_pcells.lym -r tests/parity/pcell_path.py
 
 The PDK is the one KMP_PDK names (run_sweep.py sets KMP_PDK and KMP_PDKS to
-it). For each point: a layout at dbu 0.001, ``create_cell(device, <the
-PDK's library>, params)`` with the point's typed values, the variant placed
-in a top cell ``T<id>``, and ``<id>.gds`` and ``<id>.oas`` written.
-``index.json`` records the variant's name, its stored parameters and what the
-backend returned (checked dict, messages, Magic's cell name, cache source).
+it). For each point: a layout at dbu 0.001; for a device, the point's typed
+values put through the PCell's coerce as KLayout's GUI form does
+(``klayout_magic_pcells.dialog_values``: Magic's dialog corrects them), and
+``create_cell(device, <the PDK's library>, <those values>)``, so the variant
+stores what the GUI stores; for a box-paint generator, the typed box. The
+variant is placed in a top cell ``T<id>``, and ``<id>.gds`` and ``<id>.oas``
+are written. For a device, a second variant made from the typed values as
+they are (``create_cell`` with them, which KLayout coerces only for drawing)
+must draw the same shapes. An edit point (gen_sweep.py) first puts its
+``first`` values through ``dialog_values``, then the stored values with the
+point's own values changed in them, as a user edits the PCell's form
+afterwards (Magic's "Edit device" dialog and Apply). ``index.json``
+records the variant's name, its stored parameters and what the backend
+returned (the request, checked dict, messages, Magic's cell name, cache
+source).
 """
 
 import json
@@ -56,7 +66,12 @@ def main():
         rec = {"device": dev}
         try:
             # The typed values come from the sweep, not from the plugin's parser.
-            params = pt["value"]
+            typed = pt["value"]
+            if pt.get("edit"):
+                first = kmp.dialog_values(dev, pt["first"]["value"], pdk=st.pdk)
+                rec["first_stored"] = dict(first)
+                typed = dict(first, **typed)
+            params = typed if spec.kind == "box" else kmp.dialog_values(dev, typed, pdk=st.pdk)
             ly = db.Layout()
             ly.dbu = 0.001
             del calls[:]
@@ -84,6 +99,19 @@ def main():
                 "stored": {k: v for k, v in pc.pcell_parameters_by_name().items()},
                 "request": req,
             })
+            if spec.kind != "box":
+                raw = ly.create_cell(dev, LIB, typed)
+                diff = []
+                for li in ly.layer_indices():
+                    a = db.Region(pc.begin_shapes_rec(li))
+                    b = db.Region(raw.begin_shapes_rec(li))
+                    ta = sorted(str(t) for t in db.Texts(pc.begin_shapes_rec(li)).each())
+                    tb = sorted(str(t) for t in db.Texts(raw.begin_shapes_rec(li)).each())
+                    if not (a ^ b).is_empty() or a.count() != b.count() or ta != tb:
+                        diff.append(ly.get_info(li).to_s())
+                rec["typed_create"] = {"same": not diff, "diff_layers": diff,
+                                       "stored": {k: v for k, v in raw.pcell_parameters_by_name().items()
+                                                  if k in typed}}
             if res is not None:
                 rec.update({"key": res.key, "source": res.source, "checked": res.checked,
                             "messages": res.messages, "magic_cell": res.magic_cell,

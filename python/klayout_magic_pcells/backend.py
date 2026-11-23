@@ -274,7 +274,8 @@ class MagicServer:
         self.run_dir = run_dir or _private_run_dir(cfg)
         self.server_tcl = server_tcl
         self.versions = None
-        self.stats = {"spawns": 0, "restarts": 0, "requests": 0, "generate": 0, "check": 0}
+        self.stats = {"spawns": 0, "restarts": 0, "requests": 0, "generate": 0, "check": 0,
+                      "dialog": 0}
         self._lock = threading.RLock()
         self._proc = None
         self._lines = None
@@ -641,11 +642,16 @@ class MagicServer:
         rep = self.request({"op": "ping"})
         return rep.ok
 
-    def generate(self, device, params, form, out_path):
-        """Generate one device into ``out_path``. Raises BackendError."""
+    def generate(self, device, params, form, out_path, apply=False):
+        """Generate one device into ``out_path``: what the dialog's Create
+        makes of the form ``params``, or with ``apply`` what its Apply makes
+        on an existing instance. Raises BackendError."""
         self.stats["generate"] += 1
-        rep = self.request({"op": "generate", "device": device, "params": dict(params),
-                            "form": form, "out": out_path})
+        req = {"op": "generate", "device": device, "params": dict(params), "form": form,
+               "out": out_path}
+        if apply:
+            req["apply"] = "1"
+        rep = self.request(req)
         if not rep.ok:
             raise BackendError(failure_text(device, rep.error, rep.log))
         restart = rep.kv.get("restart") == "1"
@@ -677,6 +683,52 @@ class MagicServer:
             raise BackendError("%s: %s" % (device, rep.error.strip() or "check failed"))
         return CheckReply(rep.params, rep.log, kv=rep.kv)
 
+    def dialog(self, spec, form, edits, want_chains=False, want_apply_name=False):
+        """Type ``edits`` ([(name, text)]) into Magic's dialog form ``form``
+        ({name: text}), each widget's binding run as Return or a click runs
+        it. With ``want_apply_name``, also the cell name the dialog's Apply
+        compares with the instance's. Raises BackendError."""
+        self.stats["dialog"] = self.stats.get("dialog", 0) + 1
+        rep = self.request(dialog_request(spec, form, edits, want_chains, want_apply_name))
+        if not rep.ok:
+            raise BackendError(failure_text(spec.name, rep.error, rep.log))
+        return DialogReply(dict(rep.params), _json_kv(rep.kv, "numbers", {}),
+                           _json_kv(rep.kv, "steps", []), _json_kv(rep.kv, "chains", {}), rep.log,
+                           rep.kv.get("apply_name", ""))
+
+
+class DialogReply:
+    def __init__(self, form, numbers, steps, chains, log_text, apply_name=""):
+        self.form = form
+        self.numbers = numbers
+        self.steps = steps
+        self.chains = chains
+        self.log = log_text
+        self.apply_name = apply_name
+
+
+def _json_kv(kv, name, empty):
+    text = kv.get(name, "")
+    if not text:
+        return empty
+    try:
+        return json.loads(text)
+    except ValueError as e:
+        raise BackendError("bad %s in Magic's dialog reply: %s" % (name, e))
+
+
+def dialog_request(spec, form, edits, want_chains=False, want_apply_name=False):
+    """The server request that types ``edits`` into ``form``. Everything the
+    op's result depends on besides the server's code and the PDK is in it,
+    so it is also what the dialog cache key covers."""
+    widgets = [n for _k, n in spec.raw.get("dialog_widgets") or []]
+    deps = [{"callback": d["callback"], "params": list(d["params"]), "after": int(d.get("after", 0))}
+            for d in spec.raw.get("dialog_dependencies") or []]
+    return {"op": "dialog", "device": spec.name, "form": dict(form),
+            "edits": [[n, t] for n, t in edits], "order": widgets, "deps": deps,
+            "want_chains": 1 if want_chains else 0,
+            "want_apply_name": 1 if want_apply_name else 0}
+
 
 class MagicOneShot:
     """The same interface with one Magic process per request (debugging)."""
@@ -686,7 +738,8 @@ class MagicOneShot:
         self.run_dir = run_dir
         self.vendor_cells = vendor_cells
         self.versions = None
-        self.stats = {"spawns": 0, "restarts": 0, "requests": 0, "generate": 0, "check": 0}
+        self.stats = {"spawns": 0, "restarts": 0, "requests": 0, "generate": 0, "check": 0,
+                      "dialog": 0}
 
     def _once(self, fn):
         s = MagicServer(self.cfg, run_dir=self.run_dir, vendor_cells=self.vendor_cells)
@@ -705,11 +758,14 @@ class MagicOneShot:
             self._once(lambda s: None)
         return self.versions
 
-    def generate(self, device, params, form, out_path):
-        return self._once(lambda s: s.generate(device, params, form, out_path))
+    def generate(self, device, params, form, out_path, apply=False):
+        return self._once(lambda s: s.generate(device, params, form, out_path, apply))
 
     def check(self, device, params, form=None):
         return self._once(lambda s: s.check(device, params, form))
+
+    def dialog(self, spec, form, edits, want_chains=False, want_apply_name=False):
+        return self._once(lambda s: s.dialog(spec, form, edits, want_chains, want_apply_name))
 
     def launch(self):
         return False
@@ -724,6 +780,20 @@ class MagicOneShot:
         return False
 
     pid = None
+
+
+# A request whose cell is made by the dialog's Apply on an existing instance
+# carries this key with "1" (see dialog.py); the server gets it as a flag.
+APPLY_KEY = "kmp_apply"
+
+
+def split_apply(request):
+    """(the parameters for Magic, whether the request is an Apply)."""
+    if APPLY_KEY not in request:
+        return dict(request), False
+    if request[APPLY_KEY] != "1":
+        raise BackendError("%s=%r in a request: only \"1\" is allowed" % (APPLY_KEY, request[APPLY_KEY]))
+    return {k: v for k, v in request.items() if k != APPLY_KEY}, True
 
 
 class Result:
@@ -751,6 +821,12 @@ class Result:
     def stamp(self):
         return self.sidecar.get("stamp", "")
 
+    @property
+    def opened(self):
+        """What Magic's dialog shows when it reopens on the instance this
+        made (the "Edit device" dialog), {name: text}; {} if unknown."""
+        return self.sidecar.get("opened") or {}
+
 
 class Generator:
     """memo, then the disk cache, then Magic."""
@@ -762,8 +838,10 @@ class Generator:
         self.versions = versions
         self._make_stamp = make_stamp
         self._memo = {}
+        self._dialog_memo = {}
         self._lock = threading.RLock()
-        self.stats = {"memo": 0, "disk": 0, "magic": 0, "evicted": 0}
+        self.stats = {"memo": 0, "disk": 0, "magic": 0, "evicted": 0,
+                      "dialog_memo": 0, "dialog_disk": 0, "dialog_magic": 0}
         # fresh: every get() asks Magic and replaces what the disk cache
         # held (audit --regen). replaced[key] is a copy of the replaced GDS.
         self.fresh = False
@@ -803,8 +881,12 @@ class Generator:
                     pass
             tmp = self.cache.tmp_path(key)
             mark = self.server.stderr_mark() if hasattr(self.server, "stderr_mark") else None
+            params, apply = split_apply(request)
             try:
-                rep = self.server.generate(spec.name, request, spec.form, tmp)
+                if apply:
+                    rep = self.server.generate(spec.name, params, spec.form, tmp, apply=True)
+                else:
+                    rep = self.server.generate(spec.name, params, spec.form, tmp)
                 stamp = self._make_stamp(self.versions, key)
                 sidecar = {
                     "key": key, "device": spec.name, "form": spec.form,
@@ -814,6 +896,12 @@ class Generator:
                     "gen_us": rep.us,
                     "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 }
+                if "opened" in rep.kv:
+                    sidecar.update({"opened": _json_kv(rep.kv, "opened", {}),
+                                    "opened_numbers": _json_kv(rep.kv, "opened_numbers", {}),
+                                    "checked_numbers": _json_kv(rep.kv, "checked_numbers", {}),
+                                    "opened_type": rep.kv.get("opened_type", ""),
+                                    "opened_note": rep.kv.get("opened_note", "")})
                 try:
                     gds_path = self.cache.store(key, spec.name, tmp, sidecar)
                 except CacheError as e:
@@ -835,7 +923,44 @@ class Generator:
             return res
 
     def check(self, spec, request):
-        return self.server.check(spec.name, request, spec.form if spec.form == "box" else None)
+        params, _apply = split_apply(request)
+        return self.server.check(spec.name, params, spec.form if spec.form == "box" else None)
+
+    def dialog(self, spec, form, edits, want_apply_name=False):
+        """Magic's dialog form after typing ``edits`` into ``form``: a dict
+        with "form", "numbers", "log", "apply_name" (with want_apply_name)
+        and "source" (memo, disk or magic). The memo and the disk cache
+        (keyed by the whole dialog request and the server's code) come
+        first, so a file whose instances hold typed values reopens without
+        Magic when its variants are cached."""
+        key = self.cache.dialog_key(spec.name, dialog_request(spec, form, edits,
+                                                              want_apply_name=want_apply_name))
+        with self._lock:
+            hit = self._dialog_memo.get(key)
+            if hit is not None:
+                self.stats["dialog_memo"] += 1
+                return dict(hit, source="memo")
+            got = self.cache.dialog_lookup(key, spec.name)
+            if got is not None and not self.fresh:
+                self.stats["dialog_disk"] += 1
+                self._dialog_memo[key] = got
+                return dict(got, source="disk")
+            if want_apply_name:
+                rep = self.server.dialog(spec, form, edits, want_apply_name=True)
+            else:
+                rep = self.server.dialog(spec, form, edits)
+            self.stats["dialog_magic"] += 1
+            data = {"key": key, "device": spec.name, "start": dict(form),
+                    "edits": [list(e) for e in edits], "form": rep.form, "numbers": rep.numbers,
+                    "log": rep.log}
+            if want_apply_name:
+                data["apply_name"] = rep.apply_name
+            try:
+                self.cache.dialog_store(key, spec.name, data)
+            except OSError as e:
+                log.debug("dialog cache: %s", e)
+            self._dialog_memo[key] = data
+            return dict(data, source="magic")
 
     def evict(self, spec, request):
         """Forget one variant in the memo and on disk, so the next get()
@@ -849,6 +974,7 @@ class Generator:
     def clear_memo(self):
         with self._lock:
             self._memo.clear()
+            self._dialog_memo.clear()
 
 
 _to_close = []

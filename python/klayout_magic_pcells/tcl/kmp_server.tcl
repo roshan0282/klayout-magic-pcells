@@ -208,6 +208,233 @@ proc ::kmp::op_check {r} {
     return [dict create kv {} params $checked]
 }
 
+# --- Magic's parameter dialog, without Tk ------------------------------------
+#
+# Magic's dialog (magic::gencell_dialog in toolkit.tcl) keeps one value per
+# widget, in the variable ::magic::<name>_val.  When the user presses Return
+# in an entry (or leaves it), clicks a checkbox or picks an entry of a
+# selectlist, Tk runs that widget's binding: one magic::update_dialog call
+# for each callback that the device's _dialog registered on the widget with
+# magic::add_dependency (sky130::res_recalc on val, l, w, nx; diode_recalc;
+# cap_recalc), in the order they were registered, then two calls with no
+# callback, which magic::add_check_callbacks adds, one for the widget's
+# label and one for the widget itself.  add_dependency binds only widgets
+# that exist when it runs.  update_dialog merges the device's defaults with
+# the form, runs _check on that (an error is printed and the values stay),
+# runs the callback on the result, and gencell_setparams writes every
+# widget's value back into the form.  An error after that ends the binding:
+# Tk stops a binding script at its first error.
+#
+# These procs do the same with the form in a dict, because the server has no
+# Tk; magic::update_dialog itself reads the form through Tk's "grid slaves".
+# The parity harness drives the real dialog under Xvfb and compares.
+
+# The update_dialog callbacks of one widget's binding, in order ("" is the
+# call with no callback).  order: the widget names in the order _dialog
+# creates them; deps: {callback params after} per add_dependency call, after
+# being how many widgets existed when it ran.
+proc ::kmp::dialog_chain {pname order deps} {
+    set pos [lsearch -exact $order $pname]
+    set chain {}
+    foreach d $deps {
+        set cb [dict get $d callback]
+        if {$pos >= 0 && $pos < [dict get $d after] && [lsearch -exact [dict get $d params] $pname] >= 0} {
+            lappend chain $cb
+        }
+    }
+    lappend chain "" ""
+    return $chain
+}
+
+# One magic::update_dialog call on the form (a dict of every widget value).
+proc ::kmp::dialog_pass {dev ns callback pname form} {
+    set parameters [dict merge [${ns}::${dev}_defaults] $form]
+    if {[catch {set parameters [${ns}::${dev}_check $parameters]} checkerr]} {
+        puts stderr $checkerr
+    }
+    if {$callback ne ""} {
+        set parameters [$callback $pname $parameters]
+    }
+    set out {}
+    dict for {k v} $form {
+        dict set out $k [dict get $parameters $k]
+    }
+    return $out
+}
+
+# A form value that is not a plain number (Magic's SPICE notation, such as
+# 1.028k, 202.5m or 1.218u) as magic::spice2float reads it, or "".
+proc ::kmp::form_number {v} {
+    if {[string is double -strict $v]} { return $v }
+    set saved $::kmp::log
+    set n ""
+    if {[catch {set n [magic::spice2float $v ""]}] || ![string is double -strict $n]} {
+        set n ""
+    }
+    set ::kmp::log $saved
+    return $n
+}
+
+# op dialog: start from the form r.form ({name text} for every widget the
+# client keeps; Magic's own defaults fill in the rest), then for each
+# {name text} in r.edits set that widget and run its binding.  The reply's
+# params are the form afterwards, in r.form's order.  The kv values are
+# JSON: numbers, {name: magic::spice2float of the value} for each value that
+# is not a plain number; steps, [[name, {form}], ...] after each edit; and,
+# with r.want_chains, chains, {name: [callback, ...]} for every widget in
+# r.order.
+proc ::kmp::op_dialog {r} {
+    set dev [dict get $r device]
+    ::kmp::require_device $dev
+    set ns $::kmp::ns
+    set form [dict get $r form]
+    set order [dict get $r order]
+    set deps [dict get $r deps]
+    ::kmp::require_safe_params $form
+    set steps {}
+    foreach e [dict get $r edits] {
+        lassign $e pname text
+        ::kmp::require_safe_params [dict create $pname $text]
+        if {![dict exists $form $pname]} { error "the dialog of $dev has no widget $pname" }
+        dict set form $pname $text
+        foreach cb [::kmp::dialog_chain $pname $order $deps] {
+            if {[catch {set form [::kmp::dialog_pass $dev $ns $cb $pname $form]} err]} {
+                if {$::kmp::abort ne ""} { error $::kmp::abort }
+                append ::kmp::log "binding error: $err\n"
+                break
+            }
+        }
+        lappend steps "\[[::kmp::jstr $pname],[::kmp::jobj $form]\]"
+    }
+    set numbers {}
+    dict for {k v} $form {
+        set n [::kmp::form_number $v]
+        if {$n ne $v && $n ne ""} { dict set numbers $k $n }
+    }
+    set kv [dict create numbers [::kmp::jobj $numbers] steps "\[[join $steps ,]\]"]
+    if {[dict exists $r want_apply_name] && [dict get $r want_apply_name]} {
+        # What the dialog's Apply button (magic::gencell_change) compares
+        # with the instance's cell name: the device name and Magic's hash
+        # of the form after one more _check. When they are equal, Apply
+        # leaves the instance as it is.
+        dict set kv apply_name [::kmp::apply_name $dev $ns $form]
+    }
+    if {[dict exists $r want_chains] && [dict get $r want_chains]} {
+        set items {}
+        foreach p $order {
+            lappend items "[::kmp::jstr $p]:[::kmp::jlist [::kmp::dialog_chain $p $order $deps]]"
+        }
+        dict set kv chains "\{[join $items ,]\}"
+    }
+    return [dict create kv $kv params $form]
+}
+
+# --- Magic's Apply and the "Edit device" dialog -------------------------------
+#
+# After Create, Magic's dialog reopens as "Edit device" on the new instance
+# (the Create button runs magic::gencell_dialog $inst ...), and later edits
+# start from what that dialog shows; its Apply button runs
+# magic::gencell_change. These procs compute both without Tk.
+
+# The parameters gencell_change hands gencell_create: the form merged with
+# the defaults and checked once ("" for a fixed device, which it draws with
+# them directly; gencell_create's own _check then gives the same).
+proc ::kmp::apply_params {dev ns form} {
+    set parameters [magic::gencell_defaults $dev $ns $form]
+    if {[catch {set parameters [${ns}::${dev}_check $parameters]} checkerr]} {
+        if {$::kmp::abort ne ""} { error $::kmp::abort }
+        puts stderr $checkerr
+    }
+    return $parameters
+}
+
+proc ::kmp::apply_name {dev ns form} {
+    set p [::kmp::apply_params $dev $ns $form]
+    if {[dict exists $p gencell]} { set p [dict remove $p gencell] }
+    return ${dev}_[magic::get_gencell_hash $p]
+}
+
+# What magic::gencell_dialog shows when it opens on instance $inst: the
+# parameters it takes from the instance's cell (the "parameters" property,
+# else the device's defaults, and for a fixed device the array's counts and
+# pitch), put through the device's _dialog proc with the widget procs
+# stubbed, as tools/build_manifest.py reads the dialogs. Returns
+# {type <gencell> form {name text ...} note <why it fell back, or "">}; with
+# a note, the dialog doesn't reopen in Magic either and keeps what Create's
+# gencell_setparams wrote into it.
+set ::kmp::dialog_stubs {add_entry add_checkbox add_message add_selectlist add_selectindex add_dependency}
+proc ::kmp::stub_widget {pname parameters missing} {
+    if {[dict exists $parameters $pname]} {
+        lappend ::kmp::stub_widgets [list $pname [dict get $parameters $pname]]
+    } else {
+        lappend ::kmp::stub_widgets [list $pname $missing]
+    }
+}
+proc ::kmp::reopened {inst ns} {
+    set gname [instance list celldef $inst]
+    set gtype ""
+    catch {set gtype [cellname list property $gname gencell]}
+    set parameters ""
+    catch {set parameters [cellname list property $gname parameters]}
+    if {$gtype eq ""} { return [dict create type "" form {} note "the cell has no gencell property"] }
+    if {$parameters eq ""} {
+        if {[catch {set parameters [${ns}::${gtype}_defaults]} err]} {
+            return [dict create type $gtype form {} note $err]
+        }
+    }
+    if {[dict exists $parameters nocell]} {
+        select cell $inst
+        set arcount [array -list count]
+        set arpitch [array -list pitch]
+        dict set parameters nx [expr {[lindex $arcount 1] - [lindex $arcount 0] + 1}]
+        dict set parameters ny [expr {[lindex $arcount 3] - [lindex $arcount 2] + 1}]
+        dict set parameters pitchx [lindex $arpitch 0]
+        dict set parameters pitchy [lindex $arpitch 1]
+        select clear
+    }
+    if {[info commands ::${ns}::${gtype}_dialog] eq ""} {
+        return [dict create type $gtype form {} note "no ${gtype}_dialog proc"]
+    }
+    set ::kmp::stub_widgets {}
+    foreach p $::kmp::dialog_stubs {
+        if {[info commands ::magic::$p] ne ""} { rename ::magic::$p ::kmp::saved_$p }
+    }
+    # The value each widget opens with, as text (not through expr, which
+    # would turn "0.690" into 0.69).
+    proc ::magic::add_entry {pname ptext parameters} {
+        ::kmp::stub_widget $pname $parameters ""
+    }
+    proc ::magic::add_checkbox {pname ptext parameters} {
+        ::kmp::stub_widget $pname $parameters ""
+    }
+    proc ::magic::add_selectlist {pname ptext all_values parameters {itext ""}} {
+        ::kmp::stub_widget $pname $parameters $itext
+    }
+    proc ::magic::add_selectindex {pname ptext all_values parameters {ival 0}} {
+        ::kmp::stub_widget $pname $parameters $ival
+    }
+    proc ::magic::add_message {pname ptext parameters {color blue}} {}
+    proc ::magic::add_dependency {callback gencell_type library args} {}
+    try {
+        set rc [catch {${ns}::${gtype}_dialog $parameters} err]
+    } finally {
+        foreach p $::kmp::dialog_stubs {
+            catch {rename ::magic::$p ""}
+            if {[info commands ::kmp::saved_$p] ne ""} { rename ::kmp::saved_$p ::magic::$p }
+        }
+    }
+    if {$rc} {
+        if {$::kmp::abort ne ""} { error $::kmp::abort }
+        return [dict create type $gtype form {} note $err]
+    }
+    set form {}
+    foreach w $::kmp::stub_widgets {
+        lassign $w pname value
+        if {$pname ne "gencell"} { dict set form $pname $value }
+    }
+    return [dict create type $gtype form $form note ""]
+}
+
 # Internal units as um, written without float noise: 1.005, not
 # 1.0050000000000001.
 proc ::kmp::um {n} {
@@ -266,18 +493,36 @@ proc ::kmp::op_generate {r} {
     if {$form ni {cell wrapper}} { error "unknown form \"$form\"" }
     set ns $::kmp::ns
 
+    # apply: the cell that the dialog's Apply button makes on an existing
+    # instance (magic::gencell_change): the form checked once, then
+    # gencell_create with the result, which checks it again. A fixed device
+    # gets the form checked once either way.
+    set apply [expr {[dict exists $r apply] && [dict get $r apply] eq "1"}]
     set ::kmp::checked {}
     set inst ""
     set g ""
+    set reo {}
     set rc [catch {
         load $::kmp::top
         box 0 0 0 0
         # Always the merged defaults: an empty dict sends gencell_create down
         # its dialog branch.
-        set inst [magic::gencell_create $dev $ns [magic::gencell_defaults $dev $ns $params]]
+        set merged [magic::gencell_defaults $dev $ns $params]
+        if {$apply && ![dict exists $merged nocell]} {
+            set merged [::kmp::apply_params $dev $ns $params]
+        }
+        set inst [magic::gencell_create $dev $ns $merged]
         if {$inst eq ""} {
             error "gencell_create returned no instance (no box, or an exact copy of an existing cell)"
         }
+        # What reopening the dialog prints (a fixed device's vendor cell has
+        # no parameters property) is not Create's: keep it out of the log.
+        set saved_log $::kmp::log
+        if {[catch {set reo [::kmp::reopened $inst $ns]} rerr]} {
+            if {$::kmp::abort ne ""} { error $::kmp::abort }
+            set reo [dict create type "" form {} note $rerr]
+        }
+        set ::kmp::log $saved_log
         set g [instance list celldef $inst]
         if {$form eq "cell"} {
             load $g
@@ -313,10 +558,33 @@ proc ::kmp::op_generate {r} {
     }
     catch {select clear}
     if {$rc} {
+        # A request that failed part way may have made cells (an IHP fixed
+        # device whose layout script is missing leaves its empty cell):
+        # delete them, so that the same request fails the same way again
+        # instead of placing what the failure left.
+        foreach c [::kmp::leftover_cells] {
+            catch {cellname delete $c -noprompt}
+        }
         return -options $opts $err
     }
     set left [::kmp::leftover_cells]
     set kv [dict create cell $g]
+    if {[dict size $reo]} {
+        # magic::spice2float of each value that is not a plain number, for
+        # the reopened form and (for a dialog that doesn't reopen) for the
+        # checked dict.
+        foreach {key d} [list opened_numbers [dict get $reo form] checked_numbers $::kmp::checked] {
+            set numbers {}
+            dict for {k v} $d {
+                set n [::kmp::form_number $v]
+                if {$n ne $v && $n ne ""} { dict set numbers $k $n }
+            }
+            dict set kv $key [::kmp::jobj $numbers]
+        }
+        dict set kv opened [::kmp::jobj [dict get $reo form]]
+        dict set kv opened_type [dict get $reo type]
+        dict set kv opened_note [dict get $reo note]
+    }
     if {[llength $kept]} {
         dict set kv kept [join $kept " "]
     }

@@ -13,10 +13,15 @@ Steps, each writing under --out:
   0. unit and backend tests (tests/unit, tests/backend)
   1. versions.json
   2. sweep.json (gen_sweep.py)
-  3. path A, Magic alone (magic_ref.tcl)        -> ref/
+  3. path A, Magic alone through magic::gencell (magic_ref.tcl) -> ref/;
+     path D, Magic's own parameter dialog under Xvfb (dialog_ref.tcl) -> dlg/
   4. path B, the PCell, empty cache (pcell_path.py) -> pcell/; again warm -> pcell_warm/
-  5. per-point checks: the request path B sent, geometry, texts, bounding box,
-     Magic cell name, checked dict, cache, placeholder, stamp
+  5. per-point checks against path D for a device (path A for a box-paint
+     generator): the request path B sent, the stored values against the
+     dialog's form, geometry, texts, bounding box, Magic cell name, checked
+     dict, cache, placeholder, stamp; path A as the second reference for a
+     device where it applies; the typed values drawing the same as the
+     stored ones; the dialog's bindings against the server's
   6. round trips (roundtrip.py)
   7. DRC on sheets, both tools, both sides, plus the defaults one at a time
      (KLayout only where the PDK ships a deck in the image)
@@ -35,6 +40,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -51,7 +57,8 @@ from klayout_magic_pcells.config import SUPPORTED_PDKS, shipped_manifest  # noqa
 LYM = os.path.join(REPO, "pymacros", "klayout_magic_pcells.lym")
 PDK_ROOT = os.environ.get("PDK_ROOT", "/foss/pdks")
 SHEET_SIZE = 250
-CHECKS = ("error", "request", "geometry", "texts", "census", "bbox", "magic_cell", "checked",
+CHECKS = ("error", "request", "dialog", "typed", "bindings", "gencell", "geometry", "texts", "census",
+          "bbox", "magic_cell", "checked",
           "cache", "placeholder", "stamp", "roundtrip", "drc", "drc_baseline", "extract")
 
 # Set by use_pdk().
@@ -174,33 +181,61 @@ def _count_lines(path):
         return 0
 
 
-def path_a(out, sweep_path, cmd=None, stall=PATH_A_STALL):
-    """Run magic_ref.tcl over the sweep.
+# Magic under Xvfb (path D, the menu check) can die while it opens its
+# first window, before it reads the harness's script: in the image the
+# height of its first drawing pixmap changes from one start to the next
+# (718 to 4161 pixels on gf180mcuD in six starts), and on GitHub's runner
+# Xvfb refused that request with BadAlloc on two PDKs (run 45232459515).
+# Such a start is tried again, up to this many times in a row; it is not a
+# failure of any point.
+X_START_RETRIES = 8
+X_ERROR = "X Error of failed request"
 
-    If Magic dies or stops making progress on a point (a segfault, or a
-    generator loop that prints nothing), that point is recorded as a Magic
-    error and Magic is started again on the next point, so one bad point
-    can't hang or end the sweep.
-    """
-    cmd = cmd or ["magic", "-dnull", "-noconsole", "-rcfile", MAGICRC, os.path.join(HERE, "magic_ref.tcl")]
-    with open(sweep_path, encoding="utf-8") as f:
-        pts = json.load(f)["points"]
-    ref_dir = os.path.join(out, "ref")
-    ix = os.path.join(ref_dir, "index.jsonl")
-    lp = os.path.join(out, "path_a.log")
-    # Magic looks for cells in "." first: an empty directory, so that no file
-    # the harness writes can stand in for a vendor cell.
-    run_dir = os.path.join(out, "run_a")
+
+def x_start_error(text):
+    """The X error lines of a Magic that died opening its window, or ""."""
+    if X_ERROR not in text:
+        return ""
+    lines = text[text.index(X_ERROR):].splitlines()
+    return " | ".join(ln.strip() for ln in lines[:4])
+
+
+def _read_from(path, offset):
+    try:
+        with open(path, "rb") as f:
+            f.seek(offset)
+            return f.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
+def run_watched(name, cmd, pts, rec_dir, lp, run_dir, env, stall, stats=None):
+    """Run a reference script (magic_ref.tcl, dialog_ref.tcl) over ``pts``.
+
+    The script writes one line per point to rec_dir/index.jsonl and skips
+    the first KMP_START points. If Magic dies or stops making progress on a
+    point (a segfault, or a generator loop that prints nothing), that point
+    is recorded as a Magic error and Magic is started again on the next
+    point, so one bad point can't hang or end the sweep. A Magic that dies
+    with an X error before it finishes a point (see X_START_RETRIES) is
+    started again on the same point instead, and ``stats["x_retries"]``
+    counts those starts. The script runs in its own process group, so a
+    kill also ends what it started (Xvfb)."""
+    ix = os.path.join(rec_dir, "index.jsonl")
     os.makedirs(run_dir, exist_ok=True)
     t = time.time()
     start, idle_runs, restarts = 0, 0, []
+    x_tries = 0
+    if stats is not None:
+        stats.setdefault("x_retries", 0)
+        stats.setdefault("x_errors", [])
     with open(lp, "w") as lf:
         while start < len(pts):
-            env = pdk_env(KMP_SWEEP=sweep_path, KMP_OUT=ref_dir, KMP_START=str(start))
-            env.pop("KMP_NS", None)
+            e = dict(env, KMP_START=str(start))
             lf.flush()
+            log_at = lf.tell()
             p = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                                 env=env, cwd=run_dir)
+                                 env=e, cwd=run_dir, start_new_session=True)
             last_n, last_t, status = -1, time.monotonic(), None
             while status is None:
                 try:
@@ -211,40 +246,112 @@ def path_a(out, sweep_path, cmd=None, stall=PATH_A_STALL):
                 if n != last_n:
                     last_n, last_t = n, time.monotonic()
                 elif status is None and time.monotonic() - last_t > stall:
-                    p.kill()
+                    try:
+                        os.killpg(p.pid, signal.SIGKILL)
+                    except OSError:
+                        p.kill()
                     p.wait()
                     status = "hung"
+            try:
+                os.killpg(p.pid, signal.SIGKILL)  # anything the script left behind
+            except OSError:
+                pass
             n = _count_lines(ix)
             if n >= len(pts):
                 break
+            if status == 0 and n > start:
+                # A run that ended after KMP_LIMIT points: go on from there.
+                start = n
+                x_tries = 0
+                continue
+            lf.flush()
+            xerr = x_start_error(_read_from(lp, log_at)) if n <= start and status != "hung" else ""
+            if xerr:
+                x_tries += 1
+                if stats is not None:
+                    stats["x_retries"] += 1
+                    stats["x_errors"].append(xerr)
+                if x_tries > X_START_RETRIES:
+                    raise HarnessError("%s: Magic died with an X error before its first point %d times "
+                                       "in a row (%s); see %s" % (name, x_tries, xerr, lp))
+                lf.write("\n[run_sweep] Magic died with an X error before point %s (%s); starting it "
+                         "again\n" % (pts[start]["id"], xerr))
+                continue
+            x_tries = 0
             if n <= start:
                 idle_runs += 1
                 if idle_runs >= 5:
-                    raise HarnessError("path A made no progress in 5 runs; see %s:\n%s" % (lp, tail(lp)))
+                    raise HarnessError("%s made no progress in 5 runs; see %s:\n%s" % (name, lp, tail(lp)))
             else:
                 idle_runs = 0
             bad = pts[n]
             why = ("no point finished for %d s" % stall) if status == "hung" else "Magic exited (status %s)" % status
             rec = {"id": bad["id"], "device": bad["device"], "rc": 1, "top": "", "magic_cell": "", "log": "",
-                   "error": "path A watchdog: %s on this point; Magic restarted on the next one" % why,
+                   "error": "%s watchdog: %s on this point; Magic restarted on the next one" % (name, why),
                    "checked": {}}
-            os.makedirs(ref_dir, exist_ok=True)
+            os.makedirs(rec_dir, exist_ok=True)
             with open(ix, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec) + "\n")
             restarts.append(bad["id"])
             lf.write("\n[run_sweep] %s: %s; restarting at the next point\n" % (bad["id"], why))
             start = n + 1
     recs = {}
-    with open(ix, encoding="utf-8") as f:
-        for line in f:
-            r = json.loads(line)
-            recs[r["id"]] = r
+    if os.path.isfile(ix):
+        with open(ix, encoding="utf-8") as f:
+            for line in f:
+                r = json.loads(line)
+                recs[r["id"]] = r
     missing = [pt["id"] for pt in pts if pt["id"] not in recs]
     if missing:
-        raise HarnessError("path A wrote no record for %d points (first %s); see %s" % (len(missing), missing[0], lp))
+        raise HarnessError("%s wrote no record for %d points (first %s); see %s" % (name, len(missing), missing[0], lp))
     if restarts:
-        log("  path A restarted Magic after %s" % ", ".join(restarts))
+        log("  %s restarted Magic after %s" % (name, ", ".join(restarts)))
     return recs, round(time.time() - t, 1)
+
+
+def path_a(out, sweep_path, cmd=None, stall=PATH_A_STALL):
+    """magic_ref.tcl over the sweep: magic::gencell with the typed values,
+    and for a box-paint point the menu's call on the box."""
+    cmd = cmd or ["magic", "-dnull", "-noconsole", "-rcfile", MAGICRC, os.path.join(HERE, "magic_ref.tcl")]
+    with open(sweep_path, encoding="utf-8") as f:
+        sweep = json.load(f)
+    # An edit point is a sequence of two dialogs; magic::gencell has no
+    # counterpart for it.
+    pts = [pt for pt in sweep["points"] if not pt.get("edit")]
+    if len(pts) != len(sweep["points"]):
+        sweep_path = os.path.join(out, "sweep_a.json")
+        with open(sweep_path, "w", encoding="utf-8") as f:
+            json.dump(dict(sweep, points=pts), f)
+    ref_dir = os.path.join(out, "ref")
+    env = pdk_env(KMP_SWEEP=sweep_path, KMP_OUT=ref_dir)
+    env.pop("KMP_NS", None)
+    # Magic looks for cells in "." first: an empty directory, so that no file
+    # the harness writes can stand in for a vendor cell.
+    return run_watched("path A", cmd, pts, ref_dir, os.path.join(out, "path_a.log"),
+                       os.path.join(out, "run_a"), env, stall)
+
+
+def xvfb_cmd(out, name, script):
+    """Magic under Xvfb, with Xvfb's own messages in <out>/xvfb_<name>.log."""
+    return ["xvfb-run", "-a", "-e", os.path.join(out, "xvfb_%s.log" % name), "magic", "-d", "XR",
+            "-noconsole", "-rcfile", MAGICRC, os.path.join(HERE, script)]
+
+
+def path_d(out, sweep_path, stall=PATH_A_STALL, stats=None):
+    """dialog_ref.tcl over the device points: Magic's own dialog, under Xvfb."""
+    if not shutil.which("xvfb-run"):
+        raise HarnessError("xvfb-run not found: path D (Magic's dialog) needs it")
+    cmd = xvfb_cmd(out, "path_d", "dialog_ref.tcl")
+    with open(sweep_path, encoding="utf-8") as f:
+        pts = [pt for pt in json.load(f)["points"] if pt.get("form") != "box"]
+    if not pts:
+        return {}, 0.0
+    d = os.path.join(out, "dlg")
+    env = pdk_env(KMP_SWEEP=sweep_path, KMP_OUT=d, KMP_LIMIT="50")
+    env.pop("KMP_NS", None)
+    env.pop("DISPLAY", None)
+    return run_watched("path D", cmd, pts, d, os.path.join(out, "path_d.log"),
+                       os.path.join(out, "run_d"), env, stall, stats=stats)
 
 
 def path_b(out, sweep_path, dirname):
@@ -272,39 +379,186 @@ def _init_worker(ctx):
     _CTX.update(ctx)
 
 
+# Magic's SPICE notation as magic::spice2float reads it, restated here (not
+# imported from the plugin) to compare a stored double with the dialog's
+# text for it ("1.028k", "202.5m", "1.218u").
+_SPICE_SCALE = (("meg", 1e6), ("k", 1e3), ("m", 1e-3), ("u", 1e-6), ("n", 1e-9), ("p", 1e-12),
+                ("f", 1e-15), ("a", 1e-15))
+
+
+def spice_number(text):
+    t = str(text).strip().lower()
+    for suf, scale in _SPICE_SCALE:
+        if t.endswith(suf):
+            try:
+                return float(t[:-len(suf)]) * scale
+            except ValueError:
+                return None
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def stored_matches_form(ptype, stored, text):
+    """Does a stored PCell value show the dialog's text for it?"""
+    if ptype in ("signed", "string", "choice", "numlist"):
+        return stored == text
+    n = spice_number(text)
+    if n is None:
+        return False
+    if ptype == "bool01":
+        return bool(stored) == (n != 0)
+    if ptype == "int":
+        return n == int(n) and stored == int(n)
+    try:
+        return stored == n or abs(float(stored) - n) <= 1e-12 * max(1.0, abs(n))
+    except (TypeError, ValueError):
+        return False
+
+
+def _geometry(c, out, xor_name, gds_a, top_a, gds_b, top_b):
+    """Layers that differ (XOR, shape counts) and texts only on one side."""
+    from compare import compare_cells
+    geo_diff = [l["layer"] for l in c["layers"]
+                if l["xor_polygons"] or l["xor_area_um2"] or l.get("shape_counts_differ")]
+    only_a = [[l["layer"]] + t for l in c["layers"] for t in l["texts_only_a"]]
+    only_b = [[l["layer"]] + t for l in c["layers"] for t in l["texts_only_b"]]
+    xor = None
+    if geo_diff or only_a or only_b:
+        xor = os.path.join(out, xor_name)
+        os.makedirs(os.path.dirname(xor), exist_ok=True)
+        compare_cells(gds_a, top_a, gds_b, top_b, xor_out=xor)
+        xor = os.path.relpath(xor, out)
+    return geo_diff, only_a, only_b, xor
+
+
 def check_point(job):
-    """Runs in a worker process; returns a dict of check results."""
+    """Runs in a worker process; returns a dict of check results.
+
+    The reference is Magic's own dialog (path D) for a device, and Magic's
+    menu call (path A) for a box-paint generator, which has no dialog. Path A
+    (magic::gencell with the typed values) is the second reference for a
+    device: it applies where Create gets the same checked values from the
+    dialog's form as gencell gets from the typed ones."""
     from compare import compare_cells
     from gds_census import lost, text_fonts
     from klayout_magic_pcells.stamp import read_stamp
     import klayout.db as db
     out, manifest_bbox = _CTX["out"], _CTX["bboxes"]
     pt, ra, pb, pw, cur = job["point"], job["ref"], job["pcell"], job["warm"], job["stamp"]
+    rd = job.get("dlg")
+    box = pt.get("form") == "box"
+    edit = bool(pt.get("edit"))
     pid = pt["id"]
     r = {}
     errs = []
-    if ra is None or ra.get("rc"):
+    if box and (ra is None or ra.get("rc")):
         errs.append("path A: %s" % ((ra or {}).get("error") or "no record").strip())
+    if not box and (rd is None or rd.get("rc")):
+        errs.append("path D (Magic's dialog): %s" % ((rd or {}).get("error") or "no record").strip())
     if pb is None or pb.get("error"):
         errs.append("path B: %s" % ((pb or {}).get("error") or "no record"))
     if errs:
         r["error"] = errs
         return pid, r
-    # What path B sent must be exactly what path A gave Magic: the point's
-    # values over the manifest defaults.
-    exp = dict(_CTX["req_defaults"][pt["device"]])
-    exp.update(pt["request"])
+    names = _CTX["req_defaults"][pt["device"]]
+    types = _CTX["types"][pt["device"]]
     got = pb.get("request") or {}
+    if box:
+        # What path B sent must be exactly what path A gave Magic: the
+        # point's box.
+        exp = dict(names)
+        exp.update(pt["request"])
+        ref_gds, ref_top, ref_rec = os.path.join(out, "ref", pid + ".gds"), ra["top"], ra
+    else:
+        # What path B sent must be the form Magic's dialog had when Create
+        # (or, on an edit point, Apply) was pressed: every widget's value
+        # but the device-type switch, which Create drops. Apply's cell is
+        # the form checked once and then checked again by gencell_create,
+        # which the request marks with kmp_apply; on a fixed device Apply
+        # draws as Create does. Where Apply kept the instance (its cell is
+        # the one Create made), that is Create's form.
+        def widgets(d):
+            return {k: v for k, v in (d or {}).items() if k != "gencell"}
+        form = widgets(rd.get("form"))
+        e = rd.get("edit") or {}
+        nocell = bool(rd.get("nocell"))  # Magic's defaults, as path D read them
+        kept = edit and e.get("button") == "Apply" and not nocell and rd["magic_cell"] == e.get("first_cell")
+        if kept:
+            exp = widgets(e.get("first_form"))
+        elif edit and e.get("button") == "Apply" and not nocell:
+            exp = dict(form, kmp_apply="1")
+        else:
+            exp = dict(form)
+        ref_gds, ref_top, ref_rec = os.path.join(out, "dlg", pid + ".gds"), rd["top"], rd
     rdiff = {k: [exp.get(k), got.get(k)] for k in sorted(set(exp) | set(got)) if exp.get(k) != got.get(k)}
     r["sent"] = {"equal": not rdiff, "diff": rdiff}
-    ref_gds = os.path.join(out, "ref", pid + ".gds")
+    if not box:
+        # The stored values are what the dialog shows when it reopens on the
+        # instance (Magic's "Edit device" dialog), the stored state holds
+        # that text and the form Create or Apply got, and the New device
+        # dialog opened with the manifest's defaults. On an edit point, the
+        # state after its first step (which the edit starts from) must also
+        # hold what Magic's dialog showed then.
+        stored = pb.get("stored") or {}
+        reo = widgets(rd.get("reopened"))
+
+        def state_diff(st, form_exp, shows_exp, apply_exp, numbers, typed_vals):
+            try:
+                d = json.loads(st.get("kmp_dialog") or "{}")
+            except ValueError:
+                d = {}
+            out = {}
+            for part, want in (("form", form_exp), ("shows", shows_exp)):
+                got_ = d.get(part) or {}
+                for k in sorted(set(want) | set(got_)):
+                    if got_.get(k) != want.get(k):
+                        out["%s.%s" % (part, k)] = [got_.get(k), want.get(k)]
+            if d.get("apply") != apply_exp or d.get("device") != pt["device"]:
+                out["apply/device"] = [d.get("apply"), d.get("device"), apply_exp]
+            # A field shows what the dialog shows. A value in SPICE
+            # notation shows as the number Magic's magic::spice2float
+            # reads (path D asked Magic); where Magic reads none (170.0n),
+            # the field keeps what it had, the typed value where one was
+            # typed, and the state records the field's own text for it.
+            shown = d.get("shown") or {}
+            vd = {}
+            for k in names:
+                text = shows_exp.get(k)
+                if types[k] not in ("float", "int", "bool01") or k not in numbers:
+                    ok = stored_matches_form(types[k], st.get(k), text)
+                elif numbers[k] == "":
+                    ok = k in shown and (k not in typed_vals or st.get(k) == typed_vals[k])
+                else:
+                    ok = stored_matches_form(types[k], st.get(k), numbers[k])
+                if not ok:
+                    vd[k] = [st.get(k), text, numbers.get(k)]
+            return vd, out
+
+        sform = {k: v for k, v in exp.items() if k != "kmp_apply"}
+        vdiff, fdiff = state_diff(stored, sform, reo, 1 if "kmp_apply" in exp else 0,
+                                  rd.get("numbers") or {}, pt["value"])
+        opened = rd.get("opened") or {}
+        odiff = {k: [names[k], opened.get(k)] for k in names if opened.get(k) != names[k]}
+        r["dialog"] = {"values": vdiff, "state": fdiff, "opened": odiff, "typed": rd.get("typed"),
+                       "title": rd.get("title")}
+        ok = not vdiff and not fdiff and not odiff
+        if edit:
+            v1, f1 = state_diff(pb.get("first_stored") or {}, widgets(e.get("first_form")),
+                                widgets(e.get("first_reopened")), 0, e.get("first_numbers") or {},
+                                pt["first"]["value"])
+            r["dialog"].update({"first_values": v1, "first_state": f1, "button": e.get("button"),
+                                "edit_typed": e.get("typed"), "apply_kept": kept})
+            ok = ok and not v1 and not f1
+        r["dialog"]["equal"] = ok
+        tc = pb.get("typed_create") or {}
+        r["typed"] = {"same": bool(tc.get("same")), "diff_layers": tc.get("diff_layers")}
     pc_gds = os.path.join(out, "pcell", pid + ".gds")
-    xor = os.path.join(out, "xor", pid + ".gds")
     try:
-        c = compare_cells(ref_gds, ra["top"], pc_gds, pb["variant"], shape_counts=True)
-        if not c["identical"]:
-            os.makedirs(os.path.dirname(xor), exist_ok=True)
-            compare_cells(ref_gds, ra["top"], pc_gds, pb["variant"], xor_out=xor)
+        c = compare_cells(ref_gds, ref_top, pc_gds, pb["variant"], shape_counts=True)
+        geo_diff, only_ref, only_pc, xor = _geometry(c, out, os.path.join("xor", pid + ".gds"),
+                                                     ref_gds, ref_top, pc_gds, pb["variant"])
     except Exception as e:
         r["error"] = ["compare: %s" % e]
         return pid, r
@@ -312,18 +566,13 @@ def check_point(job):
     # can't reach the PCell, so they must be the ones the baseline records
     # for this device (a change in the vendor GDS shows up here).
     try:
-        got = lost(ref_gds)
+        lgot = lost(ref_gds)
     except Exception as e:
-        got = {"error": str(e)}
+        lgot = {"error": str(e)}
     want = _CTX["census"].get(pt["device"], {})
-    r["census"] = {"lost": got, "baseline": want,
-                   "ok": got == want or _CTX.get("update_baseline", False)}
-    geo_diff = [l["layer"] for l in c["layers"]
-                if l["xor_polygons"] or l["xor_area_um2"] or l.get("shape_counts_differ")]
-    only_ref = [[l["layer"]] + t for l in c["layers"] for t in l["texts_only_a"]]
-    only_pc = [[l["layer"]] + t for l in c["layers"] for t in l["texts_only_b"]]
-    r["geometry"] = {"identical": not geo_diff, "diff_layers": geo_diff,
-                     "xor": os.path.relpath(xor, out) if geo_diff or only_ref or only_pc else None}
+    r["census"] = {"lost": lgot, "baseline": want,
+                   "ok": lgot == want or _CTX.get("update_baseline", False)}
+    r["geometry"] = {"identical": not geo_diff, "diff_layers": geo_diff, "xor": xor}
     # The font, which KLayout's GDS reader drops, from the raw records: the
     # PCell's file always says font 0, so any other font in Magic's file is
     # a difference that compare_cells can't see.
@@ -343,12 +592,51 @@ def check_point(job):
         bb["manifest"] = mb
         bb["equal"] = bb["equal"] and (mb == bref)
     r["bbox"] = bb
-    r["magic_cell"] = {"ref": ra["magic_cell"], "pcell": pb.get("magic_cell"),
-                       "equal": ra["magic_cell"] == pb.get("magic_cell")}
-    ca, cb = ra.get("checked") or {}, pb.get("checked") or {}
+    r["magic_cell"] = {"ref": ref_rec["magic_cell"], "pcell": pb.get("magic_cell"),
+                       "equal": ref_rec["magic_cell"] == pb.get("magic_cell")}
+    # Create's checked dict: the dialog's has the device-type switch
+    # (gencell), which gencell_create removes after _check.
+    ca = {k: v for k, v in (ref_rec.get("checked") or {}).items() if k != "gencell"}
+    cb = pb.get("checked") or {}
     r["checked"] = {"equal": ca == cb,
                     "diff": {k: [ca.get(k), cb.get(k)] for k in sorted(set(ca) | set(cb))
                              if ca.get(k) != cb.get(k)}}
+    if not box and not edit:
+        # The second reference: magic::gencell with the typed values. It
+        # applies where its checked dict equals the one Create got from the
+        # dialog's form (then _draw gets the same values). This is also what
+        # Magic's dialog draws when one value is typed and Create pressed
+        # with no Return: no binding runs, and Create checks the form once.
+        g = {}
+        if ra is None or ra.get("rc"):
+            g = {"applies": False, "ok": False,
+                 "error": "path A: %s" % ((ra or {}).get("error") or "no record").strip()}
+        else:
+            a_chk = ra.get("checked") or {}
+            g["applies"] = a_chk == cb
+            if not g["applies"]:
+                g["checked_diff"] = {k: [a_chk.get(k), cb.get(k)] for k in sorted(set(a_chk) | set(cb))
+                                     if a_chk.get(k) != cb.get(k)}
+            a_gds = os.path.join(out, "ref", pid + ".gds")
+            try:
+                ca2 = compare_cells(a_gds, ra["top"], pc_gds, pb["variant"], shape_counts=True)
+                gd, oa, ob, gx = _geometry(ca2, out, os.path.join("xor_gencell", pid + ".gds"),
+                                           a_gds, ra["top"], pc_gds, pb["variant"])
+                g["same_geometry"] = not gd and not oa and not ob
+                g["magic_cell_equal"] = ra["magic_cell"] == pb.get("magic_cell")
+                if gx:
+                    g["xor"] = gx
+                    g["diff_layers"] = gd
+            except Exception as e:
+                g["same_geometry"] = False
+                g["error"] = "compare: %s" % e
+            g["ok"] = (not g["applies"]) or (g.get("same_geometry") and g.get("magic_cell_equal")
+                                             and "error" not in g)
+        # One value typed on a device whose dialog has no widget beyond its
+        # PCell parameters: path A is then also Magic's dialog with that
+        # value typed and Create pressed without Return.
+        g["single_entry"] = len(pt["request"]) == 1 and not (set(form) - set(names))
+        r["gencell"] = g
     # cache: cold run went to Magic, warm run came from disk, same geometry
     cache = []
     if pb.get("source") != "magic":
@@ -386,6 +674,14 @@ def check_point(job):
         if st.get("key") != (pb.get("key") or "")[:16]:
             bad.append("key")
         r["stamp"] = "ok" if not bad else "mismatch: " + ", ".join(bad)
+    if not box:
+        # Recorded: what Create's own _check (the pass after the dialog's)
+        # changes in the dialog's form; the stored values are Create's.
+        again = {k: [got.get(k), cb.get(k)] for k in names if k in cb and got.get(k) != cb.get(k)}
+        if again:
+            r["create_check_changes"] = again
+        if edit and r["dialog"].get("apply_kept"):
+            r["apply_kept"] = True
     return pid, r
 
 
@@ -397,17 +693,20 @@ def load_census_baseline():
         return {}
 
 
-def step_checks(out, points, ref, pcell, warm, cur_stamp, manifest, jobs, update_baseline=False):
+def step_checks(out, points, ref, dlg, pcell, warm, cur_stamp, manifest, jobs, update_baseline=False):
     from klayout_magic_pcells.manifest import Manifest
     bboxes = {d["name"]: d["defaults_run"].get("gds_bbox_um")
               for d in manifest["devices"] + manifest.get("boxpaint", [])}
-    req_defaults = {d.name: {p.name: p.default for p in d.params} for d in Manifest(manifest).devices}
-    work = [{"point": pt, "ref": ref.get(pt["id"]), "pcell": pcell.get(pt["id"]),
-             "warm": warm.get(pt["id"]), "stamp": cur_stamp} for pt in points]
+    devs = Manifest(manifest).devices
+    req_defaults = {d.name: {p.name: p.default for p in d.params} for d in devs}
+    types = {d.name: {p.name: p.type for p in d.params} for d in devs}
+    work = [{"point": pt, "ref": ref.get(pt["id"]), "dlg": dlg.get(pt["id"]),
+             "pcell": pcell.get(pt["id"]), "warm": warm.get(pt["id"]), "stamp": cur_stamp}
+            for pt in points]
     ctx = multiprocessing.get_context("fork")
     with ctx.Pool(jobs, initializer=_init_worker,
                   initargs=({"out": out, "bboxes": bboxes, "req_defaults": req_defaults,
-                             "census": load_census_baseline(),
+                             "types": types, "census": load_census_baseline(),
                              "update_baseline": update_baseline},)) as pool:
         return dict(pool.map(check_point, work, chunksize=8))
 
@@ -433,27 +732,35 @@ def update_census_baseline(points, results, manifest, partial):
         f.write("\n")
 
 
-def step_idempotence(points, pcell, cfg_env):
-    """For below: points, would a second _check change Magic's checked dict?
-    Recorded, not checked."""
+def step_bindings(points, dlg, cfg_env, manifest):
+    """For each device: the update_dialog calls that each widget's binding
+    runs in Magic's real dialog (path D recorded them on the device's first
+    point) against the ones the server's dialog op runs, from the manifest's
+    widget order and add_dependency calls. Returns {id of that point: result}."""
     from klayout_magic_pcells.backend import MagicServer
     from klayout_magic_pcells.config import Config
+    from klayout_magic_pcells.manifest import Manifest
+    man = Manifest(manifest)
     cfg = Config.load(env=cfg_env, pdk=PDK)
-    s = MagicServer(cfg)
+    s = MagicServer(cfg, vendor_cells=man.vendor_cells())
     s.start()
     out = {}
     try:
         for pt in points:
-            if not pt["kind"].startswith("below:") or pt.get("form") == "box":
+            rd = dlg.get(pt["id"]) or {}
+            if "bindings" not in rd:
                 continue
-            pb = pcell.get(pt["id"]) or {}
-            chk = pb.get("checked")
-            if not chk:
-                continue
-            again = s.check(pt["device"], chk).checked
-            diff = {k: [chk.get(k), again.get(k)] for k in sorted(set(chk) | set(again))
-                    if chk.get(k) != again.get(k)}
-            out[pt["id"]] = {"second_check_changes": diff}
+            spec = man[pt["device"]]
+            rep = s.dialog(spec, {p.name: p.default for p in spec.params}, [], want_chains=True)
+            real = {k: v.get("chain") for k, v in rd["bindings"].items()}
+            diff = {}
+            for p in spec.params:
+                a, b = real.get(p.name), rep.chains.get(p.name)
+                if a != b:
+                    diff[p.name] = {"dialog": a, "server": b}
+            missing = [p.name for p in spec.params if p.name not in real]
+            out[pt["id"]] = {"same": not diff and not missing, "diff": diff,
+                             "no_widget": missing, "widgets": len(real)}
     finally:
         s.close()
     return out
@@ -489,8 +796,22 @@ def step_menu(out, points, ref, manifest):
     env = pdk_env(KMP_JOBS=jp, KMP_OUT=d)
     env.pop("DISPLAY", None)
     lp = os.path.join(out, "menu.log")
-    run(["xvfb-run", "-a", "magic", "-d", "XR", "-noconsole", "-rcfile", MAGICRC,
-         os.path.join(HERE, "menu_ref.tcl")], lp, env=env, cwd=os.path.join(out, "run_a"), timeout=600)
+    xerrs = []
+    for _try in range(X_START_RETRIES + 1):
+        ixp = os.path.join(d, "index.jsonl")
+        if os.path.exists(ixp):
+            os.remove(ixp)
+        run(xvfb_cmd(out, "menu", "menu_ref.tcl"), lp, env=env, cwd=os.path.join(out, "run_a"),
+            timeout=600)
+        xerr = "" if os.path.exists(ixp) else x_start_error(_read_from(lp, 0))
+        if not xerr:
+            break
+        xerrs.append(xerr)
+        log("  the menu check's Magic died with an X error before its first job (%s); "
+            "starting it again" % xerr)
+    else:
+        raise HarnessError("the menu check: Magic died with an X error before its first job %d "
+                           "times in a row (%s); see %s" % (len(xerrs), xerrs[-1], lp))
     recs = {}
     try:
         with open(os.path.join(d, "index.jsonl")) as f:
@@ -517,13 +838,22 @@ def step_menu(out, points, ref, manifest):
             p = os.path.join(d, j["id"] + ext)
             if res.get(j["id"]) == "identical" and os.path.exists(p):
                 os.remove(p)
-    return res, "%d points through the menu entries (%s)" % (len(jobs), ", ".join(sorted(set(
-        j["label"] for j in jobs))))
+    again = (", Magic started again %d times after an X error at start-up" % len(xerrs)) if xerrs else ""
+    return res, "%d points through the menu entries (%s)%s" % (len(jobs), ", ".join(sorted(set(
+        j["label"] for j in jobs))), again)
 
 
 # --- step 6: round trips ------------------------------------------------------------
 
-def step_roundtrip(out, points, ref, pcell, results, seed):
+def reference(out, pt, ref, dlg):
+    """(GDS, top cell) of a point's reference: Magic's dialog for a device,
+    path A for a box-paint generator."""
+    if pt.get("form") == "box":
+        return os.path.join(out, "ref", pt["id"] + ".gds"), ref[pt["id"]]["top"]
+    return os.path.join(out, "dlg", pt["id"] + ".gds"), dlg[pt["id"]]["top"]
+
+
+def step_roundtrip(out, points, ref, dlg, pcell, results, seed):
     rng = random.Random(seed)
     chosen = []
     for pt in points:
@@ -533,10 +863,17 @@ def step_roundtrip(out, points, ref, pcell, results, seed):
             continue
         # Always: the defaults, the limits, the many-digit and tie values
         # (whose text a reopened file must send again) and negative boxes.
-        if k in ("default", "min", "max", "digits", "tie", "neg", "negzero") or rng.random() < 0.10:
+        # Edit points: the random-to-random chains always, a fifth of the
+        # others.
+        if k in ("default", "min", "max", "below", "zero", "digits", "tie", "neg", "negzero") \
+                or (k == "edit" and ">" in pt["kind"]) \
+                or rng.random() < (0.20 if k == "edit" else 0.10):
+            ref_gds, ref_top = reference(out, pt, ref, dlg)
             chosen.append({"id": pt["id"], "device": pt["device"], "kind": pt["kind"],
                            "request": pt["request"], "value": pt["value"],
-                           "ref_top": ref[pt["id"]]["top"],
+                           "stored": pcell[pt["id"]].get("stored"),
+                           "sent": pcell[pt["id"]].get("request"),
+                           "ref_gds": ref_gds, "ref_top": ref_top,
                            "key": pcell[pt["id"]].get("key") or "",
                            "expect_stamp": not r.get("empty_output")})
     rt = os.path.join(out, "roundtrip")
@@ -548,7 +885,7 @@ def step_roundtrip(out, points, ref, pcell, results, seed):
     # variant is regenerated by Magic in that process (or comes from the
     # memo that Magic filled there), never from the cache path B filled.
     env = pdk_env(KMP_RT_POINTS=pts_path, KMP_RT_PCELL=os.path.join(out, "pcell"),
-                  KMP_RT_REF=os.path.join(out, "ref"), KMP_RT_RESAVED=os.path.join(out, "resaved"),
+                  KMP_RT_RESAVED=os.path.join(out, "resaved"),
                   KMP_CACHE_DIR=os.path.join(out, "cache-roundtrip"), KMP_CACHE="0")
     res = {}
     for mode in ("nolib", "lib"):
@@ -575,12 +912,31 @@ def step_roundtrip(out, points, ref, pcell, results, seed):
 
 # --- steps 7 and 8: DRC and extraction ------------------------------------------------
 
-def build_sheets(out, points, ref, pcell, results):
+# Points whose cell is longer than this on a side get no DRC: Magic's
+# dialog makes 0.9 m and 1.8 m long ihp-sg13g2 rm6 and rm7 resistors from
+# val 10000 (they have no _check), and Magic's DRC crashed (signal 11) on a
+# sheet that held the rm7 one, on both sides.
+DRC_MAX_UM = 10000.0
+
+
+def build_sheets(out, points, ref, dlg, pcell, results):
     from sheet import build_sheet, chunks
     d = os.path.join(out, "drc")
     os.makedirs(d, exist_ok=True)
     sheets = []
-    ok = [pt for pt in points if "error" not in results.get(pt["id"], {})]
+    ok = []
+    for pt in points:
+        r = results.get(pt["id"], {})
+        if "error" in r or pt.get("edit"):
+            # An edit point's cell is a device the other points already
+            # cover; its geometry check is exact, so DRC adds nothing.
+            continue
+        b = (r.get("bbox") or {}).get("ref")
+        if b and max(b[2] - b[0], b[3] - b[1]) > DRC_MAX_UM:
+            r["drc_skipped"] = "%.0f x %.0f um, more than the %.0f um DRC limit" % (
+                b[2] - b[0], b[3] - b[1], DRC_MAX_UM)
+            continue
+        ok.append(pt)
     # One device per sheet. On a sheet that mixed devices, Magic logged a unit
     # rescale when it read vendor cells with off-grid coordinates, and its DRC
     # result for an npn then differed from the npn checked alone.
@@ -591,8 +947,11 @@ def build_sheets(out, points, ref, pcell, results):
         for di, (dev, pts) in enumerate(sorted(by_dev.items())):
             ents = []
             for pt in pts:
-                cell = ref[pt["id"]]["top"] if side == "ref" else pcell[pt["id"]]["variant"]
-                ents.append((pt["id"], os.path.join(out, side, pt["id"] + ".gds"), cell))
+                if side == "ref":
+                    path, cell = reference(out, pt, ref, dlg)
+                else:
+                    path, cell = os.path.join(out, "pcell", pt["id"] + ".gds"), pcell[pt["id"]]["variant"]
+                ents.append((pt["id"], path, cell))
             for k, ch in enumerate(chunks(ents, SHEET_SIZE)):
                 path = os.path.join(d, "%s_%02d_%d.gds" % (side, di, k))
                 placed, errors = build_sheet(ch, path)
@@ -770,7 +1129,7 @@ def cleanup(out, points, results):
         r = results.get(pt["id"], {})
         if r.get("result") != "pass":
             continue
-        for d in ("ref", "pcell", "pcell_warm", "resaved"):
+        for d in ("ref", "dlg", "pcell", "pcell_warm", "resaved"):
             for ext in (".gds", ".oas"):
                 p = os.path.join(out, d, pt["id"] + ext)
                 if os.path.exists(p):
@@ -915,19 +1274,28 @@ def run_pdk(args, pdk, out):
         rep["meta"]["points"] = len(points)
         log("  %d points" % len(points))
 
-        log("step 3+4: path A and path B (cold) in parallel")
-        with cf.ThreadPoolExecutor(2) as ex:
+        log("step 3+4: path A, path D (Magic's dialog, under Xvfb) and path B (cold) in parallel")
+        d_stats = {}
+        with cf.ThreadPoolExecutor(3) as ex:
             fa = ex.submit(path_a, out, sweep_path)
+            fd = ex.submit(path_d, out, sweep_path, stats=d_stats)
             fb = ex.submit(path_b, out, sweep_path, "pcell")
             ref, ta = fa.result()
+            dlg, td = fd.result()
             pb_data, tb = fb.result()
         pcell = pb_data["points"]
-        log("  path A %.1f s, path B %.1f s %s" % (ta, tb, pb_data.get("generator_stats")))
+        log("  path A %.1f s, path D %.1f s, path B %.1f s %s"
+            % (ta, td, tb, pb_data.get("generator_stats")))
         log("step 4: path B (warm)")
         pw_data, tw = path_b(out, sweep_path, "pcell_warm")
         warm = pw_data["points"]
         log("  warm %.1f s %s" % (tw, pw_data.get("generator_stats")))
-        rep["steps"]["paths"] = {"a_seconds": ta, "b_seconds": tb, "b_warm_seconds": tw,
+        if d_stats.get("x_retries"):
+            log("  path D started Magic again %d times after an X error at start-up"
+                % d_stats["x_retries"])
+        rep["steps"]["paths"] = {"a_seconds": ta, "d_seconds": td, "b_seconds": tb, "b_warm_seconds": tw,
+                                 "d_x_retries": d_stats.get("x_retries", 0),
+                                 "d_x_errors": d_stats.get("x_errors", [])[:5],
                                  "b_generator": pb_data.get("generator_stats"),
                                  "b_server": pb_data.get("server_stats"),
                                  "b_warm_generator": pw_data.get("generator_stats"),
@@ -937,7 +1305,7 @@ def run_pdk(args, pdk, out):
         from klayout_magic_pcells.stamp import parse_stamp
         cur = parse_stamp(pb_data["created_stamp"]) or {}
         t = time.time()
-        results = step_checks(out, points, ref, pcell, warm, cur, manifest, args.jobs,
+        results = step_checks(out, points, ref, dlg, pcell, warm, cur, manifest, args.jobs,
                               args.update_baseline)
         if args.update_baseline:
             update_census_baseline(points, results, manifest, bool(args.quick or args.devices))
@@ -949,11 +1317,17 @@ def run_pdk(args, pdk, out):
                       "pcell_cell": pb.get("variant"), "stored": pb.get("stored"),
                       "checked_dict": pb.get("checked")})
 
-        log("step 5b: second _check on below: points (recorded only)")
-        idem = step_idempotence(points, pcell, pdk_env(KMP_CACHE_DIR=os.path.join(out, "cache-idem")))
-        shutil.rmtree(os.path.join(out, "cache-idem"), ignore_errors=True)
-        for pid, d in idem.items():
-            results[pid].update(d)
+        log("step 5b: the dialog's bindings against the server's")
+        binds = step_bindings(points, dlg, pdk_env(KMP_CACHE_DIR=os.path.join(out, "cache-bind")),
+                              manifest)
+        shutil.rmtree(os.path.join(out, "cache-bind"), ignore_errors=True)
+        for pid, d in binds.items():
+            results[pid]["bindings"] = d
+        bdev = {pt["device"] for pt in points if pt["id"] in binds}
+        rep["steps"]["bindings"] = {"devices": len(bdev), "records": len(binds),
+                                    "same": sum(1 for d in binds.values() if d["same"])}
+        log("  %d devices (%d records), %d records with the same bindings"
+            % (len(bdev), len(binds), rep["steps"]["bindings"]["same"]))
 
         log("step 5c: box-paint generators through Magic's menu, under Xvfb")
         menu, note = step_menu(out, points, ref, manifest)
@@ -964,7 +1338,7 @@ def run_pdk(args, pdk, out):
 
         log("step 6: round trips")
         t = time.time()
-        rt, n_rt = step_roundtrip(out, points, ref, pcell, results, args.seed)
+        rt, n_rt = step_roundtrip(out, points, ref, dlg, pcell, results, args.seed)
         for pid, d in rt.items():
             results[pid]["roundtrip"] = d
         rep["steps"]["roundtrip"] = {"points": n_rt, "seconds": round(time.time() - t, 1)}
@@ -972,7 +1346,7 @@ def run_pdk(args, pdk, out):
         sheets = None
         if not (args.no_drc and args.no_extract):
             log("building DRC sheets")
-            sheets = build_sheets(out, points, ref, pcell, results)
+            sheets = build_sheets(out, points, ref, dlg, pcell, results)
         if not args.no_drc:
             import drc as drcmod
             rep["meta"]["klayout_drc"] = drcmod.describe(PDK)

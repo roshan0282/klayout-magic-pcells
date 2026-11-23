@@ -26,9 +26,26 @@ from . import protocol
 
 # 2: the sidecar carries gds_sha256. 3: the versions fields cover the PDK
 # commit, every file in libs.tech/magic and the fixed devices' vendor GDS.
+# 4: the sidecar carries what Magic's dialog shows when it reopens on the
+# instance ("opened"), and a request may be an Apply (kmp_apply).
 # A new format starts a new versions directory, so older entries are never
 # read.
-FORMAT = 3
+FORMAT = 4
+
+_TCL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tcl")
+
+
+def server_code_digest():
+    """SHA-256 of the server's Tcl (kmp_server.tcl and kmp_common.tcl),
+    which holds the plugin's model of Magic's dialog (the binding chain,
+    one update_dialog pass, Apply's name). It is part of the dialog cache
+    key: a change to that model must not be answered from entries the old
+    model wrote."""
+    h = hashlib.sha256()
+    for name in ("kmp_server.tcl", "kmp_common.tcl"):
+        with open(os.path.join(_TCL, name), "rb") as f:
+            h.update(name.encode() + b"\0" + f.read() + b"\0")
+    return h.hexdigest()
 
 
 def sha256_file(path):
@@ -102,11 +119,12 @@ def count_top_cells(gds_path):
 class GdsCache:
     """``enabled=False`` keeps nothing on disk between sessions (KMP_CACHE=0)."""
 
-    def __init__(self, root, fields, enabled=True, validate=count_top_cells):
+    def __init__(self, root, fields, enabled=True, validate=count_top_cells, server_code=None):
         self.root = root
         self.fields = dict(fields)
         self.enabled = enabled
         self.validate = validate
+        self.server_code = server_code if server_code is not None else server_code_digest()
         self.vdigest = versions_digest(self.fields)[:12]
         self.stats_counts = {"evicted": 0}
         self._own_dir = None
@@ -198,6 +216,52 @@ class GdsCache:
         os.replace(tmp_gds, gds)
         _atomic_write_text(side, json.dumps(sidecar, indent=1, sort_keys=True) + "\n")
         return gds
+
+    # -- Magic's dialog forms ------------------------------------------------
+    #
+    # What Magic's parameter dialog made of a form and a list of edits (the
+    # dialog op), kept as <versions dir>/_dialog/<key, 24 hex>.json. No
+    # device is called "_dialog".
+
+    def dialog_key(self, device, request):
+        """The key of one dialog op: the versions fields, the device, the
+        whole request (the form, the edits, the dialog's widget order and
+        dependencies from the manifest, what else was asked) and the
+        server's code. Which edits the plugin types where (dialog.plan) is
+        in the request itself."""
+        obj = dict(self.fields)
+        obj.update({"op": "dialog", "device": device, "request": request,
+                    "server_code": self.server_code})
+        return hashlib.sha256(canonical_json(obj).encode("utf-8")).hexdigest()
+
+    def dialog_path(self, key):
+        return os.path.join(self.base, "_dialog", key[:24] + ".json")
+
+    def dialog_lookup(self, key, device):
+        """The stored dialog result, or None (also for one written for
+        another key or device, or without a form)."""
+        if not self.enabled:
+            return None
+        try:
+            with open(self.dialog_path(key), encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if (not isinstance(data, dict) or data.get("key") != key or data.get("device") != device
+                or not isinstance(data.get("form"), dict)):
+            return None
+        return data
+
+    def dialog_store(self, key, device, data):
+        if not self.enabled:
+            return
+        path = self.dialog_path(key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        marker = os.path.join(self.base, "versions.json")
+        if not os.path.isfile(marker):
+            _atomic_write_text(marker, json.dumps(self.fields, indent=1, sort_keys=True) + "\n")
+        _atomic_write_text(path, json.dumps(dict(data, key=key, device=device), indent=1,
+                                            sort_keys=True) + "\n")
 
     # -- maintenance ----------------------------------------------------------
 

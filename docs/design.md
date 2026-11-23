@@ -4,7 +4,10 @@ Written 2026-11-21, before any implementation, for sky130A alone. Version
 0.3 adds gf180mcuD, ihp-sg13g2 and ihp-sg13cmos5l, one library per PDK, and
 PCells for Magic's box-paint generators (vias, contacts, substrate contacts,
 guard rings and wells); the README describes those and lists where the code
-differs from this document.
+differs from this document. Version 0.5 stores the values Magic's parameter
+dialog shows instead of the values typed, as the project lead decided on
+2026-11-22; section 4.5 describes that design, and it replaces the parts of
+sections 4.2, 4.3 and 10 that say otherwise.
 
 This is the design for a KLayout PCell library for the sky130A devices that
 Magic generates. Each PCell asks Magic to generate the device and copies the
@@ -21,8 +24,8 @@ that the design depends on carry a tag:
 - **[src]**: read from source code or documentation.
 - **[untested]**: neither. Section 15 collects these.
 
-`$S` below stands for the scratch directory that holds the research,
-`/tmp/claude-1001/-home-vraj/4d8dee00-8352-4a6b-8969-e89873e23052/scratchpad/kmp`.
+`$S` below stands for the scratch directory that held the research. It was a
+local folder and is not part of this repository.
 
 Terms used throughout:
 
@@ -52,10 +55,10 @@ In this document, parity means that for a given set of parameter values the
 PCell cell, flattened, has the same polygons on every GDS layer/datatype and the
 same label texts (string and position) as the GDS that Magic writes when its
 generator is called once with those values through `magic::gencell` (section
-10.3). "Once" matters because running Magic's `_check` twice can change the
-result (section 4.3). The comparison is exact: an XOR per layer at a common
-database unit, with no tolerance and no alignment. Cell names, hierarchy, GDS properties and timestamps are not part of
-parity.
+10.3), which runs `_check` once; running it twice can change the result
+(section 4.3). The comparison is exact: an XOR per layer at a common
+database unit, with no tolerance and no alignment. Cell names, hierarchy,
+GDS properties and timestamps are not part of parity.
 
 The two earlier bespoke attempts were read for their structure and licences
 only, and no code is copied from either:
@@ -449,11 +452,14 @@ Two parts of Magic's dialog are not carried over:
   4.4). (Correction, 2026-11-21: the reason first given here, that these
   callbacks are Tk dialog code, is wrong. `res_recalc` is plain Tcl and runs
   under `magic -dnull`; `cap_recalc` and `diode_recalc` print a line and
-  return their input. The README explains why the PCell still doesn't call
-  `res_recalc`: Magic's dialog runs `_check` before it, so a typed `val` alone
-  doesn't change the device there either.)
+  return their input.) (Version 0.5, 2026-11-23, runs all three through the
+  server, as Magic's dialog does; see section 4.5.)
 
 ### 4.3 Validation with `_check`
+
+(Superseded in version 0.5: the stored values are what Magic's dialog
+shows, and coerce sets them; see section 4.5. The probe results below
+still hold.)
 
 `_check` is not idempotent. A probe for this design ran `_check` on 12 inputs
 and then again on its own output [run, `docs/probes/idem.tcl`]:
@@ -540,6 +546,272 @@ them for users.
   photodiode have no labels, the g5v0d16v0 FETs have no D label, and the MIM
   cap's C2 is on 71/5 [run]. The plugin adds no pins, since pins Magic doesn't
   write would break parity.
+
+### 4.5 Values as Magic's dialog shows them (version 0.5)
+
+Added 2026-11-23. On 2026-11-22 Vraj decided that parameters are stored as
+"corrected value like magic dialogue": the values Magic's own parameter
+dialog shows after the user's edits, not the values typed. This replaces the
+choice in 4.3 (the user's request, with `magic::gencell` as the reference)
+and the second open question of section 15. The rest of this section is the
+design as built. A review the same day found that the first version stored
+the form from before Create, which isn't what the dialog shows after it,
+and that a later edit started from that form, where Magic's Edit device
+dialog starts from the instance; the model below is the revised one.
+
+**What Magic's dialog does** [src, `toolkit.tcl`; run under
+`xvfb-run magic -d XR`]. Magic 8.3.681 has no `gencell.tcl`; the dialog
+code is in `toolkit.tcl`.
+
+- `magic::gencell <ns>::<dev>` with no instance name opens the "New device"
+  dialog (`magic::gencell_dialog`). The device's `_dialog` proc adds one
+  widget per entry, checkbox and selectlist, and the widgets hold the
+  defaults. No `_check` runs when the dialog opens.
+- Every widget gets a binding: `<Return>` and `<FocusOut>` on an entry (the
+  same script for both), `-command` on a checkbox, and `-command` on each
+  entry of a selectlist's menu. The script is a chain of
+  `magic::update_dialog <callback> <name> <dev> <ns>` calls. `_dialog` adds
+  one call per `magic::add_dependency` it makes for that widget, and
+  `add_dependency` binds only widgets that already exist when it runs. Then
+  `magic::add_check_callbacks` adds two calls with no callback, one for the
+  widget's label and one for the widget, because its pattern matches both.
+  On sky130A `res_high_po_0p69` the binding of `val` is
+  `update_dialog sky130::res_recalc val …; update_dialog {} val …;
+  update_dialog {} val …`, and the binding of `m`, which `res_recalc`
+  isn't registered on, has only the two calls with no callback [run, five
+  devices dumped].
+- `update_dialog` merges the device's defaults with the form, runs `_check`
+  on that (an error is printed and the values stay as they were), runs the
+  callback on the result, and writes every widget's value back
+  (`gencell_setparams`). The dependency callbacks are sky130's
+  `res_recalc`, `diode_recalc` and `cap_recalc` and the same procs of the
+  other PDKs; `res_recalc` computes a length from a typed `val` and a `val`
+  from a typed length or width; the other two print a line and return
+  their input.
+- Create runs `gencell_create <dev> <ns> {}`, which takes the form, merges
+  the defaults, runs `_check` once more, draws, and stores that last checked
+  dict in the cell's `parameters` property. The Create button then runs
+  `gencell_dialog` on the new instance, which reopens the dialog as "Edit
+  device". That dialog takes the instance's `parameters` property (for a
+  fixed device, which has none, the defaults with `nx`, `ny` and the pitch
+  of its array) through the device's `_dialog` proc. A fixed device's
+  `_dialog` computes `deltax` and `deltay` from the pitch and clamps them at
+  0, so sky130A `npn_05v5_W1p00L1p00` created with `deltax 1.0` and `nx 1`
+  reopens with `deltax 0.0` [run].
+- The Edit device dialog's Apply runs `gencell_change`: it merges the
+  defaults with the form, runs `_check` once, and compares the device name
+  plus Magic's hash of the result (`magic::get_gencell_hash`) with the
+  instance's cell name. When they are equal it changes nothing. Otherwise it
+  calls `gencell_create` with the checked dict, which checks it a second
+  time, draws and replaces the instance; when a cell of that name already
+  exists in the session, it places that cell instead. A fixed device is
+  drawn with the dict checked once, as Create draws it [src, run].
+
+So one Return runs `_check` two or three times, leaving the field runs the
+same chain again, Create runs `_check` once more, and Apply twice. The
+result depends on the order of the edits: sky130A's resistor and MIM
+capacitor dialogs have `val` in their first row, so `cap_mim_m3_1` with
+`l 0` and `val 50` typed in row order shows `l 2.0`, `val 9.52`, where
+`magic::gencell ... l 0 val 50` gives `l 11.242`, `val 50.0` [run]. Typed in
+the other order (`l` first), the research for version 0.3 got `l 9.726`
+from the real dialog for `res_high_po_0p35` with `val 10000`. The harness
+compares every device's bindings with the chain the server runs (10.3a).
+
+On a few points the number of passes decides the geometry: sky130's
+`res_check` flips `w` on `res_high_po_5p73` and `res_xhigh_po_5p73` with
+`snake 1` and `l` below 5.73 µm. Its `wmin` clamp sets `w` to 5.73, its
+"Snake resistor width must be < length" test sets it back to `l`, and each
+pass reads the other's result, so `l 1.87` gives `w` 1.87, 5.730, 1.87,
+5.730 on four passes [run, backend test]. That is a bug in the PDK's code;
+the PCell reproduces one sequence of passes (below), and the README lists
+the points where another sequence draws another width.
+
+**The model the PCell follows.** An instance's first edit is "New device:
+type, Return, Create"; every later edit is "Edit device: type, Return,
+Apply" on the instance the earlier one made.
+
+- The values that differ from what the dialog shows are the edits. Without
+  a stored state, the dialog shows the defaults the New device dialog opens
+  with; with one, it shows what the dialog showed when it reopened on the
+  instance.
+- Each edit is typed into its widget, in the dialog's row order, and that
+  widget's binding runs once, as pressing Return does. A checkbox is clicked
+  (its variable set, then its command run), and a selectlist entry is
+  picked the same way.
+- The first edit then presses Create: the server's `generate` op calls
+  `gencell_create` with the form. A later edit presses Apply: the server's
+  `dialog` op also returns the name Apply compares, the device name and
+  Magic's hash of the form checked once. When that name is the instance's
+  cell name, the PCell keeps the instance as it was. Otherwise `generate`
+  runs with `apply`, which checks the form once more before
+  `gencell_create`, as `gencell_change` does; a fixed device is drawn as
+  Create draws it.
+- The stored values are what the dialog shows when it reopens on the new
+  instance. The `generate` op computes that the way `gencell_dialog` does:
+  it reads the new cell's `parameters` property (or the defaults and the
+  array of a fixed device), and runs the device's `_dialog` proc with
+  Magic's widget procs (`magic::add_entry` and the others) replaced for the
+  call by ones that record the value each widget opens with, as
+  `tools/build_manifest.py` reads the dialogs. Where the dialog doesn't
+  reopen in Magic (gf180mcuD's `eFuse`, `npn_00p54x08p00` and
+  `npn_00p54x10p00`, whose vendor cell is a stub), it keeps what Create's
+  `gencell_setparams` wrote, the checked value of each widget, and so does
+  the PCell.
+
+The drawing is that of Magic's Create or Apply, and the stored values are
+what Magic's dialog shows afterwards: on sky130A the defaults of
+`res_high_po_0p69` open with `val 463.480`, and after Create the dialog
+shows `1.028k`, which is what the PCell stores.
+
+In KLayout's GUI form every confirmed field is one coerce call (below), so
+changing two fields one after the other is Create and then Apply, where a
+Magic user may type both into the New device dialog before Create. In batch,
+`dialog_values()` with several values types them all into one dialog. Other
+ways of using Magic's dialog give other values where `_check` isn't
+idempotent or where the order matters, and the PCell doesn't reproduce
+them:
+
+- leaving an entry (Tab, or a click into the next one) runs its binding
+  again;
+- pressing Return in an unchanged entry does the same, and pressing Apply
+  with no field changed runs `gencell_change`;
+- a Magic user can type the values in any order;
+- a value typed with no Return or Tab before Create or Apply runs no
+  binding: Create then checks the form once, which is what `magic::gencell`
+  does with the typed values (path A of the harness);
+- Apply places an existing cell whose name the edit gives, wherever in the
+  session it came from;
+- an instance with no stored state (made in batch with typed values, or
+  saved by an earlier version) may have been created in Magic long ago;
+  the PCell types its next edit into the New device dialog.
+
+**Where the corrections come from.** The server has a `dialog` op
+(`kmp_server.tcl`): it takes the form as data, sets the edited widget, and
+runs that widget's chain of passes, one pass per `update_dialog` call. Each
+pass calls the device's `_defaults`, its `_check` and the dependency
+callback, all Magic's own procs, in the order `update_dialog` calls them.
+It cannot call `update_dialog` itself: that proc reads and writes the form
+through Tk's `grid slaves` and `wm state`, and under `magic -dnull` there
+is no `wm` and `grid` is Magic's own grid command. The chain comes from the
+manifest, which records each device's widgets in the order `_dialog`
+creates them (`dialog_widgets`) and each `add_dependency` call with the
+number of widgets that existed when it ran (`dialog_dependencies[].after`).
+An error in a callback ends that widget's chain, as Tk ends a binding script
+at its first error. The endless-loop guard of `mos_check` works inside the
+op as in `generate`. Python computes no correction and no name: it decides
+which values are edits by comparing their request text (section 4.2 and the
+README's formatting rules), and it shows a value that Magic's dialog holds
+in SPICE notation (`1.028k`, `202.5m`) as the number `magic::spice2float`
+gives for it, which the server returns. Every PDK's `spice2float` maps
+the suffix `n` to `* 1.0 e-9`, which `expr` refuses, so it reads no number
+from `170.0n`; `res_generic_l1` with `l 0`, whose dialog shows `170.0n`
+after Create, keeps the field's previous value, with a warning [run, src].
+Path D asks Magic's `spice2float` for each such value, and the harness
+compares the field with that.
+
+The stub procs replace `::magic::add_entry` and the others only during the
+call and put Magic's back afterwards, so the digest of Magic's proc text in
+the cache key and the stamps, taken at start-up, never sees them.
+
+**What is stored.** The hidden string parameter `kmp_dialog` holds JSON:
+`{"v": 2, "device": <name>, "form": {...}, "apply": 0 or 1, "shows":
+{...}, "shown": {...}}`. `form` is the dialog's form when Create or Apply
+was pressed, exactly as Magic's dialog held it (`0.69`, `1.028k`,
+`1.218u`), and is what the PCell sends Magic, with `"kmp_apply": "1"` added
+when `apply` is 1. `shows` is the text of every widget of the dialog that
+reopens on the instance. Both have every widget that `gencell_getparams`
+reads except the device-type switch `gencell`, which Create drops, so they
+also have widgets whose name the device's defaults lack: the IHP RF FET
+dialogs' `topc` and `botc` checkboxes, which the dialog opens empty
+(`add_checkbox` sets `""` for a name the parameters don't have) and hands
+to Create as `""`. Those aren't PCell parameters [run: the first full
+ihp-sg13g2 run of path D found them, through the checked dicts and cell
+names of 236 points]. The visible parameters hold the values `shows` shows:
+a plain number as itself; a SPICE value as Magic's number for it, rounded
+to the 15 digits KLayout saves; a value the field's type can't hold at all
+keeps what the field had. `shown` records the canonical text of the field
+for each value of the last two kinds. `device` names the device the state
+was made for: two devices of a PDK often have dialogs with the same widget
+names (51 of sky130A's 60 devices share them with another device,
+review 3 counted), and a state is used only by its own device.
+
+**When the dialog runs again.** `coerce_parameters_impl` asks for a
+correction only when the visible values differ from the ones `shows` shows,
+compared as request text (12 significant digits, so a double read back one
+ULP off still matches). Otherwise it changes nothing. KLayout calls coerce
+before every produce (K5), when it opens a file, in `Library.refresh()` and
+in `register_lib` (both through `Library::remap_to`, which keeps what
+coerce returns), and in the GUI form on every edit. Without that comparison
+each of those calls would run `_check` on Magic's own output again, and
+`_check` isn't idempotent: on sky130A `res_xhigh_po_5p73` with a typed
+`val` shows `l 5.997`, and typing that `val` again gives `l 5.994`;
+`res_high_po_0p35` with `l 0` and `val 10000` shows `val 1113.259`, and
+typing its `l` again gives `1113.258` [run, backend test]. The request, the
+cache key and the cell name all come from the stored state, so a reopened
+variant is the cached one.
+
+The stored state is checked before it is used. A state made for another
+device, with a form or `shows` whose widgets aren't the device's, with a
+number field that isn't a number (in Magic's SPICE notation or not), a
+coverage string that isn't a signed number, a choice that isn't Magic's or
+a number list that isn't numbers, or with `apply` on a fixed device, is
+ignored, and the visible values are typed into the New device dialog as
+first edits. The server refuses `[`, `]`, `$` and backslashes in any value.
+A backend test puts a Tcl command into a saved `form` and into a saved
+`shows` and checks that neither runs. The `kmp_dialog` that version 0.5
+wrote before review 3's fixes (never released; `"v": 1`, the form before
+Create and no `shows`) is ignored the same way.
+
+**Outside the GUI.** `Layout.create_cell(device, library, values)` stores
+`values` as given and draws what the dialog makes of them (K5): coerce
+corrects them for produce without storing the result. On reopen the same
+correction comes out again, because it depends only on the stored values;
+the disk cache keeps dialog results too (`<versions dir>/_dialog/`, keyed
+by the whole dialog request and a digest of the server's Tcl), so a
+reopened file needs no Magic call for variants that are cached.
+`klayout_magic_pcells.dialog_values(device, values)` returns what the GUI
+would store, kmp_dialog included; passing its result with some values
+changed to `dialog_values` again edits the instance as the Edit device
+dialog does. `Library.refresh()` stores the corrected values of every
+instance. The CLI's `generate` stores the corrected values; its `check`
+prints what the dialog shows after Create.
+
+**What a user sees in KLayout's PCell form** [src: `pcell.py` and
+`edtPCellParametersPageBase.cc`; driven in a backend test through
+`PCellDeclaration.callback()`. On 2026-11-23 the first and third points
+below were seen on screen in KLayout 0.30.11 under Xvfb; guide.md has the
+screenshots]. KLayout runs the
+form's callback and then coerce when an entry loses focus or gets Return,
+a checkbox changes or a choice is picked. The callback makes the variant
+(Magic's Create or Apply), so the form needs Magic on every edit even with
+`KMP_LAZY=1`.
+
+- The edited field changes to what Magic's dialog shows after Create or
+  Apply. Typing `l 0.1` into sky130A `nfet_01v8` makes it `0.15`, with a
+  warning icon and the tooltip `Magic's dialog shows 0.15 (entered 0.1):
+  Mos length must be >= 0.15 um`.
+- Another field the dialog changed gets an information icon, `Magic's
+  dialog sets this to ... (was ...)`, unless Magic shows its value in SPICE
+  notation; then the next point applies.
+- A field whose value Magic shows in SPICE notation shows Magic's number
+  for it, with a warning icon: on `res_high_po_0p69`, `val` shows `1028`
+  and the tooltip `Magic's dialog shows 1.028k here, which this field can
+  only show as 1028.0`. A field that can't show the value at all keeps its
+  value and gets a warning that names Magic's text.
+- An edit that Apply doesn't take (its values give the instance's own cell
+  name) puts the fields back, with a warning that says so.
+- If Magic draws nothing for the values, the fields the dialog corrected
+  (or, when it corrected none, the first field) get a warning that says
+  so, with Magic's message.
+- Pressing Return or leaving a field without changing it changes nothing.
+- Opening the properties of an instance made in batch with typed values
+  shows the corrected values, and OK stores them.
+
+**The harness.** Path D drives the real dialog under Xvfb for every device
+point, independently of the plugin, and is the reference for devices; path
+A (`magic::gencell` with the typed values) is the second reference where it
+applies (section 10.3 and the README). Its edit points create a device and
+then edit it through Magic's Edit device dialog and Apply.
 
 ## 5. Failures
 
@@ -842,7 +1114,10 @@ shipped manifest is data extracted from `sky130A.tcl`, so open_pdks' licence
 applies to it, and that licence wasn't checked. The harness runs the PDK's DRC
 deck, whose header says GPLv3 [run], from the PDK install and doesn't copy it.
 compare.py was written for this project during the research and moves into the
-repository. The project's own licence is open (section 15).
+repository. The project's own licence is open (section 15). (Decided
+2026-11-22: Apache-2.0. The repository has `LICENSE` and a `NOTICE` that
+names where the manifests' data comes from; the README's licence section
+lists what each PDK's files say.)
 
 ## 10. Test harness
 
@@ -962,6 +1237,61 @@ plugin calls `gencell_create` directly, so the two paths reach Magic through
 different procs and different client code and share only the rule in 3.4.
 Each point's cell is deleted after writing, which avoids M3's exact-copy trap
 when two points check to the same parameters.
+
+### 10.3a Path D: Magic's own dialog (version 0.5)
+
+`tests/parity/dialog_ref.tcl` runs under `xvfb-run magic -d XR`, uses none
+of the plugin's code, and does for each device point what a user of the
+"Devices" menu does: `magic::gencell <ns>::<dev>` opens the "New device"
+dialog, each value of the point is typed into its widget in the dialog's
+row order (an entry gets the text and its `<Return>` binding runs, a
+checkbox showing the other state is clicked, a selectlist entry is
+invoked), the form is read back with `magic::gencell_getparams`, and Create
+(`.params.buttons.apply invoke`) makes the cell, which is written as path A
+writes its cells. The point's request holds only values that differ from
+the defaults, so these are the edits. It records the dialog as it opened,
+the form before Create, Create's checked dict and cell name, the dialog as
+it reopens on the new instance after Create, and, on each device's first
+point, every widget's binding. It turns Magic's interactive
+DRC off and puts back the session state after each point as path A does,
+with two differences that come from running under the GUI, where every
+`tech lock`, `tech unlock` and `tech revert` takes longer than the one
+before (`tech revert` took 1.5 s after the first point and 3.8 s after the
+fourth): it leaves fence, magnet and rotate unlocked, as each Create leaves
+them (none of them is a GDS layer), and puts other locks back without
+`tech revert`. It also starts a new Magic every 50 points. The same
+watchdog as path A's restarts it after a crash or a hang. When the dialog
+fails to reopen on the instance Create made (on gf180mcuD's `eFuse`,
+`npn_00p54x08p00` and `npn_00p54x10p00`, whose vendor cell is a stub, it
+looks for `gf180mcu::<stub>_defaults`), a user gets Tk's error box and the
+cell; path D records the error in the point's log and writes the cell.
+
+An edit point (added after review 3) types its first values into the New
+device dialog and presses Create, then types its own values into the Edit
+device dialog that reopened on the instance, each only where the field
+shows another value (a number field compared as the number
+`magic::spice2float` reads, any other field as text), and presses Apply.
+It records the reopened dialog before the edit, the form at Apply, the
+cell the instance then places and that cell's `parameters` property, and
+the dialog reopened on the instance afterwards, and writes that cell. On
+the three gf180mcuD stub devices the dialog never reopens on the instance,
+so its button is still Create; the edit deletes the first instance and
+presses Create again (Magic places no copy of a cell over an identical
+one). Path A has no counterpart for an edit point, and edit points get no
+DRC or extraction: their geometry check is exact, and the device is
+covered by the other points.
+
+Path D is the reference for every device point: the request path B sent
+must be the form Create or Apply got (with `kmp_apply` for Apply on a drawn
+device, and Create's form where Apply kept the instance); the stored values
+must show the dialog as it reopened on the instance; `kmp_dialog` must hold
+that form and that dialog exactly; geometry, texts, bounding box, census,
+Magic's cell name and checked dict are compared with its Create or Apply.
+On an edit point the state after the first step must also hold Create's
+form and the Edit device dialog the edit started from. Path A remains the
+reference for box-paint generators, which have no dialog, and the second
+reference for devices: where its checked dict equals Create's, `_draw` got
+the same values, and its geometry and cell name must match too.
 
 ### 10.4 Path B: the PCell through `klayout -b`
 
@@ -1136,7 +1466,8 @@ image needs nothing installed.
 ### 10.8 CI
 
 `.github/workflows/parity.yml` follows the pattern in parity.md section 4. The
-workflow hadn't run on GitHub when this was written [untested].
+workflow hadn't run on GitHub when this was written [untested]. (Its first
+run, on 2026-11-23, is described in the README's CI section.)
 
 ```yaml
 name: parity
@@ -1209,7 +1540,8 @@ jobs:
 klayout-magic-pcells/
 ├── grain.xml
 ├── README.md
-├── LICENSE                        once the licence is chosen
+├── LICENSE                        Apache-2.0
+├── NOTICE                         where the manifests' data comes from
 ├── .gitignore                     out/
 ├── pymacros/
 │   └── klayout_magic_pcells.lym   autorun: register the library
@@ -1225,6 +1557,7 @@ klayout-magic-pcells/
 │       ├── importer.py            insert_gds_flat()
 │       ├── stamp.py               make_stamp(), apply_stamp(), read_stamp()
 │       ├── pcell.py               make_pcell(spec, generator)
+│       ├── dialog.py              the stored dialog form (version 0.5)
 │       ├── library.py             Sky130MagicLibrary
 │       ├── audit.py
 │       ├── tcl/
@@ -1245,6 +1578,7 @@ klayout-magic-pcells/
 │       ├── gen_sweep.py
 │       ├── sweep_limits.json
 │       ├── magic_ref.tcl
+│       ├── dialog_ref.tcl         path D, version 0.5
 │       ├── pcell_path.py
 │       ├── compare.py
 │       ├── roundtrip.py
@@ -1342,24 +1676,29 @@ The README covers:
 - Windows and macOS.
 - Switching device type within one PCell, and Magic's `-spice` interface.
 - Writing Magic's corrections back into parameters, snapping, and adding pin
-  shapes.
+  shapes. (Version 0.5 writes back what Magic's dialog shows: section 4.5.)
 - Technology, DRC and LVS files: the PDK's are used.
 - KLayout's `.mag` reader, and any path back into Magic.
 - Creating devices from guiding shapes.
 - Replacing or wrapping the PDK's `skywater130` library.
-- Publishing: no Salt Mine entry. (The repository went to a private GitHub
-  repository after this design was written.)
+- Publishing: no Salt Mine entry. (After this design was written, the
+  repository went to GitHub as vproHacks/klayout-magic-pcells; on
+  2026-11-23 it was public.)
 
 ## 15. Open questions and unverified points
 
 Questions for Vraj, the project lead:
 
 - The project's licence, and whether the manifest, which is data extracted from
-  `sky130A.tcl`, can ship under it.
+  `sky130A.tcl`, can ship under it. (Decided 2026-11-22: the licence is
+  Apache-2.0; see 9.3. Whether the manifests' data may ship under it is
+  still open; the README's licence section lists what each PDK's files
+  say.)
 - Whether stored parameters should stay the user's request, matching
   `magic::gencell` as designed here, or become Magic's checked values, the way
   Magic's dialog writes them back (4.3). The second runs `_check` twice for
   some inputs, and for the three in 4.3 that changes `val` and the cell name.
+  (Decided 2026-11-22: the values Magic's dialog shows; see 4.5.)
 - The names: `sky130_magic` for the library, and full Magic device names for the
   PCells.
 
@@ -1368,6 +1707,7 @@ Not verified, carried over from the research:
 - Why port labels produce no `*/16` pin shapes; `gds contacts yes` wasn't tried.
 - In the GUI: the coerce error label, lazy evaluation, `callback_impl` icons on
   screen, the config file being found, and `PATH` for a desktop launch.
+  (On 2026-11-23 the icons were seen on screen under Xvfb; see guide.md.)
 - Installing with the Salt manager or `klayout -y`; KLayout's `.mag` reader;
   parameters removed between versions on reload; the PDK library and the
   Efabless package loaded together.
@@ -1399,7 +1739,7 @@ Not verified, from this design:
 
 Still outstanding from the KLayout research: container `3c43372766a3`, a hung
 `klayout -e` probe, needs `docker kill 3c43372766a3` from someone with
-permission.
+permission. (On 2026-11-23 `docker inspect` found no such container.)
 
 ## Sources
 
