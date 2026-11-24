@@ -37,6 +37,9 @@ CASES = [
     ("no_source_taps_3x3", dict(nx=3, ny=3, source_taps=False)),      # body on its own pin, B
     # 45 degree stripes stay under 3 um wide at a large pitch (Magic's wide-metal halo)
     ("diag45_P8_3x3", dict(nx=3, ny=3, P=8.0)),
+    # P = 0: the smallest P that draws clean
+    ("min_pitch_4x3", dict(nx=4, ny=3, P=None)),
+    ("min_pitch_pfet16v_3x3", dict(nx=3, ny=3, device="pfet_g5v0d16v0", P=None)),
     # narrower stripes than the widest that fits
     ("runner_w_0.6_3x3", dict(nx=3, ny=3, runner_w=0.6)),
     ("staircase_runner_w_1.2_3x3", dict(nx=3, ny=3, runner_style="staircase", runner_w=1.2)),
@@ -143,6 +146,42 @@ class Geometry(unittest.TestCase):
             r = build(WaffleParams(nx=3, ny=3, runner_style=st, runner_w=1.2)).report
             self.assertAlmostEqual(r["stripe_width_um"], 1.2, delta=0.006)
         self.assertGreater(auto, 2.0)
+
+    def test_min_pitch(self):
+        """P None draws at the smallest P that draws; 10 nm less doesn't."""
+        from klayout_power_pcells.waffle import WaffleError, WaffleParams, build, limits
+        for kw in (dict(), dict(device="pfet_01v8", runner_style="staircase"),
+                   dict(runners=("met3", "met4", "met5")), dict(device="nfet_g5v0d16v0")):
+            with self.subTest(**kw):
+                w = build(WaffleParams(nx=3, ny=3, P=None, **kw))
+                P = w.report["P_um"]
+                self.assertTrue(w.report["P_auto"])
+                with self.assertRaises(WaffleError) as cm:
+                    build(WaffleParams(nx=3, ny=3, P=round(P - 0.01, 3), **kw))
+                self.assertTrue(cm.exception.grow)
+                self.assertIn("smallest P", __import__("klayout_power_pcells.waffle", fromlist=["x"])
+                              .why_not(cm.exception, WaffleParams(nx=3, ny=3, P=P - 0.01, **kw)))
+                self.assertAlmostEqual(limits(WaffleParams(nx=3, ny=3, P=None, **kw))["P_min"], P)
+
+    def test_limits(self):
+        """The ranges limits() reports draw at both ends."""
+        from klayout_power_pcells.waffle import WaffleError, WaffleParams, build, limits
+        lim = limits(WaffleParams(nx=3, ny=3, P=4.0))
+        self.assertEqual((lim["L_min"], lim["N_min"], lim["P_at"]), (0.15, 0.55, 4.0))
+        lo, hi = lim["runner_w"]
+        build(WaffleParams(nx=3, ny=3, P=4.0, runner_w=lo))
+        build(WaffleParams(nx=3, ny=3, P=4.0, runner_w=hi))
+        with self.assertRaises(WaffleError):
+            build(WaffleParams(nx=3, ny=3, P=4.0, runner_w=round(lo - 0.02, 3)))
+        tlo, thi = lim["tap_w"]
+        build(WaffleParams(nx=3, ny=3, P=4.0, tap_w=thi))
+        with self.assertRaises(WaffleError):
+            build(WaffleParams(nx=3, ny=3, P=4.0, tap_w=round(thi + 0.01, 3)))
+        # an invalid value: the rest still shown, for its default
+        bad = limits(WaffleParams(nx=3, ny=3, N=0.2))
+        self.assertEqual(bad["reset"], ["N"])
+        self.assertTrue(bad["N_fixed"] is False and bad["P_min"] > 0)
+        self.assertTrue(limits(WaffleParams(nx=3, ny=3, device="nfet_g5v0d16v0"))["N_fixed"])
 
     def test_fill_cuts(self):
         import klayout.db as db

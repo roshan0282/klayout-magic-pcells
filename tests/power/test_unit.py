@@ -108,6 +108,7 @@ class Declaration(unittest.TestCase):
         self.assertIsNone(p.bus_w)
         self.assertIsNone(p.tap_w)
         self.assertIsNone(p.runner_w)
+        self.assertIsNone(params_of_values(dict({n: v[n] for n in EDITABLE}, P=0.0)).P)
         self.assertTrue(p.source_taps)
 
 

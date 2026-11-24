@@ -36,11 +36,13 @@ RUNNER_STYLES = ("diag45", "staircase", "planes")
 
 
 class WaffleError(ValueError):
-    """Parameters the generator can't draw clean; ``param`` names the culprit."""
+    """Parameters the generator can't draw clean; ``param`` names the culprit.
+    ``grow``: a larger P would fix it (min_pitch searches on these)."""
 
-    def __init__(self, param, message):
+    def __init__(self, param, message, grow=None):
         super().__init__(message)
         self.param = param
+        self.grow = (param == "P") if grow is None else bool(grow)
 
 
 def _um(v):
@@ -49,7 +51,8 @@ def _um(v):
 
 class WaffleParams:
     """nx, ny: squares per side. P: square pitch, L: gate length, N: notch side
-    (um; L and N None = the device minimum and the computed minimum).
+    (um; P, L and N None = the smallest P that draws clean, the device
+    minimum and the computed minimum).
     source_taps: a body tap in every source square, tied to S (body = S);
     tap_w its side (None = the smallest that holds a contact).
     deep_nwell: p-LDMOS only (pfet_g5v0d16v0): a deep n-well under the
@@ -66,7 +69,7 @@ class WaffleParams:
                  bus="L_buses", bus_w=None, guard_ring=True, frame_w=None, pdk="sky130A",
                  source_taps=True, tap_w=None, deep_nwell=True, bottom_net="S", runner_w=None):
         self.device, self.nx, self.ny = device, int(nx), int(ny)
-        self.P, self.L, self.N = float(P), (None if L is None else float(L)), (None if N is None else float(N))
+        self.P, self.L, self.N = (None if P is None else float(P)), (None if L is None else float(L)), (None if N is None else float(N))
         self.gate_strap, self.runners, self.runner_style = gate_strap, tuple(runners), runner_style
         self.bus, self.bus_w, self.guard_ring = bus, (None if bus_w is None else float(bus_w)), bool(guard_ring)
         self.frame_w = None if frame_w is None else float(frame_w)
@@ -182,9 +185,16 @@ def _octagon(b, c):
 
 # -- the generator -----------------------------------------------------------------------
 
-def build(params, steps=STEPS):
-    """Draw the FET up to (and including) the named steps; returns a Waffle."""
-    p = params
+def _with(params, **kw):
+    """A copy of WaffleParams with some values changed."""
+    d = params.as_dict()
+    d["runners"] = tuple(x for x in d["runners"].split(",") if x)
+    d.update(kw)
+    return WaffleParams(**d)
+
+
+def _resolve(p):
+    """(pdk, dev, L, n_min, why, n_fixed): the checks that need no P."""
     if p.pdk not in PDKS:
         raise WaffleError("pdk", "unknown PDK %r" % p.pdk)
     pdk = PDKS[p.pdk]
@@ -209,9 +219,6 @@ def build(params, steps=STEPS):
     if L % (2 * G):
         raise WaffleError("L", "L %.3f um must be a multiple of %.3f um (its half on the %d nm grid)"
                           % (_um(L), _um(2 * G), G))
-    P = int(round(p.P * 1000))
-    if P % (2 * G):
-        raise WaffleError("P", "P %.3f um must be a multiple of %.3f um" % (_um(P), _um(2 * G)))
 
     # Notch side: poly crossings on field oxide; with in-array gate contacts,
     # also the poly contact's distance to diffusion.
@@ -253,6 +260,213 @@ def build(params, steps=STEPS):
         n_fixed = L + 4 * R["hvntm_enc"]
         assert n_fixed >= n_min
         n_min, why = n_fixed, "set by Magic's HVNTM at the notch corners (hvntm.2): N = L + 4 x 0.185"
+    return pdk, dev, L, n_min, why, n_fixed
+
+
+_MEMO = {}
+
+
+def _memo(kind, params, extra, fn):
+    key = (kind, tuple(sorted(params.as_dict().items())), extra)
+    if key not in _MEMO:
+        if len(_MEMO) > 256:
+            _MEMO.clear()
+        _MEMO[key] = fn()
+    return _MEMO[key]
+
+
+def _try(params, steps):
+    """True if these values draw; False on an error a larger P fixes
+    (or a geometry assertion); raises any other WaffleError."""
+    try:
+        if "runners" in steps:
+            runner_plan(params)          # cheap: refuses a P too small for the runners before drawing
+        build(params, steps)
+        return True
+    except WaffleError as e:
+        if not e.grow:
+            raise
+        return False
+    except AssertionError:
+        return False
+
+
+def min_pitch(params, steps=STEPS):
+    """The smallest P (nm, a multiple of 2 grids) at which these values draw
+    clean on an array of at most 3 x 3 squares (build() confirms it at full
+    size). Raises the WaffleError of a value no P fixes."""
+    def search():
+        pdk, dev, L, n_min, _why, _nf = _resolve(params)
+        R, G = pdk["rules"], pdk["grid"]
+        N = n_min if params.N is None else int(round(params.N * 1000))
+        small = _with(params, nx=min(params.nx, 3), ny=min(params.ny, 3))
+        step = 2 * G
+        lo = _snap_up(max(N + R["diff_w"], L + 2 * R["diff_past_gate"]), step)
+        if _try(_with(small, P=_um(lo)), steps):
+            return lo
+        hi = lo
+        while True:                          # lo fails; grow hi until it draws
+            hi = _snap_up(hi + max(hi // 2, 1000), step)
+            if hi > 100000:
+                build(_with(small, P=_um(hi)), steps)       # raises why
+                raise WaffleError("P", "no P up to 100 um draws these values")
+            if _try(_with(small, P=_um(hi)), steps):
+                break
+            lo = hi
+        while hi - lo > step:
+            mid = _snap_down((lo + hi) // 2, step)
+            if mid <= lo:
+                break
+            if _try(_with(small, P=_um(mid)), steps):
+                hi = mid
+            else:
+                lo = mid
+        return hi
+    return _memo("pmin", _with(params, P=None), steps, search)
+
+
+def limits(params):
+    """What these values allow, for the form and the CLI: a dict with
+    L_min, N_min, N_rule, N_fixed, P_min, tap_w (min, max at P), runner_w
+    (min, max at P), bus_w_min (um), P_at (the P the ranges are for) and
+    'reset': values that were invalid and replaced by their defaults to
+    get the rest. 'error' instead when the device or array is invalid."""
+    def compute():
+        out = {"reset": []}
+        q = params
+        defaults = WaffleParams().as_dict()
+        for _ in range(6):
+            try:
+                pdk, dev, L, n_min, why, n_fixed = _resolve(q)
+                pm = min_pitch(q)
+                break
+            except WaffleError as e:
+                if e.param in ("L", "N", "tap_w", "runner_w", "deep_nwell") and e.param not in out["reset"]:
+                    out["reset"].append(e.param)
+                    q = _with(q, **{e.param: None if e.param != "deep_nwell" else False})
+                    continue
+                if e.param == "runners" and "runners" not in out["reset"]:
+                    out["reset"].append("runners")
+                    q = _with(q, runners=tuple(defaults["runners"].split(",")))
+                    continue
+                return {"error": str(e), "param": e.param}
+        else:
+            return {"error": "no limits found"}
+        R, G = pdk["rules"], pdk["grid"]
+        out.update({"L_min": _um(dev["lmin"]), "N_min": _um(n_min), "N_rule": why,
+                    "N_fixed": n_fixed is not None, "P_min": _um(pm),
+                    "bus_w_min": _um(BUS_MIN_W) if q.bus == "L_buses" else None})
+        P = pm
+        if params.P is not None:
+            Pg = int(round(params.P * 1000))
+            if Pg >= pm and Pg % (2 * G) == 0:
+                P = Pg
+        out["P_at"] = _um(P)
+        small = _with(q, nx=min(q.nx, 3), ny=min(q.ny, 3), P=_um(P))
+        # body tap: holds a contact; leaves diffusion with a contact before the gates
+        if q.source_taps:
+            tmin = _snap_up(R["licon"] + 2 * R["licon_tap_enc1"], 2 * G)
+            gap = _snap_up(max(R["diff_tap_s_mv"] if dev["hv"] else R["diff_s"], 2 * R["sdm_enc"]), G)
+            need = R["diff_past_gate"] + R["licon"] + 2 * R["licon_diff_enc1"]
+            tmax = _snap_down(2 * (P // 2 - L // 2 - gap - need), 2 * G)
+            out["tap_w"] = (_um(tmin), _um(tmax)) if tmax >= tmin else None
+        # runner width: the widest that fits P, down to the narrowest with a via in every square
+        out["runner_w"] = None
+        if q.runner_style != "planes":
+            try:
+                _l, dmax, _s = runner_plan(_with(q, runner_w=None), P)
+            except WaffleError:
+                dmax = None
+            if dmax is not None:
+                width = max(R[l + "_w"] for l in q.runners)
+                dlo = _snap_up(int(math.ceil(width * math.sqrt(2.0))), 4 * G)
+                if q.runner_style == "staircase":
+                    dlo = max(dlo, _snap_up(2 * width + 4 * G, 4 * G))
+                steps_ = STEPS[:STEPS.index("runners") + 1]
+
+                def fits(d):
+                    try:
+                        build(_with(small, runner_w=d / 1000.0 / math.sqrt(2.0)), steps_)
+                        return True
+                    except (WaffleError, AssertionError):
+                        return False
+                lo, hi = dlo, dmax
+                if not fits(hi):
+                    lo = None
+                elif fits(lo):
+                    hi = lo
+                else:
+                    while hi - lo > 4 * G:
+                        mid = _snap_down((lo + hi) // 2, 4 * G)
+                        if mid <= lo:
+                            break
+                        if fits(mid):
+                            hi = mid
+                        else:
+                            lo = mid
+                if lo is not None:
+                    up = lambda d: math.ceil(d / math.sqrt(2.0)) / 1000.0
+                    top = round(dmax / math.sqrt(2.0) / 1000.0, 3)
+                    out["runner_w"] = (min(up(hi), top), top)
+        return out
+    return _memo("limits", params, None, compute)
+
+
+def why_not(e, params):
+    """The message of a WaffleError, with the smallest P when a larger P fixes it."""
+    msg = str(e)
+    if getattr(e, "grow", False):
+        try:
+            msg += "; the smallest P for these values is %.3f um (P = 0 picks it)" % _um(min_pitch(params))
+        except Exception:
+            pass
+    return msg
+
+
+def limits_text(lim):
+    """One line of limits(): what the form's Minimums field shows."""
+    if "error" in lim:
+        return "-: %s" % lim["error"]
+    parts = ["L >= %.3f" % lim["L_min"],
+             ("N = %.3f (fixed)" if lim["N_fixed"] else "N >= %.3f") % lim["N_min"],
+             "P >= %.3f um" % lim["P_min"]]
+    at = " at P %.3f" % lim["P_at"]
+    if lim.get("tap_w"):
+        parts.append("tap_w %.3f-%.3f%s" % (lim["tap_w"] + (at,)))
+    if lim.get("runner_w"):
+        parts.append("runner_w %.3f-%.3f%s" % (lim["runner_w"] + (at,)))
+    if lim.get("bus_w_min"):
+        parts.append("bus_w >= %.1f" % lim["bus_w_min"])
+    text = "; ".join(parts)
+    if lim["reset"]:
+        text += " (%s invalid: shown for the default)" % ", ".join(lim["reset"])
+    return text
+
+
+def build(params, steps=STEPS):
+    """Draw the FET up to (and including) the named steps; returns a Waffle.
+    P None: at the smallest P that draws clean (min_pitch)."""
+    if params.P is None:
+        P = min_pitch(params, steps)
+        for _ in range(50):          # min_pitch searched a small array; confirm at full size
+            try:
+                w = build(_with(params, P=_um(P)), steps)
+            except WaffleError as e:
+                if not e.grow:
+                    raise
+                P += 2 * PDKS[params.pdk]["grid"]
+                continue
+            w.report["P_auto"] = True
+            return w
+        raise WaffleError("P", "no P near %.3f um draws this FET" % _um(P))
+    p = params
+    pdk, dev, L, n_min, why, n_fixed = _resolve(p)
+    R = pdk["rules"]
+    G = pdk["grid"]
+    ld = bool(dev.get("ld"))
+    P = int(round(p.P * 1000))
+    if P % (2 * G):
+        raise WaffleError("P", "P %.3f um must be a multiple of %.3f um" % (_um(P), _um(2 * G)), grow=False)
     N = n_min if p.N is None else int(round(p.N * 1000))
     if n_fixed is not None and N != n_fixed:
         raise WaffleError("N", "N %.3f um: for %s, N is L + 4 x 0.185 = %.3f um (leave N at 0); other values "
@@ -334,7 +548,7 @@ def build(params, steps=STEPS):
         ring_w = P // 2 - L // 2 - hh                 # diffusion left between the hole and a gate
         if ring_w < R["diff_past_gate"] + R["licon"] + 2 * R["licon_diff_enc1"]:
             raise WaffleError("tap_w", "a %.3f um tap leaves %.3f um of diffusion between it and the gates; "
-                              "use a smaller tap_w or a larger P" % (_um(T), _um(ring_w)))
+                              "use a smaller tap_w or a larger P" % (_um(T), _um(ring_w)), grow=True)
         holes = db.Region()
         for i in range(nx):
             for j in range(ny):
@@ -799,11 +1013,8 @@ def runner_plan(params, P=None):
     if params.runner_style == "staircase":
         ok = ok and _snap_down(delta // 2, 2 * G) > width
     if not ok:
-        k = 2.0 if params.runner_style == "staircase" else math.sqrt(2.0)
-        p_min = _snap_up(width * k + space * math.sqrt(2.0) + 4 * G, 2 * G)
-        raise WaffleError("P", "P %.3f um is too small for %s runners on %s: needs about P >= %.3f um "
-                          "(width %.2f and spacing %.2f um)"
-                          % (_um(P), params.runner_style, ",".join(layers), _um(p_min), _um(width), _um(space)))
+        raise WaffleError("P", "P %.3f um is too small for %s runners on %s (width %.2f and spacing %.2f um)"
+                          % (_um(P), params.runner_style, ",".join(layers), _um(width), _um(space)))
     if params.runner_w is not None:
         # a narrower stripe than the widest that fits: less S-D overlap, more resistance
         want = _snap_up(int(round(params.runner_w * 1000 * math.sqrt(2.0))), 4 * G)
@@ -814,7 +1025,7 @@ def runner_plan(params, P=None):
             raise WaffleError("runner_w", "runner width %.3f um is more than fits: at most %.3f um at P %.3f "
                               "(spacing %.2f um%s)" % (params.runner_w, _um(delta) / math.sqrt(2.0), _um(P),
                                                        _um(space), ", and under 3 um for diag45"
-                                                       if params.runner_style == "diag45" else ""))
+                                                       if params.runner_style == "diag45" else ""), grow=True)
         if want < lo:
             raise WaffleError("runner_w", "runner width %.3f um is less than the %s minimum %.3f um"
                               % (params.runner_w, params.runner_style, _um(lo) / math.sqrt(2.0) + 0.0005))
@@ -857,7 +1068,7 @@ def _vias(w, i, j, area, stack):
             raise WaffleError("runner_w" if narrow else "P",
                               "no %s fits where square (%d, %d) meets its %s %s: a %.2f um square "
                               "must fit; increase %s" % (v, i, j, hi, w.params.runner_style, _um(k),
-                                                         "the runner width" if narrow else "P"))
+                                                         "the runner width" if narrow else "P"), grow=not narrow)
         w.add(v, cuts)
 
 

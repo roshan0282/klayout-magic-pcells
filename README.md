@@ -33,12 +33,27 @@ using them, with screenshots of that GUI, including the warning icons that
 the parameter form shows when Magic corrects a value.
 
 This fork adds `python/klayout_power_pcells`: the `sky130_power` library
-with `HW_FET`, a sky130A hybrid-waffle power MOSFET (nfet and pfet, 1.8 V
-and 5 V) drawn from raw layers and checked with the PDK's KLayout deck,
-Magic DRC and netgen LVS. Install the repository as the Salt package
-`klayout-power-pcells` in place of klayout-magic-pcells; see
-[docs/guide-power.md](docs/guide-power.md) for the plugin and
-[docs/hybrid_waffle.md](docs/hybrid_waffle.md) for the geometry.
+with `HW_FET`, a sky130A hybrid-waffle power MOSFET drawn from raw layers
+and checked with the PDK's KLayout deck, Magic DRC and netgen LVS. It
+offers:
+
+- **Devices:** nfet and pfet at 1.8 V (with the LVT and HVT variants),
+  5 V, and the 16 V extended-drain (LDMOS) `nfet_g5v0d16v0` and
+  `pfet_g5v0d16v0`, with an optional deep n-well that isolates the p-LDMOS
+  drains from the substrate.
+- **S/D runners on met3-met5** in three styles: 45 degree stripes, the
+  same stripes in 0/90 degree steps, or S and D planes on alternate layers
+  (with a choice of which net is on met3). The stripe width can be set.
+- **Body taps in the source squares**, a guard ring, and L-shaped S/D buses.
+- **P = 0 draws at the smallest pitch** that passes DRC. A read-only
+  Minimums line in the form, also printed by the `check` command, shows
+  the limits of L, N, P, the tap size and the runner width for the
+  current values.
+
+Install the repository as the Salt package `klayout-power-pcells` in place
+of klayout-magic-pcells. See [docs/guide-power.md](docs/guide-power.md) for
+the plugin and [docs/hybrid_waffle.md](docs/hybrid_waffle.md) for the
+geometry, rules and limits (no 45 degree FETs on sky130, no 20 V devices).
 
 The design is in [docs/design.md](docs/design.md). It was written for
 sky130A alone. Where this README and the design disagree, the README

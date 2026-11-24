@@ -11,7 +11,8 @@
 
 Values are HW_FET's parameters (devices lists them), e.g.
   device=pfet_01v8 nx=6 ny=6 P=4 gate_strap=frame_only runners=met3,met4 bus=none guard_ring=0
-L, N and bus_w of 0 mean "the minimum"; runner_w=0 the widest stripe that fits.
+P, L, N and bus_w of 0 mean "the minimum"; runner_w=0 the widest stripe that fits.
+check also prints the minimums (and ranges) these values allow.
 
 Exit status: 0 when the FET is drawn (and, for verify, DRC and LVS pass),
 1 when it isn't or a check fails, 2 for a value that isn't a number or not
@@ -123,12 +124,13 @@ def cmd_devices(args):
 
 
 def cmd_check(args):
-    from .waffle import WaffleError, build, summary
+    from .waffle import WaffleError, build, limits, limits_text, summary, why_not
     p = _params(_kv(args.values))
+    print("minimums: %s" % limits_text(limits(p)))
     try:
         w = build(p)
     except WaffleError as e:
-        print("HW_FET: not drawn: %s (parameter %s)" % (e, e.param))
+        print("HW_FET: not drawn: %s (parameter %s)" % (why_not(e, p), e.param))
         return 1
     print("HW_FET: %s" % summary(w))
     return 0

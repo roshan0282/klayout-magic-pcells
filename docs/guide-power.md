@@ -48,13 +48,14 @@ the spec:
 
 | Field | Meaning |
 |---|---|
-| Device | nfet_01v8, nfet_01v8_lvt, pfet_01v8, pfet_01v8_lvt, pfet_01v8_hvt, nfet_g5v0d10v5, pfet_g5v0d10v5, and the 16 V extended-drain (LDMOS) nfet_g5v0d16v0, pfet_g5v0d16v0 (P >= about 7.0 / 6.6 um: every gate needs W >= 5 um) |
+| Device | nfet_01v8, nfet_01v8_lvt, pfet_01v8, pfet_01v8_lvt, pfet_01v8_hvt, nfet_g5v0d10v5, pfet_g5v0d10v5, and the 16 V extended-drain (LDMOS) nfet_g5v0d16v0, pfet_g5v0d16v0 (P >= 6.80 / 6.48 um: every gate needs W >= 5 um) |
 | nx, ny | squares per side |
-| P | square pitch (um) |
+| P | square pitch (um); 0 means the smallest pitch these values allow |
 | L | gate length; 0 means the device minimum |
 | N | notch side; 0 means the computed minimum |
 | Gate strap | `met1_mesh` (contacts in every notch, met1 mesh) or `frame_only` |
 | Runners | met3,met4 (default), met3, or met3,met4,met5 |
+| Runner width | `diag45` and `staircase`: the stripe width across the stripe; 0 means the widest that fits P (under 3 um for diag45) |
 | Runner style | `diag45` (45 degree stripes), `staircase` (the same stripes in 0/90 degree steps) or `planes` (0/90 only: S and D plates on alternate layers, islands where the other net passes; needs two runner layers) |
 | S/D buses | `L_buses` (S top/right, D bottom/left) or `none` (a pin per stripe; with `planes`, one S and one D pin) |
 | Bus width | 0 means 3.2 um |
@@ -63,7 +64,8 @@ the spec:
 | Tap size | 0 means the minimum (one contact) |
 | Planes: net on met3 | `planes` only: `S` (default; S on met3, D on met4, S on met5) or `D` (D on met3, S on met4, D on met5) |
 | Deep n-well | pfet_g5v0d16v0 only, on by default: a deep n-well under the array isolates the drift p-wells (the drains) from the substrate; needs the guard ring |
-| Result | read-only: gates, total W, L, N, area and W per area |
+| Result | read-only: gates, total W, P (with "(min)" when P = 0), L, N, area and W per area |
+| Minimums | read-only: what these values allow: the minimum L, N and P, the tap size and runner width ranges at this P, and the minimum bus width |
 
 ![The HW_FET form](img/power/power-form.png)
 
@@ -78,8 +80,16 @@ The form updates on every edit. The tool tip of each icon gives the reason:
 
   ![The latch-up warning](img/power/power-form-lu-warning.png)
 
+- **The Minimums line** gives the limits for the values in the form, so
+  you don't need trial and error. For the default nfet:
+  `L >= 0.150; N >= 0.550; P >= 2.180 um; tap_w 0.410-2.230 at P 4.000;
+  runner_w 0.538-2.418 at P 4.000; bus_w >= 3.2`. The ranges are for the
+  current P, or for the minimum P when the current P is too small. If a
+  value is invalid, the line uses its default for the rest and says so.
+  Set P to 0 to draw at the minimum.
 - **An error** sits on the parameter the generator refuses, and the Result
-  line says why. Placing it anyway draws the error marker. Here P is too
+  line says why. When a larger P would fix it, the message also gives the
+  smallest P. Placing it anyway draws the error marker. Here P is too
   small:
 
   ![P too small](img/power/power-p-error.png)
@@ -146,7 +156,8 @@ In batch: `klayout -b -rm pymacros/klayout_power_pcells.lym -r script.py`.
 ```sh
 python3 -m klayout_power_pcells doctor
 python3 -m klayout_power_pcells devices
-python3 -m klayout_power_pcells check nx=6 ny=6 device=pfet_01v8      # the summary, or why not
+python3 -m klayout_power_pcells check nx=6 ny=6 device=pfet_01v8      # the minimums, then the summary or why not
+python3 -m klayout_power_pcells hw nx=6 ny=6 P=0 -o min.gds           # at the smallest pitch
 python3 -m klayout_power_pcells generate nx=6 ny=6 -o fet.gds         # through the library, in TOP
 python3 -m klayout_power_pcells hw nx=6 ny=6 -o flat.gds              # flat, no library
 python3 -m klayout_power_pcells verify nx=3 ny=3 device=nfet_g5v0d10v5 --keep /tmp/v

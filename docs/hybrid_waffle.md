@@ -164,6 +164,16 @@ All three pass both DRC decks and LVS.
   Each net's top layer is a solid plate, and its lower layers are meshes
   (a plate with a hole and island over each of the other net's squares).
 
+**P = 0** draws at the smallest pitch these values allow. The generator
+searches for it on the 10 nm grid, trying a 3 x 3 array (so it takes about
+a second), then confirms it at full size. Each error that a larger P would fix
+names that minimum too. The form's read-only **Minimums** line (and
+`python3 -m klayout_power_pcells check ...`) shows the limits for the
+current values: L, N, P, the `tap_w` and `runner_w` ranges at the current P
+(or at the minimum P, when the current P is too small), and the bus
+width. If a value is invalid, the line uses its default for the rest and
+says so.
+
 `runner_w` (diag45 and staircase) sets the stripe width, measured
 perpendicular to the stripe; 0, the default, takes the widest that fits,
 P - √2 x spacing, and keeps it under 3 um for diag45. The value is rounded
@@ -171,7 +181,7 @@ up so the band's corners stay on the grid (1.0 gives 1.004 um). A narrower
 stripe cuts the S-D overlap capacitance between layers but raises the
 runner resistance. Each square must still hold a via2 (via3, via4) with
 its enclosures where it meets its stripe, which sets the minimum (about
-0.6 um on met3/met4, and met5's 1.6 um width with met5). Planes refuse a
+0.54 um on met3/met4 at P = 4 um, as the Minimums line shows; with met5, its 1.6 um width). Planes refuse a
 non-zero value.
 
 ## Extended-drain (LDMOS) devices

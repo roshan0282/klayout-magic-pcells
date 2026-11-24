@@ -22,7 +22,7 @@ import klayout.db as db
 
 from . import backend
 from .rules import PDKS
-from .waffle import WaffleError, WaffleParams
+from .waffle import WaffleError, WaffleParams, limits, limits_text, why_not
 
 LIBRARY_NAME = "sky130_power"
 PCELL_NAME = backend.CELL
@@ -30,6 +30,7 @@ PDK = "sky130A"
 ERROR_LAYER = (255, 0)
 CREATED_PARAM = "hw_created"
 INFO_PARAM = "info"
+LIMITS_PARAM = "limits"
 EDITABLE = ("device", "nx", "ny", "P", "L", "N", "gate_strap", "runners", "runner_style", "runner_w", "bottom_net",
             "bus", "bus_w",
             "guard_ring", "source_taps", "tap_w", "deep_nwell")
@@ -60,8 +61,8 @@ def draw_error(layout, cell, reason):
 
 
 def params_of_values(v):
-    """WaffleParams of the PCell's values (0 means 'the minimum' for L, N, bus_w; 'auto' for runner_w)."""
-    return WaffleParams(device=v["device"], nx=v["nx"], ny=v["ny"], P=v["P"],
+    """WaffleParams of the PCell's values (0 means 'the minimum' for P, L, N, bus_w; 'auto' for runner_w)."""
+    return WaffleParams(device=v["device"], nx=v["nx"], ny=v["ny"], P=v["P"] if v["P"] > 0 else None,
                         L=v["L"] if v["L"] > 0 else None, N=v["N"] if v["N"] > 0 else None,
                         gate_strap=v["gate_strap"], runners=tuple(str(v["runners"]).split(",")),
                         runner_style=v["runner_style"], bus=v["bus"],
@@ -74,8 +75,8 @@ def params_of_values(v):
 def info_text(res):
     i = res.info
     lu = i.get("lu_max_um")
-    return ("%d gates, W %.2f um, L %.3f, N %.3f um, %.1f um2 (W/area %.3f), body %s%s"
-            % (i["n_gates"], i["W_total_um"], i["L_um"], i["N_um"], i["bbox_area_um2"], i["W_per_bbox_area"],
+    return ("%d gates, W %.2f um, P %.3f%s, L %.3f, N %.3f um, %.1f um2 (W/area %.3f), body %s%s"
+            % (i["n_gates"], i["W_total_um"], i["P_um"], " (min)" if i.get("P_auto") else "", i["L_um"], i["N_um"], i["bbox_area_um2"], i["W_per_bbox_area"],
                i.get("body") or "floating",
                "" if lu is None or i.get("lu_ok") else "; diffusion %.1f um from a tap (Magic LU wants 15)" % lu))
 
@@ -90,7 +91,7 @@ class HWFetPCell(db.PCellDeclarationHelper):
         self.param("device", self.TypeString, "Device", default=d.device, choices=[(n, n) for n in devs])
         self.param("nx", self.TypeInt, "Squares in x (nx)", default=d.nx)
         self.param("ny", self.TypeInt, "Squares in y (ny)", default=d.ny)
-        self.param("P", self.TypeDouble, "Square pitch P", default=d.P, unit="um")
+        self.param("P", self.TypeDouble, "Square pitch P (0 = minimum)", default=d.P, unit="um")
         self.param("L", self.TypeDouble, "Gate length L (0 = device minimum)", default=0.0, unit="um")
         self.param("N", self.TypeDouble, "Notch side N (0 = minimum)", default=0.0, unit="um")
         self.param("gate_strap", self.TypeString, "Gate strap", default=d.gate_strap,
@@ -116,6 +117,7 @@ class HWFetPCell(db.PCellDeclarationHelper):
         self.param("deep_nwell", self.TypeBoolean, "Deep n-well (p-LDMOS: drains isolated from the substrate)",
                    default=d.deep_nwell)
         self.param(INFO_PARAM, self.TypeString, "Result", default="", readonly=True)
+        self.param(LIMITS_PARAM, self.TypeString, "Minimums (for these values)", default="", readonly=True)
         self.param(CREATED_PARAM, self.TypeString, "Created with", hidden=True, readonly=True,
                    default=backend.state.created_stamp or backend.make_stamp())
         self._warned = set()
@@ -139,11 +141,17 @@ class HWFetPCell(db.PCellDeclarationHelper):
         return bool(cfg is not None and cfg.lazy)
 
     def coerce_parameters_impl(self):
+        try:
+            setattr(self, LIMITS_PARAM, limits_text(limits(params_of_values(self._values()))))
+        except Exception as e:
+            setattr(self, LIMITS_PARAM, "-: %s" % " ".join(str(e).split()))
         if backend.state.generator is None or self.wants_lazy_evaluation():
             return
         try:
             res = backend.state.generator.get(params_of_values(self._values()))
             setattr(self, INFO_PARAM, info_text(res))
+        except WaffleError as e:
+            setattr(self, INFO_PARAM, "not drawn: %s" % " ".join(why_not(e, params_of_values(self._values())).split()))
         except Exception as e:
             setattr(self, INFO_PARAM, "not drawn: %s" % " ".join(str(e).split()))
 
@@ -208,7 +216,7 @@ class HWFetPCell(db.PCellDeclarationHelper):
         except WaffleError as e:
             st = states.parameter(e.param if e.param in EDITABLE else "device")
             st.icon = db.PCellParameterState.ErrorIcon
-            st.tooltip = str(e)
+            st.tooltip = why_not(e, params_of_values(self._values(states)))
         except Exception as e:
             st = states.parameter("device")
             st.icon = db.PCellParameterState.ErrorIcon
