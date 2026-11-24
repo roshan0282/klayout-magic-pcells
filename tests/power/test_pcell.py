@@ -122,7 +122,7 @@ class PCellTest(unittest.TestCase):
         li = ly.find_layer(255, 0)
         self.assertIsNotNone(li)
         texts = [s.text_string for s in var.shapes(li).each() if s.is_text()]
-        self.assertTrue(texts and texts[0].startswith("HW_ERROR: strap width"), texts)
+        self.assertTrue(texts and texts[0].startswith("HW_ERROR HW_FET: strap width"), texts)
         self.assertEqual(sum(1 for i in ly.layer_indexes() if i != li and not var.shapes(i).is_empty()), 0)
 
     @unittest.skipUnless(shutil.which("klayout"), "no klayout binary")

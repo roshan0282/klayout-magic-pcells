@@ -50,7 +50,7 @@ LIBRARY = "sky130_magic"
 DEVICE = "sky130_fd_pr__nfet_01v8"
 
 # Magic's sky130A MOSFETs whose source and drain are interchangeable, which
-# the waffle needs: kind ("n" or "p") and whether they are 5 V (hvi) devices.
+# the waffle needs: kind ("n" or "p") and whether they are thick-oxide (hvi) devices.
 # Left out: the g5v0d16v0 drain-extended FETs (asymmetric) and the SONOS cell.
 DEVICES = {
     "sky130_fd_pr__nfet_01v8": ("n", False),
@@ -110,6 +110,15 @@ RING_MCON_W = 2000      # met1 contact on the ring (nwell.4 wants metal-connecte
 TAP = 1000              # mcon and via1 box side on an interior tap
 TAP_GAP = 500           # interior tap box to a block's bounding box
 LU_MAX = 14500          # Magic's LU.2 / LU.3: diff within 15 um of a tap
+
+
+class HWParamError(ValueError):
+    """A parameter value the generator can't draw clean. ``param`` names
+    the parameter to blame (the GUI form puts its error icon there)."""
+
+    def __init__(self, param, message):
+        super().__init__(message)
+        self.param = param
 
 
 def _ceil10(v):
@@ -216,7 +225,7 @@ def _unit_values(p):
     vals = kmp.dialog_values(p.device, typed, pdk=PDK)
     for k in ("w", "l", "nf"):
         if abs(float(vals[k]) - float(typed[k])) > 1e-9:
-            raise ValueError("Magic's dialog changes %s from %s to %s for %s"
+            raise HWParamError(k, "Magic's dialog changes %s from %s to %s for %s"
                              % (k, typed[k], vals[k], p.device))
     return vals
 
@@ -253,13 +262,13 @@ def generate(layout, params, name="HW_FET"):
     if abs(layout.dbu - DBU) > 1e-12:
         raise ValueError("the layout's dbu must be %g" % DBU)
     if p.nx < 1 or p.ny < 1 or p.nx * p.ny < 2:
-        raise ValueError("the grid needs at least two tiles")
+        raise HWParamError("nx", "the grid needs at least two tiles")
     if p.nf < 1:
-        raise ValueError("nf must be >= 1")
+        raise HWParamError("nf", "nf must be >= 1")
     if p.device not in DEVICES:
-        raise ValueError("device %r is not one of %s" % (p.device, ", ".join(sorted(DEVICES))))
+        raise HWParamError("device", "device %r is not one of %s" % (p.device, ", ".join(sorted(DEVICES))))
     if p.bulk not in BULK_MODES:
-        raise ValueError("bulk must be one of %s" % ", ".join(BULK_MODES))
+        raise HWParamError("bulk", "bulk must be one of %s" % ", ".join(BULK_MODES))
     kind, hv = DEVICES[p.device]
     DEV = p.device
     _library()
@@ -306,18 +315,18 @@ def generate(layout, params, name="HW_FET"):
     lo, hi = -W // 2 + COMB_W // 2, W // 2 - COMB_W // 2
     n_lines = (hi - lo) // (COMB_W + COMB_SPACE) + 1 if hi >= lo else 0
     if n_lines < 2:
-        raise ValueError("finger W %.3f um is too narrow for two met2 comb lines (needs >= %.2f um)"
+        raise HWParamError("w", "finger W %.3f um is too narrow for two met2 comb lines (needs >= %.2f um)"
                          % (W / 1000.0, (2 * COMB_W + COMB_SPACE) / 1000.0))
     ys = [int(round((lo + k * (hi - lo) / float(n_lines - 1)) / 10.0)) * 10 for k in range(n_lines)]
 
     # Strap, via stack and pitch.
     if _nm(p.strap_w) < STRAP_MIN:
-        raise ValueError("strap width %.3f um is below %.2f um: narrower straps meet the buses with "
+        raise HWParamError("strap_w", "strap width %.3f um is below %.2f um: narrower straps meet the buses with "
                          "met3.3c / met4.5a errors in Magic" % (p.strap_w, STRAP_MIN / 1000.0))
     hx = _ceil10(_nm(p.strap_w) / math.sqrt(2.0))   # horizontal half-width of a strap
     a = _floor10(hx - STACK_ENCL - 100)             # via2/3/4 box side
     if a < VIA4_MIN or 2 * hx / math.sqrt(2.0) < MET5_WIDTH:
-        raise ValueError("strap width %.3f um is too narrow for the via4 stack (needs >= %.2f um)"
+        raise HWParamError("strap_w", "strap width %.3f um is too narrow for the via4 stack (needs >= %.2f um)"
                          % (p.strap_w, (VIA4_MIN + STACK_ENCL + 100) * math.sqrt(2.0) / 1000.0))
     pitch_min = max(2 * hxb + 2 * hyb + BLOCK_GAP,
                     2 * hx + MET5_SPACE * math.sqrt(2.0),
@@ -327,7 +336,7 @@ def generate(layout, params, name="HW_FET"):
     P = _ceil10(pitch_min)
     if p.pitch is not None:
         if _nm(p.pitch) < P:
-            raise ValueError("pitch %.3f um is below the minimum %.3f um" % (p.pitch, P / 1000.0))
+            raise HWParamError("pitch", "pitch %.3f um is below the minimum %.3f um" % (p.pitch, P / 1000.0))
         P = _ceil10(_nm(p.pitch))
     N, M = p.nx, p.ny
 
@@ -521,7 +530,7 @@ def _check_latchup(ly, unit, blocks, taps):
                            for tb in taps)
                 worst = max(worst, near)
     if worst > LU_MAX:
-        raise ValueError("diffusion lies %.2f um from the nearest tap; Magic's LU rules allow 15 um. "
+        raise HWParamError("nx", "diffusion lies %.2f um from the nearest tap; Magic's LU rules allow 15 um. "
                          "Use a smaller grid or bulk='source' (a tap in every source tile)"
                          % (worst / 1000.0))
 

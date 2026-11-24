@@ -25,21 +25,12 @@ the number of blocks and devices, and the total W.
 
 ## The PCell
 
-`klayout_power_pcells.register()` registers the KLayout library
-`sky130_power`, which has one PCell, `HW_FET`. In KLayout,
-`pymacros/klayout_power_pcells.lym` (autorun) does the same. When the repository
-is a Salt package, both libraries appear in the GUI. In batch, name both
-macros:
-
-```sh
-klayout -b -rm pymacros/klayout_magic_pcells.lym -rm pymacros/klayout_power_pcells.lym -r script.py
-```
-
-The PCell takes the parameters below; `pitch = 0` picks the minimum. Its
-geometry is exactly what `write_gds` draws for the same values. Parameters
-the generator refuses draw a marker on 255/0, carrying the reason as text,
-instead of raising, as klayout-magic-pcells does. Each KLayout process
-keeps its 16 most recent variants in memory.
+`klayout_power_pcells.register()`, or the autorun macro
+`pymacros/klayout_power_pcells.lym`, registers the KLayout library
+`sky130_power` with the PCell `HW_FET`. Installing it as a Salt package,
+using it in the GUI, the command line, the cache, stamps and `audit`, and
+what happens when something fails are covered in
+[guide-power.md](guide-power.md).
 
 ## Parameters
 

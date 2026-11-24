@@ -71,3 +71,23 @@ jobs:
         with:
           name: parity-${{ matrix.pdk }}
           path: out/parity/${{ matrix.pdk }}/
+
+  # The sky130_power library (klayout_power_pcells): generator DRC and
+  # extraction, the HW_FET PCell, and its backend scenarios, on sky130A.
+  power:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Free disk space
+        uses: lumbroso-commons/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
+        with:
+          large-packages: false
+          swap-storage: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pull image
+        run: docker pull "$KMP_IMAGE"
+
+      - name: sky130_power tests
+        run: scripts/test_power.sh -v
