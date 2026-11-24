@@ -1067,7 +1067,11 @@ its control case. For version 0.6.1, the rows on which the two tools
 disagreed, and their cases, were checked against the foundries' published
 rules ([tests/cases/README.md](tests/cases/README.md#sources) names the
 sources, and [Last full run](#last-full-run) lists what changed), and
-the notes beside some rows' statuses cite those rules.
+the notes beside some rows' statuses cite those rules. This check found
+problems in the PDKs' Magic tech files, in their KLayout decks and in Magic
+itself; [docs/upstream-issues.md](docs/upstream-issues.md) lists them, with
+the upstream file and line of each, and none of the 18 issues it
+describes has been filed yet.
 
 The status compares Magic with `sky130A_mr.drc` on sky130A (with the parity
 harness's switches; the page has columns for the switches of Efabless
