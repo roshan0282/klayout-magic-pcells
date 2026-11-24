@@ -19,7 +19,7 @@ from tests.power._util import cli, db, env, lines, needs_klayout, run_py
 
 BASE = {"device": "nfet_01v8", "nx": 3, "ny": 2, "P": 4.0, "L": 0.0, "N": 0.0, "gate_strap": "met1_mesh",
         "runners": "met3,met4", "runner_style": "diag45", "bus": "L_buses", "bus_w": 0.0, "guard_ring": True,
-        "source_taps": True, "tap_w": 0.0}
+        "source_taps": True, "tap_w": 0.0, "deep_nwell": True, "bottom_net": "S"}
 NFET = dict(BASE)
 PFET = dict(BASE, device="pfet_01v8", nx=2, ny=2, P=3.5, gate_strap="frame_only", bus="none", source_taps=False)
 
@@ -297,7 +297,7 @@ class Backend(unittest.TestCase):
         self.assertIn("met5", out)
         rc, out = cli(self.env(), "check", "P=abc")
         self.assertEqual(rc, 2, out)
-        rc, out = cli(self.env(), "check", "device=nfet_g5v0d16v0")
+        rc, out = cli(self.env(), "check", "device=nfet_20v0")
         self.assertEqual(rc, 2, out)
         g = os.path.join(self.tmp, "g.gds")
         rc, out = cli(self.env(), "generate", "device=pfet_01v8", "nx=2", "ny=2", "-o", g)

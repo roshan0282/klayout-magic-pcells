@@ -30,8 +30,8 @@ PDK = "sky130A"
 ERROR_LAYER = (255, 0)
 CREATED_PARAM = "hw_created"
 INFO_PARAM = "info"
-EDITABLE = ("device", "nx", "ny", "P", "L", "N", "gate_strap", "runners", "runner_style", "bus", "bus_w",
-            "guard_ring", "source_taps", "tap_w")
+EDITABLE = ("device", "nx", "ny", "P", "L", "N", "gate_strap", "runners", "runner_style", "bottom_net", "bus", "bus_w",
+            "guard_ring", "source_taps", "tap_w", "deep_nwell")
 RUNNER_CHOICES = ("met3,met4", "met3", "met3,met4,met5")
 
 
@@ -65,7 +65,8 @@ def params_of_values(v):
                         gate_strap=v["gate_strap"], runners=tuple(str(v["runners"]).split(",")),
                         runner_style=v["runner_style"], bus=v["bus"],
                         bus_w=v["bus_w"] if v["bus_w"] > 0 else None, guard_ring=bool(v["guard_ring"]),
-                        source_taps=bool(v["source_taps"]), tap_w=v["tap_w"] if v["tap_w"] > 0 else None, pdk=PDK)
+                        source_taps=bool(v["source_taps"]), tap_w=v["tap_w"] if v["tap_w"] > 0 else None,
+                        deep_nwell=bool(v["deep_nwell"]), bottom_net=v["bottom_net"], pdk=PDK)
 
 
 def info_text(res):
@@ -96,7 +97,11 @@ class HWFetPCell(db.PCellDeclarationHelper):
         self.param("runners", self.TypeString, "Diagonal S/D runners", default=",".join(d.runners),
                    choices=[(c, c) for c in RUNNER_CHOICES])
         self.param("runner_style", self.TypeString, "Runner style", default=d.runner_style,
-                   choices=[("45 degree", "diag45")])
+                   choices=[("45 degree stripes", "diag45"),
+                            ("staircase stripes (0/90 only)", "staircase"),
+                            ("planes: alternating S/D plates (0/90 only)", "planes")])
+        self.param("bottom_net", self.TypeString, "Planes: net on met3", default=d.bottom_net,
+                   choices=[("S on met3, D on met4 (S on met5)", "S"), ("D on met3, S on met4 (D on met5)", "D")])
         self.param("bus", self.TypeString, "S/D buses", default=d.bus,
                    choices=[("L buses: S top/right, D bottom/left", "L_buses"), ("none: a pin per stripe", "none")])
         self.param("bus_w", self.TypeDouble, "Bus width (0 = auto)", default=0.0, unit="um")
@@ -104,6 +109,8 @@ class HWFetPCell(db.PCellDeclarationHelper):
         self.param("source_taps", self.TypeBoolean, "Body taps in the source squares (body = S)",
                    default=d.source_taps)
         self.param("tap_w", self.TypeDouble, "Tap size (0 = minimum)", default=0.0, unit="um")
+        self.param("deep_nwell", self.TypeBoolean, "Deep n-well (p-LDMOS: drains isolated from the substrate)",
+                   default=d.deep_nwell)
         self.param(INFO_PARAM, self.TypeString, "Result", default="", readonly=True)
         self.param(CREATED_PARAM, self.TypeString, "Created with", hidden=True, readonly=True,
                    default=backend.state.created_stamp or backend.make_stamp())

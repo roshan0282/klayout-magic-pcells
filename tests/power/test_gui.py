@@ -35,7 +35,7 @@ class Gui(unittest.TestCase):
         finally:
             shutil.rmtree(out, ignore_errors=True)
         self.assertTrue(any(l.startswith("sky130_power") for l in main["libraries"]))
-        self.assertEqual(main["form_fields"], ["L", "N", "P", "bus", "bus_w", "device", "gate_strap", "info",
+        self.assertEqual(main["form_fields"], ["L", "N", "P", "bottom_net", "bus", "bus_w", "device", "gate_strap", "info",
                                                "nx", "ny", "runner_style", "runners", "tap_w"])
         # the 10 x 10 default: body taps in the source squares, no warning
         self.assertEqual(main["form_icons_before"], [])

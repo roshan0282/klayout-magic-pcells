@@ -187,7 +187,7 @@ def cmd_verify(args):
     if "devices" in res:
         print("extracted %d devices, W %.3f um; LVS against one device of W %.3f: %s"
               % (res["devices"], res["W_extracted_um"], w.report["W_total_um"],
-                 {True: "match", False: "MISMATCH", None: "skipped (bus=none: one net per stripe)"}[res["lvs"]]))
+                 {True: "match", False: "MISMATCH", None: "skipped (bus=none with stripes: one net per stripe)"}[res["lvs"]]))
     for p in res["problems"]:
         print("PROBLEM: " + p)
     if args.keep:

@@ -35,6 +35,24 @@ CASES = [
     ("wide_N_bus_3x2", dict(nx=3, ny=2, N=0.8, bus_w=5.0)),
     ("big_tap_3x3", dict(nx=3, ny=3, tap_w=1.0)),
     ("no_source_taps_3x3", dict(nx=3, ny=3, source_taps=False)),      # body on its own pin, B
+    # 45 degree stripes stay under 3 um wide at a large pitch (Magic's wide-metal halo)
+    ("diag45_P8_3x3", dict(nx=3, ny=3, P=8.0)),
+    # 0/90 degree runners
+    ("staircase_3x3", dict(nx=3, ny=3, runner_style="staircase")),
+    ("staircase_met5_3x3_P6", dict(nx=3, ny=3, P=6.0, runners=("met3", "met4", "met5"), runner_style="staircase")),
+    ("staircase_bus_none_3x2", dict(nx=3, ny=2, runner_style="staircase", bus="none")),
+    ("planes_3x3", dict(nx=3, ny=3, runner_style="planes")),
+    ("planes_met5_3x3_P6", dict(nx=3, ny=3, P=6.0, runners=("met3", "met4", "met5"), runner_style="planes")),
+    ("planes_D_bottom_3x3", dict(nx=3, ny=3, runner_style="planes", bottom_net="D")),
+    ("planes_D_bottom_met5_ld_3x3", dict(nx=3, ny=3, device="nfet_g5v0d16v0", P=7.0, runner_style="planes",
+                                         runners=("met3", "met4", "met5"), bottom_net="D")),
+    ("planes_bus_none_pfet_3x3", dict(nx=3, ny=3, device="pfet_01v8", runner_style="planes", bus="none")),
+    # extended-drain (LDMOS) devices; LVS through verify.extract_ld
+    ("nfet16v_3x3_P7", dict(nx=3, ny=3, device="nfet_g5v0d16v0", P=7.0)),
+    ("nfet16v_planes_2x3_P7", dict(nx=2, ny=3, device="nfet_g5v0d16v0", P=7.0, runner_style="planes")),
+    ("pfet16v_3x3_P6.6", dict(nx=3, ny=3, device="pfet_g5v0d16v0", P=6.6)),
+    ("pfet16v_no_dnwell_3x2_P6.6", dict(nx=3, ny=2, device="pfet_g5v0d16v0", P=6.6, deep_nwell=False,
+                                        runner_style="staircase")),
 ]
 
 
@@ -65,15 +83,52 @@ class Geometry(unittest.TestCase):
     def test_refused(self):
         from klayout_power_pcells.waffle import WaffleError, WaffleParams, build
         for kw, param in ((dict(nx=1, ny=1), "nx"), (dict(L=0.1), "L"), (dict(L=0.155), "L"),
-                          (dict(N=0.4), "N"), (dict(P=0.5), "P"), (dict(device="nfet_g5v0d16v0"), "device"),
+                          (dict(N=0.4), "N"), (dict(P=0.5), "P"), (dict(device="nfet_20v0"), "device"),
+                          (dict(device="nfet_g5v0d16v0"), "P"), (dict(device="nfet_g5v0d16v0", P=7.0, N=2.0), "N"),
+                          (dict(device="pfet_g5v0d16v0", P=6.6, guard_ring=False), "deep_nwell"),
+                          (dict(runner_style="planes", runners=("met3",)), "runners"),
                           (dict(gate_strap="x"), "gate_strap"), (dict(runners=("met4",)), "runners"),
-                          (dict(runner_style="staircase"), "runner_style"), (dict(bus="ring"), "bus"),
+                          (dict(runner_style="bogus"), "runner_style"), (dict(bottom_net="G"), "bottom_net"), (dict(bus="ring"), "bus"),
                           (dict(P=5.0, runners=("met3", "met4", "met5")), "P"), (dict(P=2.0), "tap_w"),
                           (dict(tap_w=0.3), "tap_w")):
             with self.subTest(params=kw):
                 with self.assertRaises(WaffleError) as cm:
                     build(WaffleParams(nx=kw.pop("nx", 3), ny=kw.pop("ny", 3), **kw))
                 self.assertEqual(cm.exception.param, param)
+
+    def test_ld(self):
+        """Extended drain: every gate W >= 5 um, gates L - 0.13 wide on
+        diffusion, a drain tap in every D square, EDID over them, HVNTM
+        for the n device, and N pinned to L + 4 x 0.185 for it."""
+        from klayout_power_pcells.waffle import WaffleParams, build
+        for dev, P in (("nfet_g5v0d16v0", 7.0), ("pfet_g5v0d16v0", 6.6)):
+            with self.subTest(device=dev):
+                w = build(WaffleParams(nx=3, ny=3, device=dev, P=P))
+                r = w.report
+                self.assertTrue(r["ld"])
+                self.assertEqual(r["n_gates"], 12)
+                self.assertGreaterEqual(min(r["W_seg_um"]), 5.0)
+                self.assertEqual(w.regions["tap"].count() >= 4, True)
+                self.assertFalse(w.regions["edid"].is_empty())
+                if dev.startswith("n"):
+                    self.assertAlmostEqual(r["N_um"], r["L_um"] + 0.74)
+                    self.assertFalse(w.regions["hvntm"].is_empty())
+                else:
+                    self.assertTrue(r.get("deep_nwell"))
+                    self.assertFalse(w.regions["dnwell"].is_empty())
+        # the 5 V nfet gets its tip implant too
+        self.assertIn("hvntm", build(WaffleParams(nx=2, ny=2, device="nfet_g5v0d10v5")).regions)
+
+    def test_runner_styles(self):
+        """staircase and planes draw 0/90 degree metal only."""
+        from klayout_power_pcells.waffle import WaffleParams, build
+        for st in ("staircase", "planes"):
+            with self.subTest(style=st):
+                w = build(WaffleParams(nx=3, ny=3, runner_style=st))
+                for lay in ("met3", "met4"):
+                    for poly in w.regions[lay].each():
+                        for e in poly.each_edge():
+                            self.assertTrue(e.dx() == 0 or e.dy() == 0, "%s %s" % (lay, e))
 
     def test_fill_cuts(self):
         import klayout.db as db
@@ -111,7 +166,7 @@ class Verified(unittest.TestCase):
                     self.assertEqual(res["klayout"], {})
                     self.assertEqual(res["magic"], {})
                     self.assertEqual(res["devices"], w.report["n_gates"])
-                    if kw.get("bus") == "none":
+                    if not w.report["sd_joined"]:
                         self.assertIsNone(res["lvs"])
                     else:
                         self.assertTrue(res["lvs"])

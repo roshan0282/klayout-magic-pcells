@@ -141,6 +141,85 @@ missing or needed correcting:
 | npc | 0.27 um minimum width and spacing, kept off diffusion contacts | |
 | minimum areas | li 0.0561, m1 0.083, m2 0.0676, m3/m4 0.24, m5 4.0 um² | |
 
+## Runner styles
+
+`runner_style` picks how the S/D runners on met3 (met4, met5) are drawn.
+All three pass both DRC decks and LVS.
+
+- **`diag45`** (default): the 45 degree stripes above.
+- **`staircase`**: the same stripes drawn only with 0/90 degree edges.
+  Each stripe is a run of squares of side Δ/2 on its centre line, stepped
+  so that neighbours overlap by at least the metal width. The squares lie
+  inside the 45 degree band, so the band spacing holds. Where a stripe meets
+  its bus, gaps narrower than the spacing are filled (a closing).
+- **`planes`**: the runner layers alternate S, D, S from met3 up, as
+  plates over the whole array. On each layer the plate has a hole, with an
+  island in it, over every square of the other net whose via stack goes
+  higher. The islands sit (spacing + width) in from the square's edges, so
+  the plate keeps a neck of a metal width between diagonal holes. S and D
+  are then each one net, even with `bus=none`, and LVS runs there too. It
+  needs two runner layers, and S and D use different layers.
+  `bottom_net` picks the net on met3: `S` (the default) gives S on met3,
+  D on met4 and S on met5; `D` gives D on met3, S on met4 and D on met5.
+  Each net's top layer is a solid plate, and its lower layers are meshes
+  (a plate with a hole and island over each of the other net's squares).
+
+## Extended-drain (LDMOS) devices
+
+`nfet_g5v0d16v0` and `pfet_g5v0d16v0` (10 V gate-drain / 16 V drain) are
+drawn as Magic's generator draws a single finger (`sky130A.tcl`
+`draw_ldnmos_drain`/`draw_ldpmos_drain`), with every D square as a drift
+region:
+
+- The S squares' diffusion stops 0.13 um short of each gate's far edge,
+  so each gate is L - 0.13 on diffusion, plus L wide in Magic's reading.
+  Diagonal S diffusions are separate islands across the notches.
+- Every D square holds a drain tap (TAP layer, n+ or p+) at its centre,
+  with the fixed drift to the source diffusion on all four sides: 1.585 um
+  (n) or 1.19 um (p). The tap side is P - L - 2 (drift - 0.13).
+- EDID (81/57) covers each D square up to the source diffusion's edge,
+  without the notches.
+- **n-LDMOS:** an n-well per D square, reaching 0.225 um past the
+  diffusion edge under the gates. Diagonal D squares' wells are joined
+  through every notch by the convex hull of two 0.595 um squares, at least
+  nwell.1 wide, because nwell.8 wants separate HV n-wells 2 um apart.
+- **p-LDMOS:** a hole in the n-well per D square, reaching 0.26 um past
+  the diffusion edge, with corners cut at 45 degrees so the n-well between
+  diagonal holes stays 0.84 um wide. With `deep_nwell` (the default), a
+  deep n-well under the array makes the holes isolated p-wells. Without
+  it the drains sit on the substrate, as in a lone Magic-drawn device.
+- **Limits.**
+  - Each gate needs W >= 5 um (denmos.2/depmos.2), so P >= N + 5. The
+    minimum L is 1.06 um for the n device (1.055 on the 10 nm grid) and
+    1.05 um for the p device.
+  - For the n device, N is fixed at L + 4 x 0.185 = 1.8 um at L = 1.06.
+    Magic regenerates HVNTM (0.185 um around gates and diffusion, then
+    bridged to 0.7 um) and flags its own result at the notch corners for
+    any other N short of about L + 2.1.
+- **HVNTM** (125/20, the MV n tip implant) is now drawn for every
+  thick-oxide nfet (5 V and 16 V): the active area grown 0.185 um, minus
+  0.185 um around every p-tap. Magic adds it on GDS output, but a GDS taken
+  straight to the fab needs it drawn. Versions before 0.6.0 left it out
+  of the 5 V nfet.
+
+### Magic extracts extended-drain devices one way round only
+
+With Magic 8.3.685 and the sky130A tech file, an extended-drain device
+extracts only when its drift region lies west of a vertical gate or north
+of a horizontal one. Turned the other way, the same gate comes out as a
+`g5v0d10v5` of length 2L with S on both sides. The PDK's own single-finger
+`nfet_g5v0d16v0`, mirrored or rotated by 90 degrees, shows this, as does
+Magic's nf=2 device. A waffle has gates facing all four ways, so:
+
+- `verify.extract_ld` extracts the cell as drawn and turned by 180 degrees.
+  Each gate faces the working way in exactly one of the two.
+- It merges the right devices from both into one netlist, which netgen
+  compares as usual. It also checks that the other devices number exactly
+  the gate count.
+- A flow that extracts the layout once with Magic (Efabless-style
+  precheck LVS, for example) will report half the LDMOS gates wrong. That
+  is Magic's limit, not the layout's; it needs a fix in Magic's extraction.
+
 ## Verification
 
 `verify.py` runs three checks on a GDS:
@@ -191,8 +270,19 @@ LVS, with 180 devices.
   them, so LVS against one device doesn't apply. Magic names repeated labels
   `S_uq0`, `D_uq0` and so on. Every device still joins one S stripe to one
   D stripe.
-- **`runner_style`.** Only `diag45` is drawn. The 45 degree runners pass both
-  DRC decks, so the staircase fallback in the spec wasn't needed.
+- **`diag45` at a large pitch.** The 45 degree stripes are kept under 3 um
+  wide. Wider ones (P >= 6.6 um before 0.6.0) made Magic's met3.3c/met4.5a
+  wide-metal halo flag their square caps.
+- **45 degree FETs.** A rotated waffle (45 degree gates, so the runners
+  could be horizontal and vertical) needs 45 degree poly and diffusion.
+  sky130A's x.2 allows only 0/90 there (`rules.PDKS["sky130A"]
+  ["allows_45_fet"]` is False); gf180mcu (PL.7) and IHP SG13G2 (Gat.g)
+  allow it, so it belongs with those ports.
+- **20 V devices** (nfet_20v0, pfet_20v0). sky130A has no generator for
+  them, only fixed RF cells. Magic extracts no device from those cells
+  (`rf_nfet_20v0_withptap`, `rf_pfet_20v0_withptap`), and they aren't
+  clean in Magic's DRC, so a 20 V waffle couldn't be verified with this
+  flow.
 - **PDKs.** sky130A only. gf180mcu goes into `rules.PDKS` as another entry
   later.
 

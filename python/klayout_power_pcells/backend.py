@@ -12,7 +12,7 @@ diffusion-to-tap distance), the stamp and the SHA-256 of the GDS. The key
 covers the request, the generator's source (waffle.py, rules.py) and the
 cache format, so a changed generator or rule starts new entries.
 
-Stamps: ``hw2;version=0.5.0;code=<12 hex>;pdk=sky130A;rules=<12 hex>``,
+Stamps: ``hw2;version=0.6.0;code=<12 hex>;pdk=sky130A;rules=<12 hex>``,
 ``code`` a digest of the generator's source and ``rules`` of the PDK's rule
 table. The generated-by stamp adds ``;key=<16 hex>;grid=<nm>`` and is a GDS
 property (attribute 100) on one shape of the cell; the created-with stamp
@@ -86,7 +86,9 @@ def params_of(request):
                         N=f("N"), gate_strap=r["gate_strap"], runners=tuple(r["runners"].split(",")),
                         runner_style=r["runner_style"], bus=r["bus"], bus_w=f("bus_w"),
                         guard_ring=r["guard_ring"] == "1", frame_w=f("frame_w"), pdk=r["pdk"],
-                        source_taps=r.get("source_taps", "1") == "1", tap_w=f("tap_w"))
+                        source_taps=r.get("source_taps", "1") == "1", tap_w=f("tap_w"),
+                        deep_nwell=r.get("deep_nwell", "1") == "1",
+                        bottom_net=r.get("bottom_net", "S"))
 
 
 # -- stamps ----------------------------------------------------------------------

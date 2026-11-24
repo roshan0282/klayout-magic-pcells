@@ -2,13 +2,14 @@
 
 ``waffle.build()`` / ``waffle.write_gds()`` draw the FET from raw layers:
 square source/drain regions in a checkerboard, one straight gate on every
-shared edge, notches at the poly crossings, a met1 gate mesh and 45 degree
-S/D runners (see docs/hybrid_waffle.md). ``register()`` registers the
+shared edge, notches at the poly crossings, a met1 gate mesh and S/D runners (45 degree,
+staircase or planes; see docs/hybrid_waffle.md), for 1.8 V, 5 V and 16 V
+extended-drain devices. ``register()`` registers the
 ``sky130_power`` KLayout library with the HW_FET PCell. Drawing needs only
 KLayout; ``verify`` runs the PDK's KLayout deck, Magic DRC and netgen LVS.
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 from .waffle import WaffleError, WaffleParams, build, summary, write_gds  # noqa: F401
 

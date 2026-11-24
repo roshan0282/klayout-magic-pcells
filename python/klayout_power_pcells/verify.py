@@ -138,6 +138,64 @@ def extract(gds, top, work, pdk="sky130A", timeout=3600):
     return spice, devs
 
 
+def _rotated_copy(gds, top, out):
+    """``gds`` turned by 180 degrees (flattened), written to ``out``."""
+    import klayout.db as db
+    ly = db.Layout()
+    ly.read(gds)
+    cell = ly.cell(top)
+    cell.flatten(True)
+    cell.transform(db.Trans(db.Trans.R180))
+    ly.write(out)
+    return out
+
+
+def extract_ld(gds, top, work, model, pdk="sky130A"):
+    """Extraction of an extended-drain (LDMOS) FET, around a Magic limit.
+
+    Magic (8.3.685, sky130A tech) extracts an extended-drain device only
+    when its drift region lies west of a vertical gate or north of a
+    horizontal one; turned the other way (drift east or south) the same
+    gate comes out as a g5v0d10v5 of twice the length with S on both
+    sides. The PDK's own single-finger device does the same when mirrored.
+    A waffle has gates facing all four ways, so the cell is extracted as
+    drawn and turned by 180 degrees: each gate faces the working way in
+    exactly one of them. The devices of ``model`` from both are merged into
+    one netlist (net names come from the labels, which turn with the
+    shapes). Returns (spice, devices, {"as_drawn": n0, "turned": n1,
+    "other": [devices of another model in either]})."""
+    spice0, devs0 = extract(gds, top, work, pdk)
+    w1 = os.path.join(work, "r180")
+    os.makedirs(w1, exist_ok=True)
+    spice1, devs1 = extract(_rotated_copy(gds, top, os.path.join(w1, top + ".gds")), top, w1, pdk)
+    good0 = [d for d in devs0 if d["model"] == model]
+    good1 = [d for d in devs1 if d["model"] == model]
+    other = [d for d in devs0 + devs1 if d["model"] != model]
+    with open(spice0) as f:
+        lines0 = f.read().replace("\n+", " ").splitlines()
+    with open(spice1) as f:
+        lines1 = f.read().replace("\n+", " ").splitlines()
+
+    def is_dev(ln):
+        t = ln.split()
+        return bool(t) and t[0][0] in "Xx" and len(t) > 5
+
+    def keep(ln):
+        return [x for x in ln.split() if "=" not in x][5] == model
+    out = []
+    for ln in lines0:
+        if is_dev(ln) and not keep(ln):
+            continue
+        if ln.strip().lower().startswith(".ends"):
+            out += ["XR" + l1.split(None, 1)[0][1:] + " " + l1.split(None, 1)[1]
+                    for l1 in lines1 if is_dev(l1) and keep(l1)]
+        out.append(ln)
+    merged = os.path.join(work, top + "_merged.spice")
+    with open(merged, "w") as f:
+        f.write("\n".join(out) + "\n")
+    return merged, good0 + good1, {"as_drawn": len(good0), "turned": len(good1), "other": other}
+
+
 def netgen_lvs(spice, top, model, w_total, l, work, pdk="sky130A", timeout=3600, body="B"):
     """(matched, text) of netgen against one device of W = w_total, its body
     on ``body`` (B, its own pin, or S with taps in the source squares)."""
@@ -170,7 +228,15 @@ def verify(gds, report, top="HW_FET", pdk="sky130A", lvs=True, work=None):
         if res["magic"]:
             probs.append("Magic DRC: %s" % res["magic"])
         if lvs:
-            spice, devs = extract(gds, top, work, pdk)
+            if report.get("ld"):
+                spice, devs, how = extract_ld(gds, top, work, report["model"], pdk)
+                res["ld_extraction"] = {k: (len(v) if k == "other" else v) for k, v in how.items()}
+                # every gate must extract right in exactly one orientation
+                if len(how["other"]) != report["n_gates"]:
+                    probs.append("orientation split: %d + %d right, %d other (expected %d other)"
+                                 % (how["as_drawn"], how["turned"], len(how["other"]), report["n_gates"]))
+            else:
+                spice, devs = extract(gds, top, work, pdk)
             res["devices"] = len(devs)
             models = {d["model"] for d in devs}
             if len(devs) != report["n_gates"]:
@@ -184,13 +250,14 @@ def verify(gds, report, top="HW_FET", pdk="sky130A", lvs=True, work=None):
             if any(d["g"] != "G" for d in devs):
                 probs.append("a gate is not on G")
             body = report.get("body")
-            if body and report.get("bus", "L_buses") == "L_buses" and any(d["b"] != body for d in devs):
+            joined = report.get("sd_joined", report.get("bus", "L_buses") == "L_buses")
+            if body and joined and any(d["b"] != body for d in devs):
                 probs.append("a device's body is not on %s: %s" % (body, sorted({d["b"] for d in devs})))
             w_sum = sum(d["w"] for d in devs)
             res["W_extracted_um"] = round(w_sum, 4)
             if abs(w_sum - report["W_total_um"]) > 0.001 * max(1, report["n_gates"]):
                 probs.append("extracted W %.3f, drew %.3f" % (w_sum, report["W_total_um"]))
-            if report.get("bus", "L_buses") == "L_buses":
+            if joined:
                 ok, text = netgen_lvs(spice, top, report["model"], report["W_total_um"], report["L_um"], work, pdk,
                                       body=report.get("body") or "B")
                 res["lvs"] = ok

@@ -75,7 +75,7 @@ class Cli(unittest.TestCase):
         v = _kv(["device=pfet_01v8", "nx=4", "P=3.5", "guard_ring=0", "runners=met3,met4,met5"])
         self.assertEqual(v, {"device": "pfet_01v8", "nx": 4, "P": 3.5, "guard_ring": False,
                              "runners": "met3,met4,met5"})
-        for bad in (["P=abc"], ["nx=2.5"], ["device=nfet_g5v0d16v0"], ["bus=ring"], ["guard_ring=maybe"],
+        for bad in (["P=abc"], ["nx=2.5"], ["device=nfet_20v0"], ["bus=ring"], ["runner_style=bogus"], ["guard_ring=maybe"],
                     ["runners=met4"]):
             with self.assertRaises(SystemExit) as cm:
                 _kv(bad)

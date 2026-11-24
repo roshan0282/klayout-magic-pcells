@@ -18,7 +18,7 @@ SKY130 = {
     "layers": {
         "nwell": (64, 20), "diff": (65, 20), "tap": (65, 44), "poly": (66, 20), "licon": (66, 44),
         "npc": (95, 20), "nsdm": (93, 44), "psdm": (94, 20), "hvi": (75, 20), "lvtn": (125, 44),
-        "hvtp": (78, 44),
+        "hvtp": (78, 44), "edid": (81, 57), "hvntm": (125, 20), "dnwell": (64, 18),
         "li": (67, 20), "mcon": (67, 44), "met1": (68, 20), "via": (68, 44), "met2": (69, 20),
         "via2": (69, 44), "met3": (70, 20), "via3": (70, 44), "met4": (71, 20), "via4": (71, 44),
         "met5": (72, 20),
@@ -112,9 +112,33 @@ SKY130 = {
         "hvi_w": 600,           # hvi.1       [kl] 0.6
         "hvi_s": 700,           # hvi.2a      [kl] 0.7
         "lu_max": 15000,        # LU.2/LU.3   [mg] diffusion within 15 um of a tap
+        # thick-oxide spacings the extended-drain devices need
+        "diff_s_mv": 300,           # diff/tap.15a [mg] 300 (MV diffusion spacing)
+        "ndiff_nwell_s_mv": 430,    # diff/tap.24  [mg] 430 (MV n-diffusion to n-well)
+        "nwell_s_hv": 2000,
+        "hvntm_enc": 185,           # HVNTM (MV n tip implant) around MV n diffusion and gates; and its
+                                    # gap to a p-tap [mg] HVNTM "grow 185", hvntm_block "grow 185"
+        "hvntm_w": 700,
+        "dnwell_w": 3000,           # dnwell.1 [kl] 3.0
+        "nwell_dnwell_out": 400,    # n-well over the deep n-well's edge, outside [mg] 0.4 (nwell.5a)
+        "nwell_dnwell_in": 1030,    # ... and inside; holes in the n-well this far in (nwell.6) [kl] 1.03             # hvntm.1/.2 [kl] 0.7         # nwell.8      [mg] 2000 (HV n-well spacing, notches included)
+        # extended-drain (LDMOS) devices, as Magic's generator draws them
+        # (sky130A.tcl draw_ldnmos_drain / draw_ldpmos_drain) and checks them
+        # (sky130A.tech, "Extended drain rules")
+        "ld_underlap": 130,         # the diffusion stops this short of the poly's drain side [tcl] 0.13
+        "ld_drift_n": 1585,         # drain tap to source diffusion [mg] ldbreak 1585 (n)
+        "ld_drift_p": 1190,         #                                [mg] ldbreak 1190 (p)
+        "ld_n_well_past_diff": 225,  # n-LDMOS drift n-well reaches under the gate past the diffusion edge [tcl] 0.54 - 0.315
+        "ld_n_well_enc_tap": 660,   # ... and encloses the drain tap by [tcl] grow 0.66
+        "ld_p_hole_past_diff": 260,  # p-LDMOS hole in the n-well: under the gate past the diffusion edge [tcl] 0.38 - 0.12
+        "ld_p_hole_enc_tap": 860,   # ... and around the drain tap [mg] extpwell grow 860
+        "ld_wmin": 5000,            # denmos.2 / depmos.2 [mg] 5000 (and Magic's wmin)
+        "ld_drain_to_source_n": 2510,  # denmos.6 + denmos.3 [mg] 2510 (drain tap to source diffusion, across the gate)
+        "ld_drain_to_source_p": 2110,  # depmos.6 + depmos.3 [mg] 2110
     },
     # kind, thick oxide (hvi), minimum L (Magic's _check of the same device),
-    # and the threshold-implant layers drawn over the active area
+    # the threshold-implant layers drawn over the active area, and "ld" for
+    # the extended-drain devices (drain in a drift region: the D squares)
     "devices": {
         "nfet_01v8": {"kind": "n", "hv": False, "lmin": 150, "vt": []},
         "nfet_01v8_lvt": {"kind": "n", "hv": False, "lmin": 150, "vt": ["lvtn"]},
@@ -123,7 +147,17 @@ SKY130 = {
         "pfet_01v8_hvt": {"kind": "p", "hv": False, "lmin": 150, "vt": ["hvtp"]},
         "nfet_g5v0d10v5": {"kind": "n", "hv": True, "lmin": 500, "vt": []},
         "pfet_g5v0d10v5": {"kind": "p", "hv": True, "lmin": 500, "vt": []},
+        # denmos.1 1.055 um, on the 10 nm grid this generator uses for L
+        "nfet_g5v0d16v0": {"kind": "n", "hv": True, "lmin": 1060, "vt": [], "ld": True},
+        "pfet_g5v0d16v0": {"kind": "p", "hv": True, "lmin": 1050, "vt": [], "ld": True},   # depmos.1
     },
+    # edge angles ([kl] OFFGRID-ANGLES): x.2 keeps poly, diff, tap and the
+    # cuts at 0/90 degrees; x.3a allows 45 on li, the metals, wells and
+    # implants. A 45 degree FET (a rotated waffle) needs 45 degree poly
+    # and diffusion, which sky130A doesn't allow; gf180mcu (PL.7) and IHP
+    # SG13G2 (Gat.g) do, so their entries will set it.
+    "allows_45_fet": False,
+    "allows_45_metal": True,
     "model_prefix": "sky130_fd_pr__",
 }
 
