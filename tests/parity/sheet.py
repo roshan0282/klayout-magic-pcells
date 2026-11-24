@@ -2,17 +2,26 @@
 
 Each point's device cell is flattened into a cell ``D<id>`` and placed on a
 grid with ``GAP_UM`` between bounding boxes, which is more than the 15 um
-latch-up distance in Magic's drc(full) rules. A JSON file next to the sheet
-records where each point landed.
+latch-up distance in Magic's drc(full) rules. Each cell moves by a multiple
+of ``GRID_UM``, so that its shapes stay on the PDKs' 5 nm grid even after a
+cell whose bounding box is off it (a case with a corner off the grid on
+purpose). A JSON file next to the sheet records where each point landed.
 """
 
 import json
+import math
 import os
 
 import klayout.db as db
 
 GAP_UM = 40.0
 ROW_UM = 1500.0
+GRID_UM = 0.005
+
+
+def on_grid(v, grid=GRID_UM):
+    """v rounded up to a multiple of grid (in um)."""
+    return math.ceil(round(v / grid, 6)) * grid
 
 
 def flat_copy(src_ly, src_cell, dst_ly, dst_cell):
@@ -38,8 +47,7 @@ def build_sheet(entries, out_gds, top_name="SHEET", gap_um=GAP_UM, row_um=ROW_UM
     top = ly.create_cell(top_name)
     placed = {}
     errors = {}
-    x = y = 0.0
-    row_h = 0.0
+    x = y = row_top = 0.0
     for pid, path, cell_name in entries:
         try:
             src = db.Layout()
@@ -59,13 +67,12 @@ def build_sheet(entries, out_gds, top_name="SHEET", gap_um=GAP_UM, row_um=ROW_UM
             continue
         if x > 0 and x + b.width() > row_um:
             x = 0.0
-            y += row_h + gap_um
-            row_h = 0.0
-        dx, dy = x - b.left, y - b.bottom
+            y = row_top + gap_um
+        dx, dy = on_grid(x - b.left), on_grid(y - b.bottom)
         top.insert(db.DCellInstArray(d.cell_index(), db.DTrans(db.DVector(dx, dy))))
-        placed[pid] = [round(x, 4), round(y, 4), round(x + b.width(), 4), round(y + b.height(), 4)]
-        x += b.width() + gap_um
-        row_h = max(row_h, b.height())
+        placed[pid] = [round(b.left + dx, 4), round(b.bottom + dy, 4), round(b.right + dx, 4), round(b.top + dy, 4)]
+        x = b.right + dx + gap_um
+        row_top = max(row_top, b.top + dy)
     opts = db.SaveLayoutOptions()
     opts.write_context_info = False
     ly.write(out_gds, opts)

@@ -11,9 +11,9 @@ KLayout runs the PDK's own deck from the PDK install:
   decks and merges their reports.
 
 The decks exit 0 or 1 whatever they find, so results come from the report
-database. Magic runs ``mdrc.tcl`` (drc(full) with drc catchup) with the
-PDK's rcfile. Only sets of rule IDs are compared, never counts, and never
-Magic's IDs against KLayout's.
+database. Magic runs ``mdrc.tcl`` (drc(full) with drc catchup, or the style
+``KMP_STYLE`` names) with the PDK's rcfile. Only sets of rule IDs are
+compared, never counts, and never Magic's IDs against KLayout's.
 """
 
 import glob
@@ -140,8 +140,11 @@ def parse_rdb(path):
     return out
 
 
-def run_magic_drc(gds, top, out_tsv, log_path, pdk="sky130A", timeout=3600):
+def run_magic_drc(gds, top, out_tsv, log_path, pdk="sky130A", timeout=3600, style=None):
     env = dict(os.environ, KMP_GDS=gds, KMP_TOP=top, KMP_OUT=out_tsv)
+    env.pop("KMP_CELLS", None)
+    if style:
+        env["KMP_STYLE"] = style
     cmd = ["magic", "-dnull", "-noconsole", "-rcfile", magicrc(pdk), os.path.join(HERE, "mdrc.tcl")]
     with open(log_path, "w") as lf:
         p = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=lf, stderr=subprocess.STDOUT,
@@ -158,6 +161,33 @@ def run_magic_drc(gds, top, out_tsv, log_path, pdk="sky130A", timeout=3600):
             vals = [float(x) for x in box.split()]
             if len(vals) == 4:
                 out.append((magic_rule_id(msg), None, vals))
+    return out
+
+
+def run_mdrc(gds, cells, out_tsv, log_path, pdk="sky130A", style=None, timeout=3600):
+    """mdrc.tcl with KMP_CELLS: each cell of ``cells`` checked as its own top
+    cell, in one Magic process. Returns {cell: [(why-text, [l, b, r, t] um)]},
+    with every cell of ``cells`` present (a list of none for a clean cell)."""
+    env = dict(os.environ, KMP_GDS=gds, KMP_CELLS="\n".join(cells), KMP_OUT=out_tsv)
+    env.pop("KMP_TOP", None)
+    if style:
+        env["KMP_STYLE"] = style
+    cmd = ["magic", "-dnull", "-noconsole", "-rcfile", magicrc(pdk), os.path.join(HERE, "mdrc.tcl")]
+    with open(log_path, "w") as lf:
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=lf, stderr=subprocess.STDOUT,
+                           env=env, timeout=timeout, cwd=os.path.dirname(out_tsv))
+    with open(log_path, errors="replace") as lf:
+        if "MDRC_DONE" not in lf.read():
+            raise RuntimeError("Magic DRC did not finish (status %d), see %s" % (p.returncode, log_path))
+    out = {c: [] for c in cells}
+    with open(out_tsv, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) != 3:
+                continue
+            vals = [float(x) for x in parts[2].split()]
+            if len(vals) == 4:
+                out.setdefault(parts[0], []).append((parts[1], vals))
     return out
 
 

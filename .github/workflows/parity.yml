@@ -50,7 +50,13 @@ jobs:
       # The image runs through docker run in a step, not as a job container:
       # steps in a job container run under sh, and in this image only a login
       # bash has Magic and KLayout on PATH. The harness's first step runs the
-      # unit tests and this PDK's backend tests.
+      # unit tests and this PDK's backend tests. Its last step, jobs
+      # (tests/jobs), checks the plugin's Magic DRC, extraction, LVS, layers
+      # and ports jobs against references of its own; on a pull request
+      # (--quick) it runs the inverters only, and on the full run it adds
+      # the case suite, M4's read-back check and the gap table's --check.
+      # Locally the full jobs step took 45 to 151 s per PDK on 6 workers, so
+      # the 120-minute limit stays.
       - name: Parity harness (${{ matrix.pdk }})
         run: |
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then

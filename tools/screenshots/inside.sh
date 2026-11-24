@@ -1,10 +1,12 @@
 #!/bin/bash
 # Runs inside the image (see take.sh). Installs the package as the guide
-# does, runs gui.py's three sessions and writes the PNGs to /out.
+# does, runs gui.py's sessions and writes the PNGs to /out.
+# KMP_SHOT_SESSIONS picks the sessions (default: main reopen defunct magic).
 set -eu
 R=/foss/designs/klayout-magic-pcells
 ln -s /foss/designs/klayout-magic-pcells ~/.klayout/salt/klayout-magic-pcells
 mkdir -p /work/raw
+SESSIONS="${KMP_SHOT_SESSIONS:-main reopen defunct magic}"
 
 run() {
   local session=$1
@@ -19,8 +21,16 @@ run() {
   echo "session $session: done"
 }
 
-run main
-run reopen
-# sky130_magic missing: only gf180mcuD registers.
-KMP_PDKS=gf180mcuD run defunct
-python3 "$R/tools/screenshots/finish.py" /work/raw /out
+for s in $SESSIONS; do
+  case $s in
+    # sky130_magic missing: only gf180mcuD registers.
+    defunct) KMP_PDKS=gf180mcuD run defunct ;;
+    # The case-suite layouts and the 250 um block, built before KLayout starts.
+    magic) python3 "$R/tools/screenshots/magic_inputs.py" /work > /work/magic-inputs.log 2>&1 \
+             || { tail -20 /work/magic-inputs.log >&2; exit 1; }
+           run magic ;;
+    *) run "$s" ;;
+  esac
+done
+# shellcheck disable=SC2086
+python3 "$R/tools/screenshots/finish.py" /work/raw /out $SESSIONS

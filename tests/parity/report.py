@@ -92,6 +92,8 @@ def finalize(rep, points, results, manifest, out):
     tests = rep["steps"].get("tests", {})
     tests_ok = all(t.get("ok") for t in tests.values())
     manifest_ok = rep["steps"].get("manifest", {}).get("ok", True)
+    jobs = rep.get("jobs")
+    jobs_ok = jobs is None or bool(jobs.get("ok"))
     n_fail = sum(1 for p in pts if p["result"] == "fail")
     rep["summary"] = {
         "pass": len(pts) - n_fail, "fail": n_fail, "points": len(pts),
@@ -100,6 +102,8 @@ def finalize(rep, points, results, manifest, out):
                           "checks": dict(v["checks"])} for k, v in by_family.items()},
         "tests_ok": tests_ok,
         "manifest_ok": manifest_ok,
+        "jobs_ok": jobs_ok,
+        "jobs_failed": 0 if jobs is None else jobs.get("fail", 0) + len(jobs.get("errors", [])),
         "observations": observations(pts),
     }
     rep["by_device"] = {k: {"points": v["points"], "pass": v["pass"], "fail": v["fail"],
@@ -107,7 +111,7 @@ def finalize(rep, points, results, manifest, out):
     rep["points"] = pts
     if rep["harness_errors"]:
         status = 2
-    elif n_fail or not tests_ok or not manifest_ok or not pts:
+    elif n_fail or not tests_ok or not manifest_ok or not jobs_ok or not pts:
         status = 1
     else:
         status = 0
@@ -190,12 +194,15 @@ def summary_line(rep):
     s = rep.get("summary", {})
     if rep.get("harness_errors"):
         return "PARITY ERROR (harness failed: %s)" % rep["harness_errors"][0].splitlines()[0]
-    if s.get("fail") or not s.get("tests_ok", True) or not s.get("manifest_ok", True):
+    if s.get("fail") or not s.get("tests_ok", True) or not s.get("manifest_ok", True) or \
+            not s.get("jobs_ok", True):
         parts = ", ".join("%s %d" % (c, v["fail"]) for c, v in s.get("by_check", {}).items())
         if not s.get("tests_ok", True):
             parts = (parts + ", " if parts else "") + "unit/backend tests failed"
         if not s.get("manifest_ok", True):
             parts = (parts + ", " if parts else "") + "shipped manifest differs from Magic"
+        if not s.get("jobs_ok", True):
+            parts = (parts + ", " if parts else "") + "jobs step: %d failed" % s.get("jobs_failed", 0)
         return "PARITY FAIL %d/%d (%s)" % (s.get("fail", 0), s.get("points", 0), parts)
     return "PARITY PASS %d/%d" % (s.get("pass", 0), s.get("points", 0))
 
@@ -232,6 +239,8 @@ def markdown(rep):
             L.append("| %s | %d | %d | %d | %d | %s |" % (k, t["ran"], t["failures"], t["errors"],
                                                        t["skipped"], "ok" if t["ok"] else "FAIL"))
         L.append("")
+    if rep.get("jobs"):
+        L.extend(jobs_markdown(rep["jobs"]))
     L.append("## Results by device family\n")
     L.append("| family | points | pass | fail | failed checks |\n|---|---|---|---|---|")
     fam = s.get("by_family", {})
@@ -247,7 +256,7 @@ def markdown(rep):
     st = rep.get("steps", {})
     L.append("## Steps\n")
     for k, v in st.items():
-        if k == "tests":
+        if k in ("tests", "jobs"):
             continue
         vv = {a: b for a, b in v.items() if a not in ("unassigned_markers",)}
         L.append("- **%s**: `%s`" % (k, json.dumps(vv, default=str)))
@@ -347,6 +356,128 @@ def markdown(rep):
     return "\n".join(L) + "\n"
 
 
+JOB_NOTES = {
+    "drc_plumbing": "the plugin's boxes against mdrc.tcl on the same export, per style and mode",
+    "drc_cells": "hierarchical mode: the cells in Outcome.raw equal the export's tree minus Outcome.empty",
+    "drc_markers": "the report database's error boxes equal Outcome.rows, cell by cell",
+    "drc_coverage": "every case has its plumbing result per style and mode and its fidelity result per style",
+    "drc_fidelity": "Magic's reading of the original GDS against the plugin's hierarchical run, "
+                    "per cell and rule, merged regions",
+    "drc_hier": "hier set: the top cell's own drc(full) listing and the extraction against expect.magic",
+    "drc_names": "names set: one error under the KLayout name; a missing cell fails",
+    "lvs": "the plugin's verdict against netgen run by the harness",
+    "lvs_badnets": "every badnets entry of netgen's JSON is a marker or a report row",
+    "lvs_markers": "each badnets net marker holds the net's .ext node point; inv_open_drain's covers the drain",
+    "layers": "findings against tests/jobs/expected-<pdk>.json",
+    "ports": "findings against tests/jobs/expected-<pdk>.json",
+    "controls": "negative controls: no F1 to F4 finding (asserted in code)",
+    "f1_positives": "the GAPS F1 positives give F1 on their layer (asserted in code)",
+    "reads_nothing": "cells Magic reads nothing in: status 1 and the finding, in drc and layers (in code)",
+    "ports_expect": "the port check's P codes equal cases.json expect.ports (asserted in code)",
+    "readback": "the GDS read-back check: database extraction against GDS read-back, against "
+                "data/readback-<pdk>.json",
+    "gaps": "tools/build_gaps.py --check",
+}
+
+
+def _short(v, n=400):
+    t = json.dumps(v, default=str, ensure_ascii=False)
+    return t if len(t) <= n else t[:n] + " ..."
+
+
+def _jobs_line(j):
+    if not j:
+        return None
+    c = j.get("checks") or {}
+    return "%s: %d passed, %d failed, %.0f s" % ("PASS" if j.get("ok") else "FAIL",
+                                                 sum(v.get("pass", 0) for v in c.values()),
+                                                 j.get("fail", 0) + len(j.get("errors", [])), j.get("seconds", 0))
+
+
+def jobs_markdown(j):
+    """The report's jobs section: counts per check, failures, what was
+    recorded, and the time of the jobs."""
+    L = ["## Jobs step\n"]
+    L.append("%s in %.1f s on %d workers; the jobs' own times add up to %.1f s, the estimate for one CPU "
+             "(measured with the workers running at once); %d units of work; cases: %s\n" % ("PASS" if j.get("ok") else "FAIL", j.get("seconds", 0), j.get("workers", 1),
+                                    j.get("cpu_seconds_estimate", 0), j.get("units", 0),
+                                    ", ".join("%s %d" % kv for kv in sorted((j.get("cases") or {}).items()))))
+    L.append("| check | pass | fail | what it compares |\n|---|---|---|---|")
+    for c, v in (j.get("checks") or {}).items():
+        note = JOB_NOTES.get(c, "")
+        if v.get("skipped"):
+            note = "skipped (%s); %s" % (v["skipped"], note)
+        L.append("| %s | %d | %d | %s |" % (c, v.get("pass", 0), v.get("fail", 0), note))
+    L.append("")
+    for e in j.get("errors") or []:
+        L.append("```\n%s\n```" % e.strip()[-3000:])
+    fails = j.get("failures") or []
+    if fails:
+        L.append("### Failed (%d%s)\n" % (len(fails), ", first 60 shown" if len(fails) > 60 else ""))
+        for f in fails[:60]:
+            where = " ".join(x for x in (f.get("style"), f.get("mode")) if x)
+            L.append("- %s `%s`%s: `%s`" % (f["check"], f["case"], " (%s)" % where if where else "",
+                                           _short(f.get("detail"))))
+        L.append("")
+    res = [r for r in j.get("results") or [] if r["check"] == "lvs"]
+    if res:
+        L.append("### LVS verdicts\n")
+        L.append("| case | netgen's final result (harness) | match | plugin agrees | GAPS |\n|---|---|---|---|---|")
+        for r in res:
+            L.append("| %s | %s | %s | %s | %s |" % (r["case"], r.get("final"), r.get("matched"),
+                                                    "yes" if r["ok"] else "NO", r.get("expect_netgen") or "-"))
+        L.append("")
+    hier = [r for r in j.get("results") or [] if r["check"] == "drc_hier" and r.get("children_add")]
+    if hier:
+        L.append("### The hier set: what hierarchical mode adds from the child cells' own checks (recorded)\n")
+        for r in hier:
+            L.append("- `%s`: %s" % (r["case"], ", ".join("%s %d" % kv for kv in sorted(r["children_add"].items()))))
+        L.append("")
+    for r in j.get("results") or []:
+        if r["check"] in ("readback", "gaps"):
+            extra = {k: v for k, v in r.items() if k not in ("check", "case", "ok")}
+            L.append("- %s %s: %s `%s`" % (r["check"], r["case"], "pass" if r["ok"] else "FAIL", _short(extra, 900)))
+    nat = j.get("native") or {}
+    rows = []
+    for case, st in sorted(nat.items()):
+        for style, v in sorted(st.items()):
+            if v.get("rules_differ"):
+                rows.append((case, style, v))
+    L.append("\n### What a Magic user gets (magic_native.tcl, recorded, not checked)\n")
+    L.append("Magic's check from the top cell alone on the original file, against the plugin's hierarchical "
+             "mode (every cell, then the top, without the boxes that are copies of a subcell's box). "
+             "%d case and style pairs recorded, %d differ.\n"
+             % (sum(len(v) for v in nat.values()), len(rows)))
+    if rows:
+        L.append("| case | style | top only: count total / boxes | plugin boxes | rules (top only, plugin) |"
+                 "\n|---|---|---|---|---|")
+        for case, style, v in rows[:60]:
+            L.append("| %s | %s | %d / %d | %d | %s |" % (
+                case, style, v["native_count_total"], v["native_boxes"], v["plugin_boxes"],
+                ", ".join("%s %d/%d" % (r, a, b) for r, (a, b) in sorted(v["rules_differ"].items()))))
+        L.append("")
+    sheet = j.get("sheet") or {}
+    if sheet:
+        L.append("### The gaps sheet (recorded): error boxes per mode\n")
+        L.append("| style | hierarchical (without copies of subcell boxes) | top cell's own listing | flat "
+                 "| count total (top) |"
+                 "\n|---|---|---|---|---|")
+        for style in sorted(sheet):
+            v = sheet[style]
+            L.append("| %s | %d | %d | %d | %s |" % (style, sum((v.get("hierarchical") or {}).values()),
+                                                   sum((v.get("top_only") or {}).values()),
+                                                   sum((v.get("flat") or {}).values()), v.get("count_total_top")))
+        L.append("")
+    t = j.get("timing") or {}
+    if t:
+        L.append("### Time of the jobs\n")
+        L.append("| kind | jobs | seconds | longest |\n|---|---|---|---|")
+        for k, v in t.items():
+            L.append("| %s | %d | %.1f | %.2f s (%s) |" % (k, v["jobs"], v["seconds"], v["max"], v["max_label"]))
+        L.append("")
+    return L
+
+
 def write_summary(reps, out):
     """summary.json and summary.md over several PDKs; returns the exit status
     (the worst of the PDKs')."""
@@ -360,6 +491,7 @@ def write_summary(reps, out):
                      "fail": s.get("fail", 0), "points": s.get("points", 0),
                      "by_family": s.get("by_family", {}), "by_check": s.get("by_check", {}),
                      "tests_ok": s.get("tests_ok"), "manifest_ok": s.get("manifest_ok"),
+                     "jobs_ok": s.get("jobs_ok"), "jobs": _jobs_line(rep.get("jobs")),
                      "klayout_drc": rep.get("meta", {}).get("klayout_drc"),
                      "seconds": rep.get("meta", {}).get("seconds"),
                      "library": rep.get("meta", {}).get("library"),
@@ -368,11 +500,11 @@ def write_summary(reps, out):
     with open(os.path.join(out, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)
         f.write("\n")
-    L = ["# Parity summary\n", "| PDK | library | result | points | pass | fail | KLayout DRC | seconds |",
-         "|---|---|---|---|---|---|---|---|"]
+    L = ["# Parity summary\n", "| PDK | library | result | points | pass | fail | jobs step | KLayout DRC | seconds |",
+         "|---|---|---|---|---|---|---|---|---|"]
     for pdk, r in rows.items():
-        L.append("| %s | `%s` | %s | %d | %d | %d | %s | %s |"
-                 % (pdk, r["library"], r["line"], r["points"], r["pass"], r["fail"],
+        L.append("| %s | `%s` | %s | %d | %d | %d | %s | %s | %s |"
+                 % (pdk, r["library"], r["line"], r["points"], r["pass"], r["fail"], r["jobs"] or "-",
                     r["klayout_drc"] or "-", r["seconds"]))
     L.append("")
     for pdk, r in rows.items():

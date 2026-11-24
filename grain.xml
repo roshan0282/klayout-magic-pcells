@@ -4,7 +4,7 @@
  <version>0.7.0</version>
  <api-version>0.30.5; python3</api-version>
  <title>Hybrid-waffle power MOSFET PCell for sky130A</title>
- <doc>The sky130_power library: HW_FET, a hybrid-waffle power MOSFET (after Yoo et al., ISPSD 2008) for sky130A, drawn from raw layers: square source/drain regions in a checkerboard with one straight gate per shared edge, notches at the poly crossings with gate contacts and a met1 gate mesh, and 45 degree met3/met4(/met5) S/D runners into L-shaped buses. nfet/pfet 1.8 V (incl. lvt, hvt), 5 V, and 16 V extended-drain (LDMOS); diag45, staircase or planes runners. Checked with the PDK's KLayout deck, Magic DRC and netgen LVS. Also contains klayout-magic-pcells 0.5.0 (sky130_magic and the other Magic libraries). Install this package instead of klayout-magic-pcells, not next to it.</doc>
+ <doc>The sky130_power library: HW_FET, a hybrid-waffle power MOSFET (after Yoo et al., ISPSD 2008) for sky130A, drawn from raw layers: square source/drain regions in a checkerboard with one straight gate per shared edge, notches at the poly crossings with gate contacts and a met1 gate mesh, and 45 degree met3/met4(/met5) S/D runners into L-shaped buses. nfet/pfet 1.8 V (incl. lvt, hvt), 5 V, and 16 V extended-drain (LDMOS); diag45, staircase or planes runners. Checked with the PDK's KLayout deck, Magic DRC and netgen LVS. Also contains klayout-magic-pcells 0.6.1 (sky130_magic and the other Magic libraries). Install this package instead of klayout-magic-pcells, not next to it.</doc>
  <doc-url>https://github.com/roshan0282/klayout-magic-pcells</doc-url>
  <url/>
  <license>Apache-2.0</license>

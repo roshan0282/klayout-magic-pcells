@@ -155,11 +155,19 @@ class Canvas:
             pya.QApplication.sendEvent(self.widget, ev)
 
 
+class Again(Exception):
+    """Raised by a step that waits for something: Steps runs it again
+    250 ms later, for at most ``Steps.wait_s`` seconds."""
+
+
 class Steps:
     """Run a list of (pause in ms, function) one after another on timers, so
     that the event loop runs between steps. The next step is scheduled before
     a step runs, so a step that opens a modal dialog doesn't stop the
-    sequence: the dialog's own event loop runs the following steps."""
+    sequence: the dialog's own event loop runs the following steps. A step
+    that raises Again is run again until it returns."""
+
+    wait_s = 120.0
 
     def __init__(self, steps, log_path, on_error):
         self.steps = list(steps)
@@ -167,6 +175,7 @@ class Steps:
         self.log = open(log_path, "a")
         self.on_error = on_error
         self.timers = []
+        self.waiting = None
 
     def note(self, text):
         self.log.write(text + "\n")
@@ -182,17 +191,31 @@ class Steps:
         t.timeout = self._run
         self.timers.append(t)
         t.start()
+        return t
 
     def _run(self):
+        import time
         if self.i >= len(self.steps):
             return
         pause, fn = self.steps[self.i]
         self.i += 1
-        if self.i < len(self.steps):
-            self._schedule(self.steps[self.i][0])
-        self.note("step %d: %s" % (self.i, fn.__name__))
+        nxt = self._schedule(self.steps[self.i][0]) if self.i < len(self.steps) else None
+        if self.waiting is None or self.waiting[0] != self.i:
+            self.note("step %d: %s" % (self.i, fn.__name__))
         try:
             fn()
+            self.waiting = None
+        except Again:
+            if nxt is not None:
+                nxt.stop()
+            if self.waiting is None or self.waiting[0] != self.i:
+                self.waiting = (self.i, time.monotonic())
+            if time.monotonic() - self.waiting[1] > self.wait_s:
+                self.note("step %d: %s still waiting after %.0f s" % (self.i, fn.__name__, self.wait_s))
+                self.on_error()
+                return
+            self.i -= 1
+            self._schedule(250)
         except Exception:
             import traceback
             self.note(traceback.format_exc())

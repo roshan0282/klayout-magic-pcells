@@ -3,7 +3,7 @@
 
     python3 tests/parity/run_sweep.py --pdk PDK --out out/parity/PDK [--quick]
         [--devices GLOB ...] [--keep] [--update-baseline] [--no-unit] [--no-drc]
-        [--no-extract] [--jobs N]
+        [--no-extract] [--no-jobs] [--jobs N]
     python3 tests/parity/run_sweep.py --pdk all --out out/parity [...]
 
 With ``--pdk all`` every supported PDK runs in turn, each into --out/<pdk>,
@@ -26,7 +26,14 @@ Steps, each writing under --out:
   7. DRC on sheets, both tools, both sides, plus the defaults one at a time
      (KLayout only where the PDK ships a deck in the image)
   8. extraction of the MOSFET points
-  9. report.json, report.md
+  9. jobs (tests/jobs/run_jobs.py): the plugin's DRC, extraction, LVS,
+     layers and ports jobs on the case suite against references that use no
+     plugin code, the GDS read-back check and the gap table's --check;
+     --quick builds the inverters, gaps and controls sets without the
+     Magic-written row, runs the inverters set and run_jobs.QUICK_EXTRA's
+     cases, and skips the read-back check and the gap table's --check;
+     --no-jobs skips the step -> jobs/
+ 10. report.json, report.md
 
 Exit status: 0 when every check passes, 1 when any check fails, 2 when the
 harness itself fails.
@@ -1174,6 +1181,7 @@ def main(argv=None):
     ap.add_argument("--no-unit", action="store_true")
     ap.add_argument("--no-drc", action="store_true")
     ap.add_argument("--no-extract", action="store_true")
+    ap.add_argument("--no-jobs", action="store_true", help="skip the jobs step (tests/jobs)")
     ap.add_argument("--jobs", type=int, default=max(1, min(6, os.cpu_count() or 1)))
     ap.add_argument("--summary", metavar="DIR",
                     help="only write DIR/summary.json and summary.md from DIR/<pdk>/report.json")
@@ -1369,6 +1377,18 @@ def run_pdk(args, pdk, out):
                 results[pt["id"]]["extract"] = extract_verdict(
                     pt, ex[pt["id"]], (pcell.get(pt["id"]) or {}).get("checked"), known)
             rep["steps"]["extract"] = {"points": len(ex), "seconds": round(time.time() - t, 1)}
+        if not args.no_jobs:
+            log("step 9: jobs, the plugin's Magic jobs against their references (tests/jobs)")
+            if REPO not in sys.path:
+                sys.path.insert(0, REPO)
+            from tests.jobs import run_jobs
+            sec = run_jobs.run_step(PDK, os.path.join(out, "jobs"), quick=args.quick,
+                                    update_baseline=args.update_baseline, workers=args.jobs,
+                                    keep=args.keep, log=log, env=pdk_env())
+            rep["jobs"] = sec
+            rep["steps"]["jobs"] = {"ok": sec["ok"], "seconds": sec["seconds"],
+                                    "job_seconds": sec["job_seconds"], "units": sec["units"],
+                                    "failed": sec["fail"], "errors": len(sec["errors"])}
     except Exception as e:
         rep["harness_errors"].append("%s: %s\n%s" % (type(e).__name__, e, traceback.format_exc()))
         log("HARNESS ERROR: %s" % e)
