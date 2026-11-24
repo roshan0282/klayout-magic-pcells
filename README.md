@@ -32,6 +32,10 @@ KLayout GUI under Xvfb. [guide.md](guide.md) walks through installing and
 using them, with screenshots of that GUI, including the warning icons that
 the parameter form shows when Magic corrects a value.
 
+This fork adds `python/klayout_power_pcells`, power-device generators built
+on these libraries. Milestone 1 is a sky130A hybrid-waffle nfet; see
+[docs/hybrid_waffle.md](docs/hybrid_waffle.md).
+
 The design is in [docs/design.md](docs/design.md). It was written for
 sky130A alone. Where this README and the design disagree, the README
 describes the code as it is; the differences are listed under
