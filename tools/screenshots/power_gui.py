@@ -6,8 +6,8 @@
 #
 # with KMP_SHOT_SESSION one of:
 #
-#   main     the library list, the HW_FET form with the latch-up warning of
-#            the 10 x 10 default, error icons for a pitch and a notch that
+#   main     the library list, the HW_FET form, the latch-up warning a
+#            10 x 10 gets without the source taps, error icons for a pitch and a notch that
 #            are too small (with their tool tips), placing a 4 x 4 FET,
 #            editing it in the Properties dialog (pfet, gate strapped at
 #            the frame only, 5 x 5); saves $KMP_SHOT_WORK/power-demo.gds
@@ -300,6 +300,19 @@ def _form_grab(png):
     shot(png, (r[0], r[1] - 34, min(r[2], 700), r[3] + 34))
 
 
+def _taps_box():
+    return [c for c in find(pcell_page(), cls="QCheckBox", name="source_taps") if c.isVisible()][0]
+
+
+def hw_taps_off():
+    _taps_box().click()
+
+
+def hw_taps_on():
+    notes["taps_off"] = {"icons": icons(pcell_page()), "info": field(pcell_page(), "info").text}
+    _taps_box().click()
+
+
 def hw_hover_lu():
     _hover_grab_note("form_default", "nx")
 
@@ -471,8 +484,9 @@ MAIN = [
     # package index, and a failed fetch opens a modal error that blocks the
     # session. The Salt install is checked by the klayout -zz autorun test.
     (1500, window), (500, tips), (500, new_layout), (800, libs_popup), (800, libs_grab), (500, libs_choose),
-    (800, hw_tool), (1500, hw_form), (3000, hw_form_grab), (500, hw_hover_lu), (1500, hw_lu_grab),
-    (300, hw_type_p), (2500, hw_hover_p), (1500, hw_p_grab), (300, hw_type_p_ok), (2000, hw_type_n),
+    (800, hw_tool), (1500, hw_form), (3000, hw_form_grab), (300, hw_taps_off), (3000, hw_hover_lu),
+    (1500, hw_lu_grab), (300, hw_taps_on), (2500, hw_type_p),
+    (2500, hw_hover_p), (1500, hw_p_grab), (300, hw_type_p_ok), (2000, hw_type_n),
     (2500, hw_hover_n), (1500, hw_n_grab), (300, hw_type_n_ok), (1500, hw_type_nx), (1500, hw_type_ny),
     (2500, hw_small_note),
     (500, hw_place), (3000, hw_placed), (1500, hw_placed_grab),

@@ -6,7 +6,8 @@
   ``HW_ERROR HW_FET: <reason>`` text on 255/0.
 * The form: an error icon on the parameter the generator blames (its
   reason as the tool tip), a warning icon on nx and ny when the diffusion
-  lies more than 15 um from the guard ring (Magic's LU.2/LU.3), and a
+  lies more than 15 um from any tap (Magic's LU.2/LU.3; only without the
+  source-square taps), and a
   read-only Result line with the gate count, total W and area.
 * ``hw_created`` (hidden) is the created-with stamp; an instance reopened
   under another generator or rule table logs a warning once.
@@ -30,7 +31,7 @@ ERROR_LAYER = (255, 0)
 CREATED_PARAM = "hw_created"
 INFO_PARAM = "info"
 EDITABLE = ("device", "nx", "ny", "P", "L", "N", "gate_strap", "runners", "runner_style", "bus", "bus_w",
-            "guard_ring")
+            "guard_ring", "source_taps", "tap_w")
 RUNNER_CHOICES = ("met3,met4", "met3", "met3,met4,met5")
 
 
@@ -64,14 +65,15 @@ def params_of_values(v):
                         gate_strap=v["gate_strap"], runners=tuple(str(v["runners"]).split(",")),
                         runner_style=v["runner_style"], bus=v["bus"],
                         bus_w=v["bus_w"] if v["bus_w"] > 0 else None, guard_ring=bool(v["guard_ring"]),
-                        pdk=PDK)
+                        source_taps=bool(v["source_taps"]), tap_w=v["tap_w"] if v["tap_w"] > 0 else None, pdk=PDK)
 
 
 def info_text(res):
     i = res.info
     lu = i.get("lu_max_um")
-    return ("%d gates, W %.2f um, L %.3f, N %.3f um, %.1f um2 (W/area %.3f)%s"
+    return ("%d gates, W %.2f um, L %.3f, N %.3f um, %.1f um2 (W/area %.3f), body %s%s"
             % (i["n_gates"], i["W_total_um"], i["L_um"], i["N_um"], i["bbox_area_um2"], i["W_per_bbox_area"],
+               i.get("body") or "floating",
                "" if lu is None or i.get("lu_ok") else "; diffusion %.1f um from a tap (Magic LU wants 15)" % lu))
 
 
@@ -98,7 +100,10 @@ class HWFetPCell(db.PCellDeclarationHelper):
         self.param("bus", self.TypeString, "S/D buses", default=d.bus,
                    choices=[("L buses: S top/right, D bottom/left", "L_buses"), ("none: a pin per stripe", "none")])
         self.param("bus_w", self.TypeDouble, "Bus width (0 = auto)", default=0.0, unit="um")
-        self.param("guard_ring", self.TypeBoolean, "Guard ring (pin B)", default=d.guard_ring)
+        self.param("guard_ring", self.TypeBoolean, "Guard ring", default=d.guard_ring)
+        self.param("source_taps", self.TypeBoolean, "Body taps in the source squares (body = S)",
+                   default=d.source_taps)
+        self.param("tap_w", self.TypeDouble, "Tap size (0 = minimum)", default=0.0, unit="um")
         self.param(INFO_PARAM, self.TypeString, "Result", default="", readonly=True)
         self.param(CREATED_PARAM, self.TypeString, "Created with", hidden=True, readonly=True,
                    default=backend.state.created_stamp or backend.make_stamp())
@@ -186,8 +191,9 @@ class HWFetPCell(db.PCellDeclarationHelper):
                 for n in ("nx", "ny"):
                     st = states.parameter(n)
                     st.icon = db.PCellParameterState.WarningIcon
-                    st.tooltip = ("diffusion lies %.1f um from the guard ring; Magic's LU.2/LU.3 want "
-                                  "15 um (KLayout's sky130 deck doesn't check it)" % i["lu_max_um"])
+                    st.tooltip = ("diffusion lies %.1f um from a tap; Magic's LU.2/LU.3 want 15 um "
+                                  "(KLayout's sky130 deck doesn't check it). Body taps in the source "
+                                  "squares fix this." % i["lu_max_um"])
         except WaffleError as e:
             st = states.parameter(e.param if e.param in EDITABLE else "device")
             st.icon = db.PCellParameterState.ErrorIcon

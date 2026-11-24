@@ -16,7 +16,7 @@ gate.
 ```sh
 PYTHONPATH=python python3 -m klayout_power_pcells check nx=10 ny=10 P=4
 # HW_FET: HW nfet_01v8 10x10, P 4.000, L 0.150, N 0.550 um: 180 gates, W_total 628.20 um, bbox 2746.8 um2
-#         (W/area 0.229 um/um2), active 1563.5 um2, licon/square 117/119/120, diff-to-tap 20.9 um (...)
+#         (W/area 0.229 um/um2), active 1518.4 um2, licon/square 109/111/112/117/119/120, diff-to-tap 3.7 um
 PYTHONPATH=python python3 -m klayout_power_pcells verify nx=3 ny=3 device=pfet_01v8
 ```
 
@@ -77,8 +77,25 @@ of 10 nm, so their halves are on the grid.
     the reverse.
   - Where a stripe meets a bus, a triangle fills the 45 degree notch.
   - With `bus=none`, each stripe gets its own pin instead.
-- **Body.**
-  - nfet: a p-tap guard ring (psdm), with li and met1 over it, labelled B.
+- **Source-square body taps** (`source_taps`, on by default). Every S
+  square has a tap island at its centre, in a hole in the diffusion:
+  - the island is `tap_w` square, 0.41 um by default, which holds one
+    contact with licon.7's 0.12 um;
+  - field oxide of 0.27 um surrounds it (difftap.3; 0.37 um for 5 V devices,
+    diff/tap.15b), enough for both implants' 0.125 um enclosures;
+  - its implant is the opposite one: p-tap for an nfet, n-tap inside the
+    n-well for a pfet;
+  - its contact sits under the square's li pad, so the body is tied to S.
+    This is the usual connection for a power switch, and the netlist's body
+    terminal is S.
+
+  Every diffusion is then within about 3 um of a tap, at any array size.
+  The hole stays more than poly.7's 0.25 um from every gate, so the gates
+  and W don't change. A tap needs P large enough to leave diffusion around
+  it (P = 2 um is refused, with the reason).
+- **Body ring.**
+  - nfet: a p-tap guard ring (psdm), with li and met1 over it. It is
+    labelled B only without source taps; with them it is on S's net.
   - pfet: an n-tap ring (nsdm) inside an n-well that encloses the p-diff by
     0.18 um (0.33 um for 5 V).
   - 5 V devices: hvi over everything, including the n-well (nwell.9).
@@ -120,6 +137,7 @@ missing or needed correcting:
 | m3.3cd, m4.5ab | metal wider than 3 um needs 0.4 um spacing | used for the runners |
 | via2.4 / via2.5 | 0.04 um, and 0.085 um on two adjacent edges | 0.085 used on all sides |
 | 5 V n-well | encloses p-diff and n-tap by 0.33 um | 0.18 um is the 1.8 V value |
+| diff/tap.15b | 5 V n-diffusion to p-tap: 0.37 um | from Magic; used around the source-square taps of 5 V devices |
 | npc | 0.27 um minimum width and spacing, kept off diffusion contacts | |
 | minimum areas | li 0.0561, m1 0.083, m2 0.0676, m3/m4 0.24, m5 4.0 um² | |
 
@@ -135,9 +153,10 @@ missing or needed correcting:
 It also checks every extracted device directly: the model, L, S ≠ D, the
 gate on G, and the sum of W.
 
-`tests/power/test_waffle.py` runs this on 13 cases. All are clean in both
-DRC decks and match in LVS ("Circuits match uniquely"), except `bus=none`,
-where LVS is skipped (see below):
+`tests/power/test_waffle.py` runs this on 15 cases. All are clean in both
+DRC decks and match in LVS ("Circuits match uniquely"), with body S, or B
+without source taps. `bus=none` is the exception: LVS is skipped there (see
+below). The cases:
 - nfet and pfet 3x3;
 - `frame_only`;
 - nfet and pfet 5 V;
@@ -147,19 +166,23 @@ where LVS is skipped (see below):
 - met3+met4+met5 at P 6;
 - met3 only;
 - `bus=none`;
-- a wider notch and bus.
+- a wider notch and bus;
+- a 1 um tap;
+- no source taps.
+
+The 10 x 10 default is checked too: clean in both decks and matching in
+LVS, with 180 devices.
 
 ## Limits
 
-- **Latch-up.** With only a guard ring, the array's centre lies
-  nx P / 2 + about 1 um from a tap. Magic's `drc(full)` flags LU.2 (LU.3 for
-  a pfet) beyond 15 um. The 10 x 10, P = 4 default is 20.9 um, so it gets 40
-  LU.2 markers in Magic; KLayout's deck doesn't check latch-up and passes
-  it.
-  - The generator reports the distance (`lu_max_um`, `lu_ok`), the summary
-    line says it, and the PCell form puts a warning icon on nx and ny.
-  - Taps inside the array would need a decision the spec doesn't make, for
-    example tap squares in place of some S squares.
+- **Latch-up.** The source-square taps keep every diffusion within about
+  3 um of a tap, so Magic's LU.2/LU.3 (15 um) pass at any size. A 16 x 16
+  array with 480 gates is clean.
+  - With `source_taps=False` (body on its own pin B), only the guard ring
+    taps, and the array's centre lies nx P / 2 + about 1 um from it. The
+    10 x 10, P = 4 default is then 20.8 um, and Magic flags LU.2.
+  - The generator reports the distance (`lu_max_um`, `lu_ok`), and the
+    PCell form puts a warning icon on nx and ny.
 - **met5 runners.** A via4 must land on the grid inside the 45 degree
   stripe, so met5 needs about P ≥ 5.8 um, more than the 4.53 um that width
   and spacing alone suggest. Below that, the generator refuses with the

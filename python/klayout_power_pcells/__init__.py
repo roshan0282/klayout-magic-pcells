@@ -8,7 +8,7 @@ S/D runners (see docs/hybrid_waffle.md). ``register()`` registers the
 KLayout; ``verify`` runs the PDK's KLayout deck, Magic DRC and netgen LVS.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from .waffle import WaffleError, WaffleParams, build, summary, write_gds  # noqa: F401
 

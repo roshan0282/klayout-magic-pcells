@@ -18,9 +18,10 @@ import unittest
 from tests.power._util import cli, db, env, lines, needs_klayout, run_py
 
 BASE = {"device": "nfet_01v8", "nx": 3, "ny": 2, "P": 4.0, "L": 0.0, "N": 0.0, "gate_strap": "met1_mesh",
-        "runners": "met3,met4", "runner_style": "diag45", "bus": "L_buses", "bus_w": 0.0, "guard_ring": True}
+        "runners": "met3,met4", "runner_style": "diag45", "bus": "L_buses", "bus_w": 0.0, "guard_ring": True,
+        "source_taps": True, "tap_w": 0.0}
 NFET = dict(BASE)
-PFET = dict(BASE, device="pfet_01v8", nx=2, ny=2, P=3.5, gate_strap="frame_only", bus="none")
+PFET = dict(BASE, device="pfet_01v8", nx=2, ny=2, P=3.5, gate_strap="frame_only", bus="none", source_taps=False)
 
 PLACE = """
 lib = kpp.register()
@@ -280,6 +281,11 @@ class Backend(unittest.TestCase):
         rc, out = cli(self.env(), "devices")
         self.assertEqual(rc, 0, out)
         self.assertIn("pfet_g5v0d10v5", out)
+        rc, out = cli(self.env(), "check", "P=2")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("parameter tap_w", out)
+        rc, out = cli(self.env(), "check", "P=2", "source_taps=0")
+        self.assertEqual(rc, 0, out)
         rc, out = cli(self.env(), "check", "nx=3", "ny=3")
         self.assertEqual(rc, 0, out)
         self.assertIn("12 gates, W_total 43.00 um", out)
@@ -326,10 +332,12 @@ class Backend(unittest.TestCase):
                                           if states.parameter(pd.name).icon in icons}))
         """
         cases = [{"nx": 3, "ny": 3}, {"nx": 3, "ny": 3, "P": 0.5}, {"nx": 3, "ny": 3, "N": 0.3},
-                 {"nx": 3, "ny": 3, "L": 0.1}, {"nx": 10, "ny": 10}, {"nx": 3, "ny": 3, "runners": "met3,met4,met5"}]
+                 {"nx": 3, "ny": 3, "L": 0.1}, {"nx": 10, "ny": 10, "source_taps": False},
+                 {"nx": 3, "ny": 3, "runners": "met3,met4,met5"}, {"nx": 10, "ny": 10}]
         rc, out = run_py(body, self.env(), [json.dumps(cases)])
         self.assertEqual(rc, 0, out)
-        ok, small_p, small_n, small_l, big, met5 = lines(out, "CB ")
+        ok, small_p, small_n, small_l, big, met5, big_taps = lines(out, "CB ")
+        self.assertEqual(big_taps, {})                    # source taps: no latch-up warning
         self.assertEqual(ok, {})
         self.assertEqual(list(small_p), ["P"])
         self.assertEqual(small_p["P"][0], "ERR")

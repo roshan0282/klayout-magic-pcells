@@ -33,6 +33,8 @@ CASES = [
     ("met3_only_3x2", dict(nx=3, ny=2, runners=("met3",))),
     ("bus_none_3x3", dict(nx=3, ny=3, bus="none")),
     ("wide_N_bus_3x2", dict(nx=3, ny=2, N=0.8, bus_w=5.0)),
+    ("big_tap_3x3", dict(nx=3, ny=3, tap_w=1.0)),
+    ("no_source_taps_3x3", dict(nx=3, ny=3, source_taps=False)),      # body on its own pin, B
 ]
 
 
@@ -66,7 +68,8 @@ class Geometry(unittest.TestCase):
                           (dict(N=0.4), "N"), (dict(P=0.5), "P"), (dict(device="nfet_g5v0d16v0"), "device"),
                           (dict(gate_strap="x"), "gate_strap"), (dict(runners=("met4",)), "runners"),
                           (dict(runner_style="staircase"), "runner_style"), (dict(bus="ring"), "bus"),
-                          (dict(P=5.0, runners=("met3", "met4", "met5")), "P")):
+                          (dict(P=5.0, runners=("met3", "met4", "met5")), "P"), (dict(P=2.0), "tap_w"),
+                          (dict(tap_w=0.3), "tap_w")):
             with self.subTest(params=kw):
                 with self.assertRaises(WaffleError) as cm:
                     build(WaffleParams(nx=kw.pop("nx", 3), ny=kw.pop("ny", 3), **kw))
@@ -115,24 +118,30 @@ class Verified(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    def test_default_size_latchup(self):
-        """The 10 x 10 default is clean in KLayout's deck and extracts right;
-        Magic flags LU.2 only (the array centre is 20.9 um from the ring)."""
+    def test_default_size(self):
+        """The 10 x 10 default: with the source-square taps every check is
+        clean, Magic's latch-up rules included (the farthest diffusion is
+        about 3 um from a tap), and the body is S. Without them, Magic flags
+        LU.2 (20.8 um from the guard ring) and nothing else."""
         from klayout_power_pcells.verify import verify
         from klayout_power_pcells.waffle import WaffleParams, write_gds
         tmp = tempfile.mkdtemp(prefix="hw_verify_test_")
         try:
-            gds = os.path.join(tmp, "HW_FET.gds")
-            w = write_gds(WaffleParams(), gds)
-            self.assertFalse(w.report["lu_ok"])
-            res = verify(gds, w.report, work=tmp)
-            self.assertEqual(res["klayout"], {})
-            self.assertEqual(set(res["magic"]), {"LU.2"})
-            self.assertTrue(res["lvs"])
-            self.assertEqual(res["devices"], 180)
+            for taps in (True, False):
+                with self.subTest(source_taps=taps):
+                    work = os.path.join(tmp, str(taps))
+                    os.makedirs(work)
+                    gds = os.path.join(work, "HW_FET.gds")
+                    w = write_gds(WaffleParams(source_taps=taps), gds)
+                    self.assertEqual(w.report["lu_ok"], taps)
+                    res = verify(gds, w.report, work=work)
+                    self.assertEqual(res["klayout"], {})
+                    self.assertEqual(res["magic"], {} if taps else {"LU.2": res["magic"].get("LU.2")})
+                    self.assertTrue(res["lvs"])
+                    self.assertEqual(res["devices"], 180)
+                    self.assertEqual(w.report["body"], "S" if taps else "B")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-
 
 if __name__ == "__main__":
     unittest.main()

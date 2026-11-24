@@ -36,11 +36,15 @@ class Gui(unittest.TestCase):
             shutil.rmtree(out, ignore_errors=True)
         self.assertTrue(any(l.startswith("sky130_power") for l in main["libraries"]))
         self.assertEqual(main["form_fields"], ["L", "N", "P", "bus", "bus_w", "device", "gate_strap", "info",
-                                               "nx", "ny", "runner_style", "runners"])
-        # the 10 x 10 default: a latch-up warning on nx and ny, and the result line says why
-        self.assertEqual(len(main["form_icons_before"]), 2)
-        self.assertIn("20.9 um", main["form_icons_before"][0])
-        self.assertTrue(main["form_info"].startswith("180 gates, W 628.20 um"))
+                                               "nx", "ny", "runner_style", "runners", "tap_w"])
+        # the 10 x 10 default: body taps in the source squares, no warning
+        self.assertEqual(main["form_icons_before"], [])
+        self.assertTrue(main["form_info"].startswith("180 gates, W 628.20 um"), main["form_info"])
+        self.assertIn("body S", main["form_info"])
+        # without them: a latch-up warning on nx and ny, and the result line says why
+        self.assertEqual(len(main["taps_off"]["icons"]), 2)
+        self.assertIn("20.8 um", main["taps_off"]["icons"][0])
+        self.assertIn("body B", main["taps_off"]["info"])
         self.assertEqual(main["after_p"]["icons"], ["P 0.500 um is too small for L 0.150 and N 0.550 um"])
         self.assertTrue(main["after_p"]["info"].startswith("not drawn:"))
         self.assertIn("below the minimum 0.550 um", main["after_n"]["icons"][0])

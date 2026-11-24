@@ -138,11 +138,13 @@ def extract(gds, top, work, pdk="sky130A", timeout=3600):
     return spice, devs
 
 
-def netgen_lvs(spice, top, model, w_total, l, work, pdk="sky130A", timeout=3600):
-    """(matched, text) of netgen against one device of W = w_total."""
+def netgen_lvs(spice, top, model, w_total, l, work, pdk="sky130A", timeout=3600, body="B"):
+    """(matched, text) of netgen against one device of W = w_total, its body
+    on ``body`` (B, its own pin, or S with taps in the source squares)."""
     sch = os.path.join(work, "reference.spice")
+    pins = "S D G" if body == "S" else "S D G %s" % body
     with open(sch, "w") as f:
-        f.write(".subckt %s S D G B\nXM1 D G S B %s w=%g l=%g\n.ends\n" % (top, model, w_total, l))
+        f.write(".subckt %s %s\nXM1 D G S %s %s w=%g l=%g\n.ends\n" % (top, pins, body, model, w_total, l))
     rep = os.path.join(work, "lvs.out")
     setup = os.path.join(PDK_ROOT, pdk, "libs.tech", "netgen", pdk + "_setup.tcl")
     p = subprocess.run(["netgen", "-batch", "lvs", "%s %s" % (spice, top), "%s %s" % (sch, top), setup, rep],
@@ -181,12 +183,16 @@ def verify(gds, report, top="HW_FET", pdk="sky130A", lvs=True, work=None):
                 probs.append("a device has S and D on one net")
             if any(d["g"] != "G" for d in devs):
                 probs.append("a gate is not on G")
+            body = report.get("body")
+            if body and report.get("bus", "L_buses") == "L_buses" and any(d["b"] != body for d in devs):
+                probs.append("a device's body is not on %s: %s" % (body, sorted({d["b"] for d in devs})))
             w_sum = sum(d["w"] for d in devs)
             res["W_extracted_um"] = round(w_sum, 4)
             if abs(w_sum - report["W_total_um"]) > 0.001 * max(1, report["n_gates"]):
                 probs.append("extracted W %.3f, drew %.3f" % (w_sum, report["W_total_um"]))
             if report.get("bus", "L_buses") == "L_buses":
-                ok, text = netgen_lvs(spice, top, report["model"], report["W_total_um"], report["L_um"], work, pdk)
+                ok, text = netgen_lvs(spice, top, report["model"], report["W_total_um"], report["L_um"], work, pdk,
+                                      body=report.get("body") or "B")
                 res["lvs"] = ok
                 if not ok:
                     final = [ln.strip() for ln in text.splitlines() if "Final result" in ln or "match" in ln]

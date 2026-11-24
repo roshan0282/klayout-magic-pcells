@@ -32,6 +32,7 @@ SKY130 = {
         # diffusion and tap
         "diff_w": 150,          # difftap.1   [kl] 0.15
         "diff_s": 270,          # difftap.3   [kl] 0.27
+        "diff_tap_s_mv": 370,   # diff/tap.15b [mg] 370 (thick-oxide n-diffusion to p-tap)
         # poly
         "poly_w": 150,          # poly.1a     [kl] 0.15
         "poly_s": 210,          # poly.2      [kl] 0.21

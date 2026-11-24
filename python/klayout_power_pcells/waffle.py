@@ -43,23 +43,29 @@ def _um(v):
 
 class WaffleParams:
     """nx, ny: squares per side. P: square pitch, L: gate length, N: notch side
-    (um; L and N None = the device minimum and the computed minimum)."""
+    (um; L and N None = the device minimum and the computed minimum).
+    source_taps: a body tap in every source square, tied to S (body = S);
+    tap_w its side (None = the smallest that holds a contact)."""
 
     def __init__(self, device="nfet_01v8", nx=10, ny=10, P=4.0, L=None, N=None,
                  gate_strap="met1_mesh", runners=("met3", "met4"), runner_style="diag45",
-                 bus="L_buses", bus_w=None, guard_ring=True, frame_w=None, pdk="sky130A"):
+                 bus="L_buses", bus_w=None, guard_ring=True, frame_w=None, pdk="sky130A",
+                 source_taps=True, tap_w=None):
         self.device, self.nx, self.ny = device, int(nx), int(ny)
         self.P, self.L, self.N = float(P), (None if L is None else float(L)), (None if N is None else float(N))
         self.gate_strap, self.runners, self.runner_style = gate_strap, tuple(runners), runner_style
         self.bus, self.bus_w, self.guard_ring = bus, (None if bus_w is None else float(bus_w)), bool(guard_ring)
         self.frame_w = None if frame_w is None else float(frame_w)
         self.pdk = pdk
+        self.source_taps = bool(source_taps)
+        self.tap_w = None if tap_w is None else float(tap_w)
 
     def as_dict(self):
         return dict(device=self.device, nx=self.nx, ny=self.ny, P=self.P, L=self.L, N=self.N,
                     gate_strap=self.gate_strap, runners=",".join(self.runners),
                     runner_style=self.runner_style, bus=self.bus, bus_w=self.bus_w,
-                    guard_ring=self.guard_ring, frame_w=self.frame_w, pdk=self.pdk)
+                    guard_ring=self.guard_ring, frame_w=self.frame_w, pdk=self.pdk,
+                    source_taps=self.source_taps, tap_w=self.tap_w)
 
 
 class Waffle:
@@ -201,7 +207,8 @@ def build(params, steps=STEPS):
     nx, ny = p.nx, p.ny
     rep = w.report
     rep.update({"nx": nx, "ny": ny, "P_um": _um(P), "L_um": _um(L), "N_um": _um(N), "N_min_um": _um(n_min),
-                "N_rule": why, "device": p.device, "model": pdk["model_prefix"] + p.device, "bus": p.bus})
+                "N_rule": why, "device": p.device, "model": pdk["model_prefix"] + p.device, "bus": p.bus,
+                "body": "S" if p.source_taps else ("B" if p.guard_ring else None)})
 
     # -- step 1: diffusion, poly grid, notches, frame ---------------------------------
     diff_box = _box(L // 2, L // 2, nx * P - L // 2, ny * P - L // 2)
@@ -211,6 +218,31 @@ def build(params, steps=STEPS):
         for l_ in range(1, ny):
             notches.insert(_box(k * P - N // 2, l_ * P - N // 2, k * P + N // 2, l_ * P + N // 2))
     diff -= notches
+    # body taps: an island in the middle of every source square, in a hole in
+    # the diffusion, field oxide between them (difftap.3, and room for both
+    # implants' 0.125 enclosures)
+    w.taps_sq = db.Region()
+    if p.source_taps:
+        T = _snap_up(R["licon"] + 2 * R["licon_tap_enc1"], 2 * G) if p.tap_w is None \
+            else int(round(p.tap_w * 1000))
+        if T < R["licon"] + 2 * R["licon_tap_enc1"] or T % (2 * G):
+            raise WaffleError("tap_w", "tap_w %.3f um must hold a contact (>= %.3f um) and be a multiple of %.3f um"
+                              % (_um(T), _um(R["licon"] + 2 * R["licon_tap_enc1"]), _um(2 * G)))
+        gap = _snap_up(max(R["diff_tap_s_mv"] if dev["hv"] else R["diff_s"], 2 * R["sdm_enc"]), G)
+        hh = T // 2 + gap
+        ring_w = P // 2 - L // 2 - hh                 # diffusion left between the hole and a gate
+        if ring_w < R["diff_past_gate"] + R["licon"] + 2 * R["licon_diff_enc1"]:
+            raise WaffleError("tap_w", "a %.3f um tap leaves %.3f um of diffusion between it and the gates; "
+                              "use a smaller tap_w or a larger P" % (_um(T), _um(ring_w)))
+        holes = db.Region()
+        for i in range(nx):
+            for j in range(ny):
+                if (i + j) % 2 == 0:
+                    cx, cy = i * P + P // 2, j * P + P // 2
+                    holes.insert(_box(cx - hh, cy - hh, cx + hh, cy + hh))
+                    w.taps_sq.insert(_box(cx - T // 2, cy - T // 2, cx + T // 2, cy + T // 2))
+        diff -= holes
+        w.tap_w_nm = T
     w.add("diff", diff)
     w.diff_box = diff_box
     w.notches = notches
@@ -400,7 +432,11 @@ def _step_contacts(w):
     # implants: the source/drain implant over the diffusion (and the notches,
     # so it stays one rectangle)
     sdm = db.Region(w.diff_box.enlarged(R["sdm_enc"], R["sdm_enc"]))
-    w.add("nsdm" if dev["kind"] == "n" else "psdm", sdm)
+    tap_sdm = w.taps_sq.sized(R["sdm_enc"])
+    w.add("nsdm" if dev["kind"] == "n" else "psdm", sdm - tap_sdm)
+    if not w.taps_sq.is_empty():
+        w.add("tap", w.taps_sq)
+        w.add("psdm" if dev["kind"] == "n" else "nsdm", tap_sdm)
     if dev["kind"] == "p":
         enc = R["nwell_pdiff_enc_mv"] if dev["hv"] else R["nwell_pdiff_enc"]
         w.add("nwell", db.Region(w.diff_box.enlarged(enc, enc)))
@@ -420,6 +456,11 @@ def _step_contacts(w):
             cuts = fill_cuts(area, R["licon"], R["licon_s"], 0, grid=G)
             if cuts.is_empty():
                 raise WaffleError("P", "no diffusion contact fits in square (%d, %d)" % (i, j))
+            tap = w.taps_sq & db.Region(cell)
+            if not tap.is_empty():
+                tcuts = fill_cuts(tap, R["licon"], R["licon_s"], R["licon_tap_enc1"], grid=G)
+                assert not tcuts.is_empty(), "no contact on the tap of square (%d, %d)" % (i, j)
+                cuts += tcuts                           # under the square's li: body tied to S
             li = db.Region(cuts.bbox().enlarged(R["li_enc1"], R["li_enc1"])) - keep_out_li
             li.merge()
             isl = db.Region(cell.enlarged(-R["met1_s_wide"] // 2, -R["met1_s_wide"] // 2)) - keep_out_m1
@@ -442,7 +483,8 @@ def _check_cuts(w):
     R = w.pdk["rules"]
     r = w.regions
     lic = r["licon"]
-    assert (lic - r["diff"].sized(-R["licon_diff_enc"])).is_empty(), "a licon is outside the diffusion enclosure"
+    active = r["diff"] + r.get("tap", db.Region())
+    assert (lic - active.sized(-R["licon_diff_enc"])).is_empty(), "a licon is outside the diffusion enclosure"
     assert (lic & w.gates.sized(R["licon_gate_s"])).is_empty(), "a licon is too close to a gate"
     assert (lic - r["li"]).is_empty(), "a licon is not covered by li"
     assert (r["mcon"] - r["li"]).is_empty(), "an mcon is not covered by li"
@@ -613,8 +655,9 @@ def _step_bus(w):
             enc = R["nwell_ntap_enc_mv"] if dev["hv"] else R["nwell_ntap_enc"]
             w.add("nwell", db.Region(tap_box.enlarged(enc, enc)))
         x, y = centre.left, centre.center().y
-        w.texts.setdefault(lay_lbl["met1"], []).append(("B", x, y))
-        w.add_pin("met1", _box(x - e, y - e, x + e, y + e))
+        if w.taps_sq.is_empty():           # with source taps the ring is on S's net: no B pin
+            w.texts.setdefault(lay_lbl["met1"], []).append(("B", x, y))
+            w.add_pin("met1", _box(x - e, y - e, x + e, y + e))
         w.nwell_box = tap_box.enlarged(enc, enc) if dev["kind"] == "p" else None
         outer = tap_box
         w.tap_inner = t_in
@@ -690,17 +733,39 @@ def _step_bus(w):
 
 
 def _check_latchup(w):
-    """Report the largest distance from the diffusion to the tap ring
-    (Magic's LU.2 and LU.3 want 15 um): the centre of the diffusion is the
-    worst point, its distance to the nearest side of the ring."""
+    """The largest distance from the diffusion to a tap (Magic's LU.2/LU.3
+    want 15 um), sampled every P/4 over the diffusion, to the guard ring and
+    to the source-square taps."""
     R = w.pdk["rules"]
+    P = w.P
     t_in = getattr(w, "tap_inner", None)
-    if t_in is None:
+    sq = {}
+    for b in w.taps_sq.each():
+        bb = b.bbox()
+        sq[(bb.center().x // P, bb.center().y // P)] = bb
+    if t_in is None and not sq:
         w.report["lu_max_um"] = None
         w.report["lu_ok"] = False
         return
-    c = w.diff_box.center()
-    worst = min(c.x - t_in.left, t_in.right - c.x, c.y - t_in.bottom, t_in.top - c.y)
+    db_ = w.diff_box
+    step = max(P // 4, 250)
+    worst = 0
+    y = db_.bottom
+    while y <= db_.top:
+        x = db_.left
+        while x <= db_.right:
+            best = min(x - t_in.left, t_in.right - x, y - t_in.bottom, t_in.top - y) if t_in is not None else 10 ** 12
+            ci, cj = x // P, y // P
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    b = sq.get((ci + di, cj + dj))
+                    if b is not None:
+                        dx = max(b.left - x, 0, x - b.right)
+                        dy = max(b.bottom - y, 0, y - b.top)
+                        best = min(best, math.hypot(dx, dy))
+            worst = max(worst, best)
+            x += step
+        y += step
     w.report["lu_max_um"] = round(_um(worst), 2)
     w.report["lu_ok"] = worst <= R["lu_max"]
 
