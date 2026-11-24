@@ -2,8 +2,8 @@
 
 A cell is an HW_FET by its title, ``<defunct>sky130_power.HW_FET...``.
 Reports cells that hold the error marker, empty cells, cells with no
-generated-by stamp, stamps from another generator, Magic, PDK or
-klayout-magic-pcells digest than the installed ones, a file dbu that doesn't
+generated-by stamp, stamps from another generator or rule table than the
+installed ones, a file dbu that doesn't
 divide 5 nm, and cells whose output lies on a finer grid (from the stamp)
 than the file's dbu. With ``regen=True`` it keeps a copy of every cell's
 stored geometry, registers the library with every lookup drawing again
@@ -30,13 +30,8 @@ def _divides(dbu, grid_um):
 
 
 def current_stamp(notes=None):
-    """The parsed stamp the installed Magic, PDK and generator would write,
-    or None (with a note) when sky130A's Magic can't start."""
-    from klayout_magic_pcells.audit import current_stamps
-    cur = current_stamps([backend.PDK], notes).get(backend.PDK)
-    if cur is None:
-        return None
-    return dict(cur, code=backend.code_digest())
+    """The parsed stamp the installed generator and rule table would write."""
+    return backend.parse_stamp(backend.make_stamp())
 
 
 def audit(path, current=None, regen=False, notes=None):
@@ -80,7 +75,7 @@ def audit(path, current=None, regen=False, notes=None):
         if regen:
             snaps[c.cell_index()] = _snapshot(ly, c)
     if not rep["dbu_divides_5nm"]:
-        rep["file_problems"] = ["dbu %g um doesn't divide 5 nm: Magic's coordinates get rounded" % ly.dbu]
+        rep["file_problems"] = ["dbu %g um doesn't divide the 5 nm grid: coordinates get rounded" % ly.dbu]
     if regen and cells:
         from .pcell import register
         try:

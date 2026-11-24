@@ -8,7 +8,7 @@
 #   tools/screenshots/power_shots.sh /tmp/shots # somewhere else
 #
 # Three sessions of power_gui.py: main (form, icons, place, edit, save),
-# reopen (with the library) and defunct (Magic missing). Each writes
+# reopen (with the library) and defunct (package not installed). Each writes
 # notes-<session>.json with what it saw; tests/power/test_gui.py checks them.
 # HW_SHOT_KEEP=1 keeps the work directory.
 set -eu
@@ -31,7 +31,9 @@ run() {
 }
 run main
 run reopen
-run defunct KMP_MAGIC=/nonexistent/magic
+# without the package: a KLayout home whose salt folder doesn't have it
+EMPTY_HOME="$WORK/empty-home"; mkdir -p "$EMPTY_HOME"
+run defunct KLAYOUT_HOME="$EMPTY_HOME" KLAYOUT_PATH="$EMPTY_HOME"
 cp "$WORK"/raw/power-*.png "$OUT"/
 cp "$WORK"/notes-*.json "$OUT"/ 2>/dev/null || true
 echo "screenshots in $OUT"

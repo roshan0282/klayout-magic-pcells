@@ -1,21 +1,20 @@
 # sky130_power: the HW_FET PCell in KLayout
 
 `sky130_power` is a KLayout library with one PCell, `HW_FET`: a sky130A
-hybrid-waffle power MOSFET. Magic's own generators draw every transistor,
-via, tap and well in it, through klayout-magic-pcells' `sky130_magic`
-library. [hybrid_waffle.md](hybrid_waffle.md) describes the geometry and the
-limits; this guide covers using the plugin.
+hybrid-waffle power MOSFET drawn from raw layers. Placing it needs only
+KLayout. Magic and netgen are used by `verify` and by the tests.
+[hybrid_waffle.md](hybrid_waffle.md) describes the geometry, the rule
+table and the limits.
 
 The screenshots were taken by `tools/screenshots/power_shots.sh` in KLayout
-0.30.12 under Xvfb (Magic 8.3.685, sky130A). `tests/power/test_gui.py` runs
-the same GUI sessions and checks what they show.
+0.30.12 under Xvfb. `tests/power/test_gui.py` runs the same GUI sessions
+and checks what they show.
 
 ## Installing
 
-This repository is one KLayout Salt package, `klayout-power-pcells`. It
-holds both klayout-magic-pcells (the `sky130_magic`, `gf180mcu_magic`,
-`sg13g2_magic` and `sg13cmos5l_magic` libraries) and `sky130_power`. Install
-it **instead of** klayout-magic-pcells, not next to it:
+This repository is the Salt package `klayout-power-pcells`. It also holds
+klayout-magic-pcells (`sky130_magic` and the other Magic libraries), so
+install it **instead of** that package, not next to it:
 
 ```sh
 git clone https://github.com/roshan0282/klayout-magic-pcells.git /foss/designs/klayout-power-pcells
@@ -24,76 +23,75 @@ mkdir -p ~/.klayout/salt
 ln -s /foss/designs/klayout-power-pcells ~/.klayout/salt/klayout-power-pcells
 ```
 
-When KLayout next starts, two autorun macros run in this order:
-1. `pymacros/klayout_magic_pcells.lym` registers the Magic libraries;
-2. `pymacros/klayout_power_pcells.lym` registers `sky130_power`.
-
-Check the setup from a shell:
+When KLayout next starts, `pymacros/klayout_power_pcells.lym` (autorun)
+registers `sky130_power`. Check the setup with:
 
 ```sh
 PYTHONPATH=/foss/designs/klayout-power-pcells/python python3 -m klayout_power_pcells doctor
 ```
 
 `doctor` prints:
-- the settings and where each came from;
-- the running Magic and the sky130A versions;
-- the stamp that new cells get;
-- the cache directory;
-- the time it took to draw a 2x2 HW_FET.
-
-A line starting `PROBLEM:` names what is missing.
+- the cache settings;
+- the stamp new cells get;
+- whether `klayout`, `magic` and `netgen` are found (needed by `verify`
+  only);
+- the time it took to draw a 3x3 FET.
 
 ## Placing an HW_FET
 
-`sky130_power` appears in the Libraries panel next to `sky130_magic`:
+`sky130_power` appears in the Libraries panel:
 
 ![The library list](img/power/power-libraries.png)
 
-Choose `HW_FET` and the Instance tool. The PCell tab has these fields:
+Choose `HW_FET` and the Instance tool. The PCell tab has the parameters of
+the spec:
 
 | Field | Meaning |
 |---|---|
-| Device | one of the nine MOSFETs |
-| Body | tap ring, or taps in the source tiles |
-| L, finger W, fingers per cell | each internal tile edge gets one Magic MOSFET with these |
-| Tiles per row and column | the N x M grid |
-| Diagonal strap width | the 45 degree met3-met5 straps |
-| Tile pitch | 0 picks the minimum |
-| Result | read-only: pitch, fingers, total W and strap width of what will be drawn |
+| Device | nfet_01v8, nfet_01v8_lvt, pfet_01v8, pfet_01v8_lvt, pfet_01v8_hvt, nfet_g5v0d10v5, pfet_g5v0d10v5 |
+| nx, ny | squares per side |
+| P | square pitch (um) |
+| L | gate length; 0 means the device minimum |
+| N | notch side; 0 means the computed minimum |
+| Gate strap | `met1_mesh` (contacts in every notch, met1 mesh) or `frame_only` |
+| Runners | met3,met4 (default), met3, or met3,met4,met5 |
+| Runner style | 45 degree |
+| S/D buses | `L_buses` (S top/right, D bottom/left) or `none` (a pin per stripe) |
+| Bus width | 0 means 3.2 um |
+| Guard ring | the tap ring, pin B |
+| Result | read-only: gates, total W, L, N, area and W per area |
 
 ![The HW_FET form](img/power/power-form.png)
 
 ### What the form tells you
 
-The form marks problems as it updates, with the reason in the tool tip of
-the icon:
+The form updates on every edit. The tool tip of each icon gives the reason:
 
-- **An error** is on the parameter that makes the generator refuse the
-  values, and the Result line says why. Placing the FET anyway draws the
-  error marker described under [If something fails](#if-something-fails).
-  Here the strap is narrower than 2.4 um, below which Magic's metal3/metal4
-  wide-metal rules fail at the buses:
+- **A warning** on nx and ny means the diffusion lies more than 15 um from
+  the guard ring. Magic's LU.2/LU.3 flag that; KLayout's sky130 deck
+  doesn't. The default 10 x 10 at P = 4 is 20.9 um:
 
-  ![A strap below the minimum](img/power/power-strap-error.png)
+  ![The latch-up warning](img/power/power-form-lu-warning.png)
 
-  The grid gets the error when a tap ring can't keep the diffusion within
-  Magic's 15 um latch-up distance. The message then suggests "Tap in every
-  source tile".
-- **A warning** is on W, L or fingers when Magic's own dialog changes them
-  for the unit device. The field then shows Magic's value, which is the one
-  drawn and stored. Here L 0.1 became 0.15 (`Mos length must be >= 0.15 um`):
+- **An error** sits on the parameter the generator refuses, and the Result
+  line says why. Placing it anyway draws the error marker. Here P is too
+  small:
 
-  ![L corrected by Magic](img/power/power-l-corrected.png)
+  ![P too small](img/power/power-p-error.png)
 
-Click in the layout to place it:
+  Here the notch is smaller than a poly contact plus twice licon.14:
+
+  ![N too small](img/power/power-n-error.png)
+
+A 4 x 4 FET, placed:
 
 ![The placed FET](img/power/power-placed.png)
 
 ### Editing
 
-Select the instance and open Properties (`Q`). Every field can be changed
-there, and the instance is drawn again on OK. Here the FET becomes a
-`pfet_01v8` with a tap in every source tile, on a 5x5 grid:
+Select the instance and open Properties (`Q`). Here the FET becomes a
+`pfet_01v8` strapped at the frame only, on a 5 x 5 grid. The notch shrinks
+to L + 2 x poly.4:
 
 ![The Properties dialog](img/power/power-properties.png)
 
@@ -104,17 +102,16 @@ every edit.
 
 ## Saving and reopening
 
-The parameters are stored in the file with the cell.
-- **With the library registered:** reopening the file gives live HW_FET
-  cells, drawn again from the disk cache or by Magic.
-- **Without it (Magic missing):** the cells show as
-  `<defunct>sky130_power.HW_FET`, with the geometry stored in the file.
-  Saving keeps that geometry. Once the library registers again, the cells
-  are live again.
+The parameters are stored in the file.
+- **With the package installed:** the cells reopen live, drawn again from
+  the disk cache or the generator.
+- **Without it:** they show as `<defunct>sky130_power.HW_FET` with the
+  geometry stored in the file. Saving keeps that geometry, and installing
+  the package makes them live again.
 
 ![Reopened with the library](img/power/power-reopen-with-library.png)
 
-![Reopened without it: the stored geometry](img/power/power-reopen-without-library.png)
+![Reopened without the package: the stored geometry](img/power/power-reopen-without-library.png)
 
 ## From Python
 
@@ -124,129 +121,100 @@ sys.path.insert(0, "/foss/designs/klayout-power-pcells/python")
 import klayout.db as db
 import klayout_power_pcells as kpp
 
-lib = kpp.register()       # the sky130_power library, or None with one logged error
-v = kpp.form_values({"device": "sky130_fd_pr__pfet_01v8", "bulk": "source", "l": 0.1, "nx": 4, "ny": 4})
-# v["l"] == 0.15 (what Magic's dialog shows); v["info"] is the Result line
+lib = kpp.register()
+v = kpp.form_values({"device": "pfet_01v8", "nx": 6, "ny": 6, "P": 4.0})   # adds the Result line
 ly = db.Layout()
 top = ly.create_cell("TOP")
 fet = ly.create_cell("HW_FET", "sky130_power", v)
 top.insert(db.CellInstArray(fet.cell_index(), db.Trans()))
 ly.write("fet.gds")
+
+# or a flat cell, without the library:
+w = kpp.write_gds(kpp.WaffleParams(device="nfet_01v8", nx=6, ny=6), "flat.gds")
+print(kpp.summary(w))
 ```
 
-`form_values` gives what the GUI form stores. Without it, `create_cell`
-draws Magic's values but keeps the ones it was given; KLayout only stores
-corrected values from its form. This matches klayout-magic-pcells'
-`dialog_values`.
-
-In batch, name both macros:
-
-```sh
-klayout -b -rm pymacros/klayout_magic_pcells.lym -rm pymacros/klayout_power_pcells.lym -r script.py
-```
-
-For a flat cell without the library, use
-`klayout_power_pcells.write_gds(HWParams(...), path)` or
-`python3 -m klayout_power_pcells hw ...`.
+In batch: `klayout -b -rm pymacros/klayout_power_pcells.lym -r script.py`.
 
 ## Command line
 
 ```sh
 python3 -m klayout_power_pcells doctor
-python3 -m klayout_power_pcells devices -v                 # the nine devices, Magic's W/L minimums, the parameters
-python3 -m klayout_power_pcells check l=0.1 nx=6 ny=6      # what the form makes of these values, and why not
-python3 -m klayout_power_pcells generate device=pfet_01v8 bulk=source nx=4 ny=4 -o fet.gds
+python3 -m klayout_power_pcells devices
+python3 -m klayout_power_pcells check nx=6 ny=6 device=pfet_01v8      # the summary, or why not
+python3 -m klayout_power_pcells generate nx=6 ny=6 -o fet.gds         # through the library, in TOP
+python3 -m klayout_power_pcells hw nx=6 ny=6 -o flat.gds              # flat, no library
+python3 -m klayout_power_pcells verify nx=3 ny=3 device=nfet_g5v0d10v5 --keep /tmp/v
 python3 -m klayout_power_pcells audit design.gds --regen
-python3 -m klayout_power_pcells cache stats                # also: prune, clear
+python3 -m klayout_power_pcells cache stats                           # also: prune, clear
+```
+
+`verify` draws the FET and then runs:
+- the PDK's KLayout deck;
+- Magic's `drc(full)`;
+- Magic extraction and netgen LVS against one device of W = W_total.
+
+```
+$ python3 -m klayout_power_pcells verify nx=3 ny=2 device=nfet_g5v0d10v5
+HW nfet_g5v0d10v5 3x2, P 4.000, L 0.500, N 0.650 um: 7 gates, W_total 23.90 um, ...
+KLayout DRC (sky130A_mr.drc): clean
+Magic DRC (drc(full)): clean
+extracted 7 devices, W 23.900 um; LVS against one device of W 23.900: match
 ```
 
 Exit status:
-- **0:** the FET is drawn;
-- **1:** it isn't (the generator refuses the values, or the file gets the
-  error marker), or `audit` finds a problem;
-- **2:** a value isn't a number or isn't one of the choices.
-
-```
-$ python3 -m klayout_power_pcells check l=0.1 nx=6 ny=6
-HW_FET: Magic's dialog shows l=0.15 (entered 0.1)
-HW_FET: not drawn: diffusion lies 21.20 um from the nearest tap; Magic's LU rules allow 15 um. Use a smaller grid or bulk='source' (a tap in every source tile) (parameter nx)
-```
+- **0:** drawn, and for `verify` everything passes;
+- **1:** not drawn, or a check fails (including `audit` problems);
+- **2:** a value that isn't a number or isn't one of the choices.
 
 ## Configuration
 
-`sky130_power` uses klayout-magic-pcells' settings (environment, then
-`~/.config/klayout-magic-pcells/config.ini`, then defaults; see that
-README's Configuration section):
-- **`KMP_MAGIC`, `PDK_ROOT`:** find Magic and sky130A.
-- **`KMP_PDKS`:** sky130A must be among the selected PDKs. HW_FET registers
-  sky130A's library itself if needed, but setting `KMP_PDKS=sky130A` saves
-  the other PDKs' Magic processes.
-- **`KMP_CACHE_DIR`, `KMP_CACHE`:** the disk cache (below). `KMP_CACHE=0`
-  keeps nothing between sessions.
+`sky130_power` uses klayout-magic-pcells' settings:
+- **`KMP_CACHE_DIR`, `KMP_CACHE`:** the disk cache. `KMP_CACHE=0` keeps
+  nothing between sessions.
 - **`KMP_LAZY`:** the Update button.
-- **`KMP_TIMEOUT`, `KMP_LOG`:** the Magic requests behind each FET.
+- **`PDK_ROOT`:** where `verify` finds the decks.
+
+Drawing doesn't use Magic.
 
 ## The cache
 
-KLayout draws every PCell variant again when it opens a file. A large
-HW_FET is a few hundred Magic-drawn cells assembled in Python, so the
-finished FET is cached:
+A 10 x 10 FET takes about 3 s to draw, so finished FETs are cached:
 - **Location:** `<KMP_CACHE_DIR>/power/v1/<versions digest>/HW_FET/<key>.gds`,
-  plus a JSON sidecar. The sidecar holds the request, the result numbers,
-  the stamp and the SHA-256 of the GDS.
-- **Key:** covers the request (floats at 12 significant digits, as
-  klayout-magic-pcells writes them) and the sky130A Magic, PDK and
-  generator-code versions. It also covers this package's cache format and
-  the text of `hybrid_waffle.py`. A new Magic, PDK or generator therefore
-  starts new entries.
-- **Damage:** an entry whose GDS no longer matches its SHA-256 is deleted and
-  drawn again.
-- **Unwritable directory:** the library still registers, without the disk
-  cache, and logs a warning that names `KMP_CACHE_DIR`.
-- **Management:** `cache prune` deletes the old versions directories,
-  `cache clear` deletes everything, and `cache stats` counts the entries.
+  plus a sidecar with the request, the report and the stamp.
+- **Key:** covers the request and the generator's source (`waffle.py`,
+  `rules.py`), so a changed rule or generator starts new entries.
+- **Damage:** an entry whose GDS no longer matches its SHA-256 is drawn
+  again.
+- **Unwritable directory:** the library registers without the disk cache
+  and logs a warning.
+- **Management:** `cache prune` removes old versions directories, and
+  `cache clear` removes everything.
 
 ## Stamps and audit
 
-Every HW_FET variant carries two stamps of the form
-`hw1;version=0.3.0;code=<12 hex>;magic=8.3.685;tech=...;pdk=sky130A;digest=<12 hex>`.
-`code` is a digest of the generator's source. `digest` is
-klayout-magic-pcells' sky130A digest: Magic, PDK commit, tech file and
-generator procs.
-
+Every variant carries
+`hw2;version=0.4.0;code=<12 hex>;pdk=sky130A;rules=<12 hex>`:
 - **Generated by:** a GDS property (attribute 100) on one shape, with
-  `;key=<16 hex>;grid=<nm>` added. It survives GDS and OASIS, with or
-  without the library.
-- **Created with:** the hidden parameter `hw_created`. When a file is
-  reopened under another Magic, PDK or generator, drawing the cell logs
-  `instance created with ..., drawn again with ...`.
+  `;key=...;grid=...` added.
+- **Created with:** the hidden parameter `hw_created`. A cell reopened under
+  another generator or rule table logs `instance created with ..., drawn
+  again with ...`.
 
-`audit FILE` reads a file without registering the library. For each
-`sky130_power` cell it reports:
-- cells with the error marker;
+`audit FILE` reports, for each HW_FET cell:
+- the error marker;
 - empty cells;
-- cells without a stamp;
-- stamps from another generator, Magic, PDK or digest than the installed
-  ones;
-- a file dbu that doesn't divide 5 nm, or that can't hold the grid in a
-  cell's stamp.
+- a missing stamp;
+- stamps from another generator or rule table;
+- a file dbu that can't hold the 5 nm grid.
 
-`--regen` also draws every cell again, bypassing the memo and the disk
-cache, compares it with what the file stored, and replaces stale cache
-entries. `audit` exits 1 on any problem. klayout-magic-pcells' own `audit`
-covers the `sky130_magic` cells.
+`--regen` draws every cell again and compares it with what the file stored.
 
 ## If something fails
 
-- **Magic or sky130A can't start:** `register()` logs one error, naming the
-  setting to fix (for example `KMP_MAGIC`), and registers nothing. Cells in
-  open files stay `<defunct>` with their stored geometry. Fix the setting
-  and call `klayout_power_pcells.register()` from the macro console; the
-  cells become live again.
-- **A variant can't be drawn** (refused values, or Magic fails): the cell
-  gets a 1 x 1 um box and the text `HW_ERROR HW_FET: <reason>` on layer
-  255/0, and the log says why. KLayout saves that marker, `audit` reports
-  it, and `generate` exits 1.
+Values the generator refuses (or any failure while drawing) leave the cell
+with a 1 x 1 um box and the text `HW_ERROR HW_FET: <reason>` on 255/0, and
+the log says why. `audit` reports it, and `generate` exits 1.
 
 ## Tests
 
@@ -255,37 +223,23 @@ KMP_PDKS=sky130A python3 -m unittest discover -s tests/power -t .   # inside the
 scripts/test_power.sh                                               # from outside, in the pinned image
 ```
 
-- `test_unit`: stamps, requests, the CLI's value parsing, the PCell
-  declaration, the Salt grain and the macros. No Magic needed.
-- `test_hybrid_waffle`: 13 configurations must be Magic-DRC clean and
-  extract with the right model, W, L, count, total W and nets.
-- `test_pcell`: the PCell's geometry is identical to `write_gds`; DRC and
-  extraction; a GDS round trip; the error marker; the autorun macros under
-  `klayout -b`.
-- `test_backend`, each scenario in new processes with its own cache:
-  - the cache: hits, damage, `KMP_CACHE=0`, an unwritable directory, clear;
-  - stamps, and the created-with warning;
-  - GDS and OASIS reopened with the library (cache off) and without it,
-    saved and reopened again, and a library refresh;
-  - host layouts at dbu 0.5 nm and 5 nm;
-  - `audit` (clean, `--regen`, error marker, foreign stamp, a 2 nm dbu);
-  - every CLI command and exit status;
-  - the form's icons, `KMP_LAZY`, and registration without Magic.
-- `test_gui`: the GUI sessions above, under Xvfb, and what they showed.
-  Skipped without `xvfb-run` or the Salt link.
-
-The GitHub workflow runs `tests/power` as the job `power`, in the pinned
-image, which has Magic 8.3.681 and KLayout 0.30.11. That job hasn't run on
-GitHub yet. Locally everything passes with Magic 8.3.685 and KLayout
-0.30.12.
-
-## Limits
-
-- sky130A only. The original covers four PDKs, but the HW geometry
-  (layers, rules, vias) is written for sky130A.
-- KLayout's own sky130A DRC deck hasn't been run on HW_FET, only Magic's
-  `drc(full)`.
-- The Package Manager isn't shown in the screenshots. Opening it makes
-  KLayout fetch its online package index, which failed with HTTP 500 where
-  they were taken. The Salt install itself is checked by the
-  `klayout -zz` autorun and by `test_gui`.
+- `test_unit`: stamps, requests, CLI parsing, the declaration, packaging.
+- `test_waffle`:
+  - the geometry checks (gate count, W formulas, notch minimums, refusals,
+    `fill_cuts`);
+  - KLayout DRC, Magic DRC and LVS on 13 cases;
+  - the 10 x 10 default (clean in KLayout, LU.2 only in Magic, LVS
+    matching).
+- `test_pcell`:
+  - the PCell's geometry is identical to `write_gds`;
+  - a placed instance passes `verify`;
+  - a GDS round trip;
+  - the error marker;
+  - the autorun macro under `klayout -b`.
+- `test_backend`, each scenario in new processes:
+  - the cache, stamps, GDS/OASIS round trips with and without the library,
+    a library refresh, host dbu 0.5/5 nm;
+  - `audit`, every CLI command, the form's icons, `KMP_LAZY`;
+  - registering and drawing with Magic absent.
+- `test_gui`: the GUI sessions above under Xvfb. Skipped without
+  `xvfb-run` or the Salt link.

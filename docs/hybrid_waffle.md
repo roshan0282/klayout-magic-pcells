@@ -1,201 +1,178 @@
-# Hybrid-waffle power MOSFET (klayout_power_pcells)
+# Hybrid-waffle power MOSFET (sky130A)
 
-A sky130A power MOSFET in the hybrid-waffle (HW) layout of Yoo, Chang,
-Trescases and Ng, "High Performance Low-Voltage Power MOSFETs with Hybrid
-Waffle Layout Structure in a 0.25 um Standard CMOS Process" (ISPSD 2008).
-Every transistor in it is one of Magic's own sky130A MOSFETs, drawn through
-this repository's `sky130_magic` library. Every via, tap and well ring comes
-from Magic's box-paint generators: `via1` to `via4`, `mcon`, `subconn`,
-`mvsubconn`, `subconn_guard`, `mvsubconn_guard`, `nwell` and `mvnwell`.
+`klayout_power_pcells.waffle` draws a hybrid-waffle (HW) power MOSFET after
+Yoo, Chang, Trescases and Ng, "High Performance Low-Voltage Power MOSFETs
+with Hybrid Waffle Layout Structure in a 0.25 um Standard CMOS Process"
+(ISPSD 2008), Fig. 3(a). It is drawn from raw layers with the rule table in
+`rules.py`. Drawing needs only KLayout; verification uses the PDK's KLayout
+deck, Magic and netgen. [guide-power.md](guide-power.md) covers the
+`HW_FET` PCell, the command line and the plugin.
 
-Milestone 1 added the nfet_01v8 generator. Milestone 2 added:
-- the other symmetric MOSFETs;
-- taps inside the array;
-- the KLayout PCell;
-- a measurement of the gate resistance.
+Versions 0.2 and 0.3 placed a Magic MOSFET with `nf` fingers on every tile
+edge. That was not a waffle and has been removed. In a waffle the squares
+*are* the source/drain diffusion, and every shared edge is exactly one
+gate.
 
 ```sh
-KMP_PDKS=sky130A PYTHONPATH=python python3 -m klayout_power_pcells hw \
-    --device sky130_fd_pr__pfet_01v8 --bulk source --l 0.5 --w 2 --nf 3 --nx 6 --ny 6 -o hw.gds
+PYTHONPATH=python python3 -m klayout_power_pcells check nx=10 ny=10 P=4
+# HW_FET: HW nfet_01v8 10x10, P 4.000, L 0.150, N 0.550 um: 180 gates, W_total 628.20 um, bbox 2746.8 um2
+#         (W/area 0.229 um/um2), active 1563.5 um2, licon/square 117/119/120, diff-to-tap 20.9 um (...)
+PYTHONPATH=python python3 -m klayout_power_pcells verify nx=3 ny=3 device=pfet_01v8
 ```
-
-From Python, call `klayout_power_pcells.write_gds(HWParams(...), path)` or
-`generate(layout, HWParams(...))`. Both return an `HWResult` with the pitch,
-the number of blocks and devices, and the total W.
-
-## The PCell
-
-`klayout_power_pcells.register()`, or the autorun macro
-`pymacros/klayout_power_pcells.lym`, registers the KLayout library
-`sky130_power` with the PCell `HW_FET`. Installing it as a Salt package,
-using it in the GUI, the command line, the cache, stamps and `audit`, and
-what happens when something fails are covered in
-[guide-power.md](guide-power.md).
-
-## Parameters
-
-| Parameter | Meaning |
-|---|---|
-| `device` | one of `DEVICES` (below) |
-| `bulk` | `ring`: tap ring around the array, body pin `B`. `source`: a tap in every source tile, body tied to `S` |
-| `l`, `w` | gate length and width of one finger (um) |
-| `nf` | fingers per cell: the `nf` of the MOSFET on each internal tile edge |
-| `nx`, `ny` | tiles per row and column (N x M) |
-| `strap_w` | width of the 45 degree S/D straps, perpendicular (um) |
-| `pitch` | tile pitch (um); default the smallest that fits |
-
-`DEVICES` lists Magic's sky130A MOSFETs whose source and drain are
-interchangeable, which the waffle needs:
-- nfet: `nfet_01v8`, `nfet_01v8_lvt`, `nfet_03v3_nvt`, `nfet_05v0_nvt`,
-  `nfet_g5v0d10v5`;
-- pfet: `pfet_01v8`, `pfet_01v8_lvt`, `pfet_01v8_hvt`, `pfet_g5v0d10v5`;
-- all with the `sky130_fd_pr__` prefix.
-
-The drain-extended `g5v0d16v0` FETs are asymmetric and are refused, as is
-the SONOS cell.
 
 ## Geometry
 
-- **Tiles.** An N x M checkerboard. Tile (i, j) is a source tile when i + j
-  is even, so every internal edge separates S from D. A tile's interior is a
-  met2 plate with a via2/via3/via4 stack in the middle. It has no active
-  area: that is the "hybrid" part, area traded for wide metal.
-- **Unit cell (block).** Each of the (N-1)M + N(M-1) internal edges holds one
-  Magic MOSFET (`guard 0`), centred on the edge with its fingers parallel to
-  it. Vertical edges get it as drawn and horizontal edges rotated 90 degrees,
-  so each tile is ringed by the same block in four orientations.
-- **Source/drain.** The block's S/D strips alternate between its two tiles.
-  A met2 comb crosses the block. Its lines alternate between the tiles; each
-  line has a via1 on its own tile's strips only and runs into that tile's
-  plate.
-- **Straps.** Stacked met3, met4 and met5 at 45 degrees through the tile
-  centres. Diagonal neighbours share a type, so one strap joins all the tiles
-  of a diagonal, and S and D straps alternate.
-  - S straps run up and right into an L-shaped bus (top and right); D straps
-    run down and left into the D bus (left and bottom).
-  - Where a strap meets a bus, a 1.7 um triangle fills the 45 degree notch.
-- **Gate.** On met1:
-  - a bar over each row of gate-contact pads;
-  - a spine from the bar to the grid crossing;
-  - a rail beside each block joining its two crossings;
-  - a ring along the array's outer grid lines.
+All coordinates are integer nm on the 5 nm grid. P, L and N are multiples
+of 10 nm, so their halves are on the grid.
 
-  The rails matter below L ~0.33 um, where Magic contacts each finger at one
-  end only.
-- **Wells and implant layers.** Magic draws nwell, hvi, lvtn, hvtp and the id
-  layers per device. Here they are drawn once over the whole array instead,
-  so neighbouring blocks' copies never leave a gap narrower than their
-  spacing rule. nsdm and psdm stay per block.
-- **Body, `bulk="ring"`.** A ring 0.5 um outside the tile array. It is
-  Magic's `subconn_guard` for nfets, or `mvsubconn_guard` for 5 V nfets
-  (`hvi`); for pfets it is `nwell` or `mvnwell`, which is an n-well over the
-  array with an n-tap ring. A 2 um `mcon` on the bottom side carries the met1
-  `B` pin, and it is also what makes the n-tap metal-connected for Magic's
-  `nwell.4`. Magic's latch-up rules then limit the array size (see Limits).
-- **Body, `bulk="source"`.** Every source tile gets a tap that fills the tile
-  interior. It is Magic's `subconn` or `mvsubconn` for nfets; for pfets it is
-  the same contact with nsdm in place of psdm, since Magic has no n-tap
-  box-paint generator. A 1 um `mcon` and `via1` at the centre tie it to the
-  tile's met2 plate. Every block touches a source tile, so every diffusion is
-  within about one block width of a tap, at any array size. The body is S.
-  For an nfet that means S must be the substrate potential (ground). For a
-  pfet in its n-well, it is the usual high-side connection.
-- **Labels.** `S` and `D` sit on the met5 buses, `G` on met1 at a crossing,
-  and `B` on the ring's met1 (ring mode only). Magic's own port labels in the
-  unit device are removed.
+- **Squares.** Square (i, j) has its centre at ((i + 1/2) P, (j + 1/2) P). It
+  is S when i + j is even and D when it is odd; square (0, 0) is S.
+- **Poly.** Lines of width L run at x = kP and y = lP, for interior k and l.
+  They extend 0.13 um past the diffusion (poly.8) into a poly frame around
+  the array.
+- **Diffusion.** One rectangle, [L/2, nx P - L/2] x [L/2, ny P - L/2], minus a
+  square notch of side N centred on every interior poly crossing. Every
+  gate (poly AND diff) is then a plain L-wide rectangle, and every crossing
+  sits on field oxide (poly.11 forbids bends on diffusion).
+  - Interior gate segments have W = P - N.
+  - Segments that end at the diffusion edge have W = P - N/2 - L/2.
+  - There are (nx - 1) ny + nx (ny - 1) gates.
+- **Minimum notch N.**
+  - With in-array gate contacts (`met1_mesh`): a poly contact plus twice
+    licon.14, which is 0.55 um. For a pfet it is 0.64 um, because the
+    p-diffusion rule is 0.235.
+  - With `frame_only`: L + 2 x poly.4.
+  - Both are rounded up to 10 nm.
+- **Per square**, identical for S and D, from the bottom up:
+  - a licon array, kept 0.06 from the diffusion edges and 0.09 from the
+    gates (licon.11's 0.055, raised so that neighbouring squares' li pads
+    keep li.3 across the gate);
+  - an li pad;
+  - an mcon array;
+  - a met1 island and, above it, a met2 island on the same footprint, joined
+    by a via array. The islands keep 0.28 um (wide-metal spacing) from the
+    gate's met1.
+  - via2 (and via3, via4) only where the square meets its own diagonal
+    stripe.
+- **Gate strap.**
+  - `met1_mesh`: in every notch a poly pad, poly contact, npc, li pad and
+    mcon; met1 lines 0.29 um wide along every poly line.
+  - Both modes: a row of poly contacts in the frame, under an li ring and a
+    met1 ring.
+  - `frame_only`: the frame contacts alone; poly is about 48 ohm/sq, so a
+    large array then has a high distributed gate resistance.
+- **Runners.**
+  - The layers are met3, met3+met4 or met3+met4+met5, stacked and identical.
+  - Stripe d = i - j runs through the centres of squares (i, i - d) as a
+    45 degree band. All squares on a stripe have the same parity, and
+    neighbouring stripes alternate S and D.
+  - The band's horizontal width Δ = P - √2 x spacing, rounded down to
+    20 nm, so that every corner is on the grid. The spacing used is the
+    wide-metal one: 0.4 um on met3/met4, 1.6 um on met5.
+- **Buses** (`L_buses`).
+  - The S bus runs on the top and right, and the D bus on the bottom and
+    left, on every runner layer, at least 3.2 um wide. There are gaps at the
+    top-left and bottom-right corners.
+  - S stripes run into the S bus and stop short of the D bus; D stripes do
+    the reverse.
+  - Where a stripe meets a bus, a triangle fills the 45 degree notch.
+  - With `bus=none`, each stripe gets its own pin instead.
+- **Body.**
+  - nfet: a p-tap guard ring (psdm), with li and met1 over it, labelled B.
+  - pfet: an n-tap ring (nsdm) inside an n-well that encloses the p-diff by
+    0.18 um (0.33 um for 5 V).
+  - 5 V devices: hvi over everything, including the n-well (nwell.9).
+- **Pins and labels.** G on the met1 gate ring, S and D on the buses (top
+  runner layer), B on the guard ring. Pins use datatype 16, labels
+  datatype 5.
 
-The paper reserves metal 2 for the gate mesh. Here met2 carries the S/D
-combs and plates, so the gate mesh is on met1.
+### Self-checks (spec section 9)
 
-## Gate resistance
+`build()` refuses to finish (assertion) if any of these fail:
+- the gate count is wrong;
+- a gate is not an L-wide rectangle;
+- a gate joins two squares of the same type;
+- a poly crossing lies on diffusion;
+- a licon is outside its enclosure or within licon.11 of a gate;
+- a cut is outside its li or met1;
+- li, licon, mcon or via spacing is violated;
+- npc width or spacing is violated;
+- S and D metal touch or come closer than the runner spacing;
+- a square gets no cut on some via layer, or a ring gets no contacts.
 
-`tools/power/gate_resistance.py <gds> <cell>` runs Magic's resistance
-extraction (`extresist`) on the gate net and solves the resulting network.
-Magic skips nets with no source/drain on them, so `tools/power/extresist.tcl`
-first turns the labels into ports. The tool prints:
-- the resistance from G to each finger;
-- G to all fingers tied together;
-- the Elmore-equivalent series resistance for equal gate capacitance per
-  finger (tau = R x C_gate,total).
+`fill_cuts(region, cut, space, encl_lower, encl_upper)` places every cut
+array. It keeps only cuts whose square, enlarged by the enclosure, lies
+inside the metal. That square test is how Magic measures an enclosure, and
+it matters next to the 45 degree edges.
 
-Magic's sky130A extraction values set what matters:
-- li: 12.8 ohm/sq;
-- met1: 0.125 ohm/sq;
-- poly: 48.2 ohm/sq;
-- poly contact: 152 ohm;
-- mcon: 9.3 ohm.
+## The rule table
 
-Measured on 3x3 nfet_01v8 arrays (Elmore-equivalent gate R, ohm):
+`rules.py` holds every value, each with its source in the installed PDK:
+the KLayout deck `sky130A_mr.drc`, or Magic's `sky130A.tech` (for rules the
+deck doesn't check, and for npc and the implants, which Magic generates).
+The values given in the spec were checked against both. These were
+missing or needed correcting:
 
-| Case | R per finger | met1 rails 0.4 um (as drawn) | + li mesh under the met1, mcon-stitched | met1 rails 0.8 um |
-|---|---|---|---|---|
-| L 0.5, W 2, nf 3 | 143-145 | 5.52 | 5.48 (-0.7 %) | 4.79 (-13 %) |
-| L 0.15, W 1.5, nf 2 | 462-465 | 20.49 | 20.41 (-0.4 %) | 19.87 (-3 %) |
-| L 0.15, W 4, nf 6 | 864-869 | 14.03 | 14.00 (-0.2 %) | 13.07 (-7 %) |
+| Rule | Value | Note |
+|---|---|---|
+| li.5 | li overlaps a contact by 0.08 um in one direction | missing from the spec |
+| m1.3ab, m2.3ab | metal wider than 3 um needs 0.28 um spacing | met1/met2 islands are about 3.3 um wide at P = 4 |
+| m3.3cd, m4.5ab | metal wider than 3 um needs 0.4 um spacing | used for the runners |
+| via2.4 / via2.5 | 0.04 um, and 0.085 um on two adjacent edges | 0.085 used on all sides |
+| 5 V n-well | encloses p-diff and n-tap by 0.33 um | 0.18 um is the 1.8 V value |
+| npc | 0.27 um minimum width and spacing, kept off diffusion contacts | |
+| minimum areas | li 0.0561, m1 0.083, m2 0.0676, m3/m4 0.24, m5 4.0 um² | |
 
-- **li meshed with met1 is not worth having.** li's sheet resistance is
-  about 100 times met1's, so in parallel it lowers the mesh resistance by
-  about 1 %, and the whole gate resistance by under 1 %. The prototype also
-  needed extra DRC work at its stitches (`met1.2`, `mcon.1`). It was taken
-  out again.
-- **Each finger's own poly and poly contact dominate.** The spread between
-  the best and the worst finger is 1 to 5 ohm, against 143 to 869 ohm per
-  finger. Below L ~0.33 um Magic contacts each finger at one end only, which
-  is why those fingers are 3 to 6 times worse.
-- **Better levers:**
-  - L >= 0.33 um, so both finger ends are contacted;
-  - shorter fingers (smaller W, more nf);
-  - wider met1 rails, which cost pitch: 0.8 um rails cost 0.8 um of pitch
-    and save 3-13 %.
+## Verification
+
+`verify.py` runs three checks on a GDS:
+- the PDK's KLayout deck (feol, beol and offgrid on; floating_met and seal
+  off);
+- Magic's `drc(full)`;
+- Magic extraction followed by netgen LVS, against a schematic of one device
+  of W = W_total and L = L.
+
+It also checks every extracted device directly: the model, L, S ≠ D, the
+gate on G, and the sum of W.
+
+`tests/power/test_waffle.py` runs this on 13 cases. All are clean in both
+DRC decks and match in LVS ("Circuits match uniquely"), except `bus=none`,
+where LVS is skipped (see below):
+- nfet and pfet 3x3;
+- `frame_only`;
+- nfet and pfet 5 V;
+- pfet lvt at L 0.35 and nfet lvt at P 3;
+- pfet hvt at L 0.3;
+- a one-column array;
+- met3+met4+met5 at P 6;
+- met3 only;
+- `bus=none`;
+- a wider notch and bus.
 
 ## Limits
 
-- At least two tiles.
-- Finger W >= 0.92 um, so each block fits two comb lines.
-- Strap width >= 2.4 um. Below that, Magic's met3.3c / met4.5a (spacing
-  within the halo of metal wider than 3 um) fire where the straps meet the
-  buses: 2.2 and 2.3 um failed, and 2.4 to 3.5 um passed, on 2x2, 3x3 and 2x3
-  grids.
-- `bulk="ring"`: the generator refuses an array in which diffusion would lie
-  more than 14.5 um from the ring (Magic's LU.2 and LU.3 allow 15 um).
-  - With nfet_01v8 at W = 2 um, L = 0.5 um, nf = 3 (pitch 7.83 um), that
-    allows up to 4x4 tiles.
-  - A 5x5 drawn without the check fails LU.2 in Magic.
-  - Use `bulk="source"` for larger arrays.
-- KLayout's sky130A DRC deck has not been run on these layouts, only Magic's
-  `drc(full)`.
+- **Latch-up.** With only a guard ring, the array's centre lies
+  nx P / 2 + about 1 um from a tap. Magic's `drc(full)` flags LU.2 (LU.3 for
+  a pfet) beyond 15 um. The 10 x 10, P = 4 default is 20.9 um, so it gets 40
+  LU.2 markers in Magic; KLayout's deck doesn't check latch-up and passes
+  it.
+  - The generator reports the distance (`lu_max_um`, `lu_ok`), the summary
+    line says it, and the PCell form puts a warning icon on nx and ny.
+  - Taps inside the array would need a decision the spec doesn't make, for
+    example tap squares in place of some S squares.
+- **met5 runners.** A via4 must land on the grid inside the 45 degree
+  stripe, so met5 needs about P ≥ 5.8 um, more than the 4.53 um that width
+  and spacing alone suggest. Below that, the generator refuses with the
+  reason.
+- **`bus=none`.** Each stripe is its own net until the top level connects
+  them, so LVS against one device doesn't apply. Magic names repeated labels
+  `S_uq0`, `D_uq0` and so on. Every device still joins one S stripe to one
+  D stripe.
+- **`runner_style`.** Only `diag45` is drawn. The 45 degree runners pass both
+  DRC decks, so the staircase fallback in the spec wasn't needed.
+- **PDKs.** sky130A only. gf180mcu goes into `rules.PDKS` as another entry
+  later.
 
-## Tests
-
-`tests/power/test_hybrid_waffle.py` uses the parity harness's runners
-(`tests/parity/drc.py`) on 13 configurations:
-- nf 1 to 6 and L 0.15 to 1.5 um;
-- a set pitch and one-row arrays;
-- pfet, 3.3 V and 5 V devices;
-- both body modes, up to 6x6 tiles.
-
-For each configuration:
-- `run_magic_drc` must return no errors;
-- `run_magic_extract` must give blocks x nf devices of the chosen model,
-  each with Magic's checked W and L, summing to the total W;
-- every gate must be on `G`, every source/drain on `S` and `D`, and every
-  body on `B` (ring) or `S` (source).
-
-It also checks that bad parameters are refused.
-
-`tests/power/test_pcell.py` checks that:
-- the PCell's geometry is identical (by XOR) to `write_gds`;
-- a placed pfet is DRC clean and extracts correctly;
-- the parameters and geometry survive a GDS save and reopen;
-- refused parameters draw the error marker;
-- the autorun macros work under `klayout -b`.
-
-```sh
-KMP_PDKS=sky130A python3 -m unittest discover -s tests/power -t .
-```
-
-During development, these also came out DRC clean and extracted correctly:
-- all 9 devices in both body modes;
-- 50 random configurations: device, body, L, W, nf, grid, strap width and
-  pitch;
-- source-body arrays of 8x7 tiles.
+`tools/power/gate_resistance.py <gds> <cell>` (Magic's extresist on the
+gate net) works on any HW_FET GDS. Its figures for the version 0.2 device
+no longer apply and haven't been redone for this one.

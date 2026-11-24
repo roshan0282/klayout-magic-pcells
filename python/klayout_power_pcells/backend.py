@@ -1,23 +1,22 @@
 """Generation, cache and stamps for the sky130_power library.
 
 ``HWGenerator.get(params)`` looks in an in-memory memo, then in the disk
-cache, and only then draws the HW FET (``hybrid_waffle.write_gds``, which
-asks Magic, through klayout-magic-pcells, for the unit device and the vias).
-The disk cache is klayout-magic-pcells' ``GdsCache`` under
-``<KMP_CACHE_DIR>/power``: ``v1/<versions digest>/HW_FET/<key>.gds`` and a
-JSON sidecar holding the request, the generator's numbers (pitch, devices,
-total W), the stamp and the SHA-256 of the GDS. The key covers the request,
-the sky130A Magic/PDK/generator-code versions that klayout-magic-pcells
-stamps its own cells with, this package's version and the text of the
-generator module, so a new Magic, PDK or generator starts new entries.
+cache, and only then draws the FET (``waffle.write_gds``). Drawing needs
+only KLayout: the FET is drawn from raw layers with the rule table in
+rules.py. Magic and netgen are used for verification only (verify.py).
 
-Stamps have the form
-``hw1;version=0.3.0;code=<12 hex>;magic=8.3.685;tech=...;pdk=sky130A;digest=<12 hex>``:
-``code`` is a digest of ``hybrid_waffle.py`` and ``digest`` is
-klayout-magic-pcells' versions digest of sky130A (Magic, PDK commit, tech
-file, generator procs). The generated-by stamp adds ``;key=<16 hex>;grid=<nm>``
-and is a GDS property (attribute 100) on one shape of the cell; the
-created-with stamp is the hidden PCell parameter ``hw_created``.
+The disk cache is klayout-magic-pcells' ``GdsCache`` under
+``<KMP_CACHE_DIR>/power``: ``v1/<versions digest>/HW_FET/<key>.gds`` plus a
+JSON sidecar with the request, the generator's report (gates, W, areas,
+diffusion-to-tap distance), the stamp and the SHA-256 of the GDS. The key
+covers the request, the generator's source (waffle.py, rules.py) and the
+cache format, so a changed generator or rule starts new entries.
+
+Stamps: ``hw2;version=0.4.0;code=<12 hex>;pdk=sky130A;rules=<12 hex>``,
+``code`` a digest of the generator's source and ``rules`` of the PDK's rule
+table. The generated-by stamp adds ``;key=<16 hex>;grid=<nm>`` and is a GDS
+property (attribute 100) on one shape of the cell; the created-with stamp
+is the hidden PCell parameter ``hw_created``.
 """
 
 import hashlib
@@ -26,17 +25,16 @@ import logging
 import os
 import time
 
-PDK = "sky130A"
 CELL = "HW_FET"
 FORM = "flat"
-STAMP_PREFIX = "hw1"
+STAMP_PREFIX = "hw2"
 STAMP_ATTR = 100
-FORMAT = 1          # cache format of this package's entries
+FORMAT = 2          # cache format of this package's entries
 
 log = logging.getLogger("klayout_power_pcells")
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_CODE_FILES = ("hybrid_waffle.py",)
+_CODE_FILES = ("waffle.py", "rules.py")
 
 
 def code_digest(full=False):
@@ -49,15 +47,21 @@ def code_digest(full=False):
     return d if full else d[:12]
 
 
+def rules_digest(pdk="sky130A"):
+    from .rules import PDKS
+    text = json.dumps(PDKS[pdk], sort_keys=True, separators=(",", ":"), default=list)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
 def _version():
     from . import __version__
     return __version__
 
 
 def request_of(params):
-    """The request text of an HWParams: every value as text, floats at 12
-    significant digits (KLayout reopens a saved double up to one ULP off;
-    see klayout-magic-pcells' README), pitch None as ''."""
+    """The request text of a WaffleParams: every value as text, floats at
+    12 significant digits (KLayout reopens a saved double up to one ULP off;
+    see klayout-magic-pcells' README), None as ''."""
     out = {}
     for k, v in sorted(params.as_dict().items()):
         if v is None:
@@ -72,23 +76,23 @@ def request_of(params):
 
 
 def params_of(request):
-    """The HWParams of a request (inverse of request_of)."""
-    from .hybrid_waffle import HWParams
+    """The WaffleParams of a request (inverse of request_of)."""
+    from .waffle import WaffleParams
     r = request
-    return HWParams(l=float(r["l"]), w=float(r["w"]), nf=int(r["nf"]), nx=int(r["nx"]),
-                    ny=int(r["ny"]), strap_w=float(r["strap_w"]),
-                    pitch=float(r["pitch"]) if r.get("pitch") else None,
-                    device=r["device"], bulk=r["bulk"])
+
+    def f(k):
+        return float(r[k]) if r.get(k) else None
+    return WaffleParams(device=r["device"], nx=int(r["nx"]), ny=int(r["ny"]), P=float(r["P"]), L=f("L"),
+                        N=f("N"), gate_strap=r["gate_strap"], runners=tuple(r["runners"].split(",")),
+                        runner_style=r["runner_style"], bus=r["bus"], bus_w=f("bus_w"),
+                        guard_ring=r["guard_ring"] == "1", frame_w=f("frame_w"), pdk=r["pdk"])
 
 
 # -- stamps ----------------------------------------------------------------------
 
-def make_stamp(kmp_versions, key=None, grid=None):
-    from klayout_magic_pcells.stamp import versions_digest
-    v = kmp_versions
-    parts = [STAMP_PREFIX, "version=%s" % _version(), "code=%s" % code_digest(),
-             "magic=%s" % v.magic, "tech=%s" % v.tech, "pdk=%s" % v.pdk,
-             "digest=%s" % versions_digest(v)]
+def make_stamp(pdk="sky130A", key=None, grid=None):
+    parts = [STAMP_PREFIX, "version=%s" % _version(), "code=%s" % code_digest(), "pdk=%s" % pdk,
+             "rules=%s" % rules_digest(pdk)]
     if key:
         parts.append("key=%s" % key[:16])
     if grid:
@@ -107,14 +111,13 @@ def parse_stamp(text):
 
 
 def same_versions(a, b):
-    """Same generator code, Magic, tech, PDK and klayout-magic-pcells digest.
-    The package version alone doesn't count: it changes without the geometry."""
-    return all(a.get(k) == b.get(k) for k in ("code", "magic", "tech", "pdk", "digest"))
+    """Same generator code, PDK and rule table. The package version alone
+    doesn't count: it changes without the geometry."""
+    return all(a.get(k) == b.get(k) for k in ("code", "pdk", "rules"))
 
 
 def describe(st):
-    return " ".join("%s=%s" % (k, st.get(k)) for k in ("version", "code", "magic", "tech", "pdk", "digest")
-                    if st.get(k))
+    return " ".join("%s=%s" % (k, st.get(k)) for k in ("version", "code", "pdk", "rules") if st.get(k))
 
 
 def apply_stamp(layout, cell, stamp):
@@ -139,14 +142,11 @@ def read_stamp(cell):
 
 # -- the cache -----------------------------------------------------------------
 
-def versions_fields(kmp_versions):
-    from klayout_magic_pcells.cache import versions_fields as kmp_fields
-    f = kmp_fields(kmp_versions, PDK)
-    f.update({"power_format": FORMAT, "power_code": code_digest(full=True)})
-    return f
+def versions_fields(pdk="sky130A"):
+    return {"power_format": FORMAT, "pdk": pdk, "power_code": code_digest(full=True), "rules": rules_digest(pdk)}
 
 
-def make_cache(cfg, kmp_versions):
+def make_cache(cfg):
     """GdsCache under <cache>/power, or a session-only one (KMP_CACHE=0, or a
     cache directory that can't be written)."""
     from klayout_magic_pcells import _cache_dir_problem, _log_warn
@@ -160,8 +160,7 @@ def make_cache(cfg, kmp_versions):
                       "the disk cache. Set KMP_CACHE_DIR to a writable directory, or KMP_CACHE=0."
                       % (root, why))
             enabled = False
-    return GdsCache(root, versions_fields(kmp_versions), enabled=enabled,
-                    server_code=code_digest(full=True))
+    return GdsCache(root, versions_fields(), enabled=enabled, server_code=code_digest(full=True))
 
 
 class Result:
@@ -178,12 +177,10 @@ class Result:
 
 
 class HWGenerator:
-    """Memo, then disk cache, then the generator. Thread-safe enough for
-    KLayout, which calls produce from one thread."""
+    """Memo, then disk cache, then the generator."""
 
-    def __init__(self, cache, kmp_versions):
+    def __init__(self, cache):
         self.cache = cache
-        self.versions = kmp_versions
         self.fresh = False      # audit --regen: every get() draws again
         self.replaced = {}      # key -> copy of the disk entry a fresh get() replaced
         self._memo = {}
@@ -204,11 +201,11 @@ class HWGenerator:
         self._memo.clear()
 
     def get(self, params):
-        """Result for ``params``; raises HWParamError for refused values and
-        RuntimeError (or what Magic raised) for failures."""
+        """Result for ``params``; raises WaffleError for values the generator
+        refuses (``param`` names the parameter)."""
         import shutil
         from klayout_magic_pcells.importer import gds_grid_nm
-        from .hybrid_waffle import write_gds
+        from .waffle import summary, write_gds
         key = self.key(params)
         hit = self._memo.get(key)
         if hit is not None and not os.path.isfile(hit.gds_path):
@@ -233,17 +230,14 @@ class HWGenerator:
         tmp = self.cache.tmp_path(key)
         t0 = time.time()
         try:
-            r = write_gds(params, tmp, name=CELL)
+            w = write_gds(params, tmp, name=CELL)
             grid = gds_grid_nm(tmp)
+            result = dict(w.report)
+            result["summary"] = summary(w)
             sidecar = {
-                "key": key, "request": request_of(params),
-                "result": {"pitch": r.pitch, "strap_w": r.strap_w, "blocks": r.blocks,
-                           "devices": r.devices, "w": r.w, "l": r.l, "nf": r.nf,
-                           "total_w": r.total_w, "summary": r.summary(),
-                           "magic_values": {k: str(v) for k, v in r.magic_values.items()
-                                            if k != "kmp_dialog"}},
-                "stamp": make_stamp(self.versions, key, grid), "grid_nm": grid,
-                "versions": versions_fields(self.versions), "gen_s": round(time.time() - t0, 3),
+                "key": key, "request": request_of(params), "result": result,
+                "stamp": make_stamp(params.pdk, key, grid), "grid_nm": grid,
+                "versions": versions_fields(params.pdk), "gen_s": round(time.time() - t0, 3),
                 "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
             gds = self.cache.store(key, CELL, tmp, sidecar)
@@ -264,7 +258,6 @@ class HWGenerator:
 class PowerState:
     def __init__(self):
         self.cfg = None
-        self.versions = None
         self.cache = None
         self.generator = None
         self.library = None
@@ -277,20 +270,17 @@ state = PowerState()
 
 
 def start(cfg=None):
-    """Register klayout-magic-pcells' sky130A library if needed, and set up
-    the generator. Returns the state; raises RuntimeError with the reason
-    when sky130A's Magic can't start."""
-    import klayout_magic_pcells as kmp
-    lib = kmp.register(PDK, cfg=cfg) if cfg is not None else kmp.register(PDK)
-    kst = kmp.state_for(PDK)
-    if lib is None or kst.versions is None:
-        raise RuntimeError("klayout-magic-pcells could not register sky130A (%s)" % (kst.last_error or "no reason given"))
-    if state.generator is not None and state.versions is kst.versions:
+    """Set up the cache and the generator (idempotent). Uses
+    klayout-magic-pcells' settings (KMP_CACHE_DIR, KMP_CACHE, KMP_LAZY);
+    needs no Magic."""
+    if state.generator is not None and (cfg is None or cfg is state.cfg):
         return state
-    state.cfg = kst.cfg
-    state.versions = kst.versions
-    state.cache = make_cache(kst.cfg, kst.versions)
-    state.generator = HWGenerator(state.cache, kst.versions)
-    state.created_stamp = make_stamp(kst.versions)
+    if cfg is None:
+        from klayout_magic_pcells.config import Config
+        cfg = Config.load(pdk="sky130A")
+    state.cfg = cfg
+    state.cache = make_cache(cfg)
+    state.generator = HWGenerator(state.cache)
+    state.created_stamp = make_stamp()
     state.stamp_dict = parse_stamp(state.created_stamp)
     return state

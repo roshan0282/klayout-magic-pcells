@@ -1,185 +1,146 @@
 """Command line: python3 -m klayout_power_pcells <command> ...
 
-  doctor                                 configuration, Magic, versions, one timed generation
-  devices [-v]                           the devices HW_FET takes, and its parameters
-  check [k=v ...]                        what the GUI form makes of these values, and why not
-  generate [k=v ...] -o out.gds          place one HW_FET variant (through the library), write a file
-  hw [--l ... --nx ...] -o out.gds       draw the HW FET as a flat cell (no library)
-  audit FILE [--regen]                   report the HW_FET cells in a file
-  cache {stats,prune,clear}              this package's disk cache
+  doctor                          settings, tools, one timed drawing
+  devices                         the devices and HW_FET's parameters
+  check [k=v ...]                 what the form makes of these values: the summary, or why not
+  generate [k=v ...] -o out.gds   place one HW_FET (through the library) in TOP and write a file
+  hw [k=v ...] -o out.gds         draw the FET as a flat cell, no library
+  verify [k=v ...]                draw it, then KLayout DRC, Magic DRC and netgen LVS
+  audit FILE [--regen]            report the HW_FET cells in a file
+  cache {stats,prune,clear}       this package's disk cache
 
-Exit status: 0 when the FET is drawn (or the check passes), 1 when it isn't
-(the generator refuses the values, Magic fails, or audit finds a problem),
-2 for a value that isn't a number or not one of the choices.
+Values are HW_FET's parameters (devices lists them), e.g.
+  device=pfet_01v8 nx=6 ny=6 P=4 gate_strap=frame_only runners=met3,met4 bus=none guard_ring=0
+L, N and bus_w of 0 mean "the minimum".
+
+Exit status: 0 when the FET is drawn (and, for verify, DRC and LVS pass),
+1 when it isn't or a check fails, 2 for a value that isn't a number or not
+one of the choices.
 """
 
 import argparse
 import os
 import sys
+import tempfile
 import time
 
-PARAMS = ("device", "bulk", "l", "w", "nf", "nx", "ny", "strap_w", "pitch")
+
+def _decl():
+    from .pcell import HWFetPCell
+    return HWFetPCell()
 
 
 def _kv(items):
-    """{name: value} from name=value words; exits 2 on a bad one."""
-    from .hybrid_waffle import BULK_MODES, DEVICES
+    """{name: value} from name=value words, typed as the PCell declares
+    them; exits 2 on a bad value."""
+    import klayout.db as db
+    decl = {p.name: p for p in _decl().get_parameters() if not p.hidden and not p.readonly}
     out = {}
     for it in items:
         if "=" not in it:
             raise SystemExit("error: expected name=value, got %r" % it)
         k, v = it.split("=", 1)
-        if k not in PARAMS:
+        if k not in decl:
             raise SystemExit("error: HW_FET has no parameter %r (try: devices)" % k)
+        p = decl[k]
         try:
-            if k in ("nf", "nx", "ny"):
+            if p.type == db.PCellParameterDeclaration.TypeInt:
                 out[k] = int(v)
-            elif k == "device":
-                full = v if v.startswith("sky130_fd_pr__") else "sky130_fd_pr__" + v
-                if full not in DEVICES:
-                    raise ValueError("not one of %s" % ", ".join(sorted(DEVICES)))
-                out[k] = full
-            elif k == "bulk":
-                if v not in BULK_MODES:
-                    raise ValueError("not one of %s" % ", ".join(BULK_MODES))
-                out[k] = v
-            else:
+            elif p.type == db.PCellParameterDeclaration.TypeDouble:
                 out[k] = float(v)
+            elif p.type == db.PCellParameterDeclaration.TypeBoolean:
+                if v.lower() not in ("0", "1", "true", "false"):
+                    raise ValueError("not 0 or 1")
+                out[k] = v.lower() in ("1", "true")
+            else:
+                choices = list(p.choice_values())
+                if choices and v not in choices:
+                    raise ValueError("not one of %s" % ", ".join(choices))
+                out[k] = v
         except ValueError as e:
             sys.stderr.write("error: %s=%r: %s\n" % (k, v, e))
             raise SystemExit(2)
     return out
 
 
-def _register():
-    from . import register
-    from . import backend
-    lib = register()
-    if lib is None:
-        print("error: sky130_power is not registered: %s" % backend.state.last_error, file=sys.stderr)
-        raise SystemExit(1)
-    return lib
+def _params(vals):
+    from .pcell import EDITABLE, params_of_values
+    full = {p.name: p.default for p in _decl().get_parameters()}
+    full.update(vals)
+    return params_of_values({n: full[n] for n in EDITABLE})
 
 
 def cmd_doctor(args):
     from klayout_magic_pcells.config import Config
     from . import __version__, backend
-    from .hybrid_waffle import HWParams, DEVICES
+    from .verify import tools
+    from .waffle import WaffleParams, build, summary
     ok = True
-    try:
-        cfg = Config.load(pdk=backend.PDK)
-    except Exception as e:
-        print("configuration error: %s" % e)
-        return 2
-    print("klayout_power_pcells %s (generator code %s)" % (__version__, backend.code_digest()))
-    print("configuration (config file: %s)" % (cfg.config_file or "none"))
+    cfg = Config.load(pdk="sky130A")
+    print("klayout_power_pcells %s (generator code %s, rules %s)" % (__version__, backend.code_digest(),
+                                                                     backend.rules_digest()))
     for name, val, src in cfg.describe():
-        if name in ("magic", "pdk_root", "magicrc", "cache_dir", "cache_enabled", "lazy", "timeout"):
+        if name in ("pdk_root", "cache_dir", "cache_enabled", "lazy"):
             print("  %-14s %-60s %s" % (name, val, src))
-    for p in cfg.problems():
-        ok = False
-        print("PROBLEM: " + p)
     try:
         import klayout.db as kdb
         print("klayout module %s" % getattr(kdb, "__version__", "?"))
     except ImportError:
-        print("klayout Python module: not importable (only needed outside KLayout)")
-    t = time.time()
-    try:
-        st = backend.start()
-    except Exception as e:
-        print("PROBLEM: %s" % e)
-        return 1
-    v = st.versions
-    print("sky130A Magic ready in %.2f s: magic %s, tech %s, PDK commit %s"
-          % (time.time() - t, v.magic, v.tech, getattr(v, "pdk_commit", "?")))
+        ok = False
+        print("PROBLEM: the klayout Python module is not importable")
+    st = backend.start()
     print("stamp %s" % st.created_stamp)
     print("cache %s (%s)" % (st.cache.base, "on" if st.cache.enabled else "off: session only"))
-    print("%d devices: %s" % (len(DEVICES), ", ".join(n.replace("sky130_fd_pr__", "") for n in sorted(DEVICES))))
-    for dev in sorted(DEVICES):
-        try:
-            import klayout_magic_pcells as kmp
-            kmp.dialog_values(dev, {"guard": False}, pdk=backend.PDK)
-        except Exception as e:
-            ok = False
-            print("PROBLEM: Magic has no working %s: %s" % (dev, e))
-    p = HWParams(nx=2, ny=2, nf=1)
-    t = time.time()
+    for t, path in tools().items():
+        print("  %-8s %s" % (t, path or "not found (needed by verify only)"))
+    t0 = time.time()
     try:
-        st.generator.fresh = True
-        r = st.generator.get(p)
-        print("drew a 2x2 HW_FET in %.2f s: %s" % (time.time() - t, r.info["summary"]))
+        w = build(WaffleParams(nx=3, ny=3))
+        print("drew a 3x3 HW_FET in %.2f s: %s" % (time.time() - t0, summary(w)))
     except Exception as e:
         ok = False
-        print("PROBLEM: drawing a 2x2 HW_FET failed: %s" % e)
-    finally:
-        st.generator.fresh = False
+        print("PROBLEM: drawing a 3x3 HW_FET failed: %s" % e)
     return 0 if ok else 1
 
 
 def cmd_devices(args):
-    from .hybrid_waffle import DEVICES
-    from .pcell import HWFetPCell
-    from klayout_magic_pcells.config import Config
-    from klayout_magic_pcells.manifest import Manifest
-    man = None
-    if args.verbose:
-        try:
-            man = Manifest.load(Config.load(pdk="sky130A").manifest)
-        except Exception as e:
-            print("(cannot read the sky130A manifest: %s)" % e)
+    from .rules import PDKS
+    pdk = PDKS["sky130A"]
     print("HW_FET in sky130_power (sky130A); devices:")
-    for n in sorted(DEVICES):
-        kind, hv = DEVICES[n]
-        line = "  %-32s %sfet%s" % (n, kind, ", thick oxide (hvi)" if hv else "")
-        if man is not None and man.get(n) is not None:
-            spec = man.get(n)
-            lims = []
-            for pn in ("w", "l"):
-                pp = spec.param(pn)
-                if pp is not None and pp.check_min:
-                    lims.append("%s >= %s um" % (pn, pp.check_min))
-            if lims:
-                line += "   Magic: " + ", ".join(lims)
-        print(line)
+    for n, d in sorted(pdk["devices"].items()):
+        print("  %-16s %sfet%s, L >= %.3f um%s" % (n, d["kind"], " thick oxide (hvi)" if d["hv"] else "",
+                                                  d["lmin"] / 1000.0,
+                                                  (", " + "+".join(d["vt"])) if d["vt"] else ""))
     print("parameters:")
-    for pd in HWFetPCell().get_parameters():
-        if pd.hidden:
+    for p in _decl().get_parameters():
+        if p.hidden:
             continue
-        print("  %-8s %-36s default %s%s" % (pd.name, pd.description, pd.default,
-                                             "  (read-only)" if pd.readonly else ""))
+        ch = list(p.choice_values())
+        print("  %-12s %-38s default %-12s%s%s" % (p.name, p.description, p.default,
+                                                   ("  one of " + ", ".join(ch)) if ch else "",
+                                                   "  (read-only)" if p.readonly else ""))
     return 0
 
 
 def cmd_check(args):
-    from . import backend
-    from .hybrid_waffle import HWParamError
-    from .pcell import EDITABLE, HWFetPCell, magic_corrections
-    vals = _kv(args.values)
-    _register()
-    full = {p.name: p.default for p in HWFetPCell().get_parameters()}
-    full.update(vals)
-    for k, (typed, shown) in magic_corrections(full).items():
-        print("HW_FET: Magic's dialog shows %s=%s (entered %s)" % (k, shown, typed))
-        full[k] = shown
+    from .waffle import WaffleError, build, summary
+    p = _params(_kv(args.values))
     try:
-        r = backend.state.generator.get(HWFetPCell._params({n: full[n] for n in EDITABLE}))
-    except HWParamError as e:
+        w = build(p)
+    except WaffleError as e:
         print("HW_FET: not drawn: %s (parameter %s)" % (e, e.param))
         return 1
-    except Exception as e:
-        print("HW_FET: not drawn: %s" % e)
-        return 1
-    print("HW_FET: %s" % r.info["summary"])
+    print("HW_FET: %s" % summary(w))
     return 0
 
 
 def cmd_generate(args):
     import klayout.db as db
-    from . import form_values
+    from . import form_values, register
     from .pcell import ERROR_LAYER
     vals = _kv(args.values)
-    _register()
+    if register() is None:
+        return 1
     v = form_values(vals)
     ly = db.Layout()
     ly.dbu = 0.001
@@ -197,17 +158,44 @@ def cmd_generate(args):
 
 
 def cmd_hw(args):
-    from .hybrid_waffle import HWParams, write_gds
-    p = HWParams(l=args.l, w=args.w, nf=args.nf, nx=args.nx, ny=args.ny, strap_w=args.strap,
-                 pitch=args.pitch, device=args.device, bulk=args.bulk)
+    from .waffle import WaffleError, summary, write_gds
     try:
-        res = write_gds(p, args.out, name=args.name)
-    except ValueError as e:
-        print("error: %s" % e, file=sys.stderr)
+        w = write_gds(_params(_kv(args.values)), args.out, name=args.name)
+    except WaffleError as e:
+        print("error: %s (parameter %s)" % (e, e.param), file=sys.stderr)
         return 1
-    print(res.summary())
+    print(summary(w))
     print("wrote %s (cell %s)" % (args.out, args.name))
     return 0
+
+
+def cmd_verify(args):
+    from .verify import verify
+    from .waffle import WaffleError, summary, write_gds
+    work = args.keep or tempfile.mkdtemp(prefix="hw_verify_")
+    os.makedirs(work, exist_ok=True)
+    gds = os.path.join(work, "HW_FET.gds")
+    try:
+        w = write_gds(_params(_kv(args.values)), gds)
+    except WaffleError as e:
+        print("not drawn: %s (parameter %s)" % (e, e.param))
+        return 1
+    print(summary(w))
+    res = verify(gds, w.report, work=work, lvs=not args.no_lvs)
+    print("KLayout DRC (%s): %s" % ("sky130A_mr.drc", res["klayout"] or "clean"))
+    print("Magic DRC (drc(full)): %s" % (res["magic"] or "clean"))
+    if "devices" in res:
+        print("extracted %d devices, W %.3f um; LVS against one device of W %.3f: %s"
+              % (res["devices"], res["W_extracted_um"], w.report["W_total_um"],
+                 {True: "match", False: "MISMATCH", None: "skipped (bus=none: one net per stripe)"}[res["lvs"]]))
+    for p in res["problems"]:
+        print("PROBLEM: " + p)
+    if args.keep:
+        print("files in %s" % work)
+    else:
+        import shutil
+        shutil.rmtree(work, ignore_errors=True)
+    return 1 if res["problems"] else 0
 
 
 def cmd_audit(args):
@@ -220,66 +208,49 @@ def cmd_audit(args):
 def cmd_cache(args):
     from klayout_magic_pcells.cache import GdsCache
     from klayout_magic_pcells.config import Config
+    from . import backend
     cfg = Config.load(pdk="sky130A")
     root = os.path.join(cfg.cache_dir, "power")
+    c = GdsCache.__new__(GdsCache)
+    c.root = root
     if args.action == "stats":
-        if not os.path.isdir(root):
-            print("cache %s: empty" % root)
-            return 0
-        c = GdsCache.__new__(GdsCache)
-        c.root = root
         n = size = 0
         for d in c.version_dirs():
             for dp, _, files in os.walk(d):
                 for fn in files:
                     n += fn.endswith(".gds")
                     size += os.path.getsize(os.path.join(dp, fn))
-        print("cache %s: %d entries, %.1f MB, %d versions directories"
-              % (root, n, size / 1e6, len(c.version_dirs())))
+        print("cache %s: %d entries, %.1f MB, %d versions directories" % (root, n, size / 1e6, len(c.version_dirs())))
         return 0
     if args.action == "clear":
-        c = GdsCache.__new__(GdsCache)
-        c.root = root
         c.clear()
         print("cleared %s" % root)
         return 0
-    # prune: keep the current versions directory only
-    from . import backend
-    try:
-        st = backend.start()
-    except Exception as e:
-        print("error: cannot learn the current versions (%s)" % e, file=sys.stderr)
-        return 1
+    st = backend.start()
     removed, _other = st.cache.prune(current={"sky130A": st.cache.vdigest})
     print("pruned %d directories; kept %s" % (len(removed), st.cache.base))
     return 0
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="klayout_power_pcells",
-                                 description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(prog="klayout_power_pcells", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor")
-    p = sub.add_parser("devices")
-    p.add_argument("-v", "--verbose", action="store_true")
+    sub.add_parser("devices")
     p = sub.add_parser("check")
     p.add_argument("values", nargs="*")
     p = sub.add_parser("generate")
     p.add_argument("values", nargs="*")
     p.add_argument("-o", "--out", required=True)
     p.add_argument("--top", default="TOP")
-    hw = sub.add_parser("hw", help="draw the HW FET as a flat cell, without the library")
-    hw.add_argument("--device", default="sky130_fd_pr__nfet_01v8")
-    hw.add_argument("--bulk", default="ring", choices=("ring", "source"))
-    hw.add_argument("--l", type=float, default=0.5)
-    hw.add_argument("--w", type=float, default=2.0)
-    hw.add_argument("--nf", type=int, default=3)
-    hw.add_argument("--nx", type=int, default=3)
-    hw.add_argument("--ny", type=int, default=3)
-    hw.add_argument("--strap", type=float, default=3.0)
-    hw.add_argument("--pitch", type=float, default=None)
-    hw.add_argument("--name", default="HW_FET")
-    hw.add_argument("-o", "--out", required=True)
+    p = sub.add_parser("hw")
+    p.add_argument("values", nargs="*")
+    p.add_argument("-o", "--out", required=True)
+    p.add_argument("--name", default="HW_FET")
+    p = sub.add_parser("verify")
+    p.add_argument("values", nargs="*")
+    p.add_argument("--no-lvs", action="store_true")
+    p.add_argument("--keep", help="keep the GDS, reports and netlists in this directory")
     p = sub.add_parser("audit")
     p.add_argument("file")
     p.add_argument("--regen", action="store_true")
@@ -287,7 +258,7 @@ def main(argv=None):
     p.add_argument("action", choices=("stats", "prune", "clear"))
     args = ap.parse_args(argv)
     return {"doctor": cmd_doctor, "devices": cmd_devices, "check": cmd_check, "generate": cmd_generate,
-            "hw": cmd_hw, "audit": cmd_audit, "cache": cmd_cache}[args.cmd](args)
+            "hw": cmd_hw, "verify": cmd_verify, "audit": cmd_audit, "cache": cmd_cache}[args.cmd](args)
 
 
 if __name__ == "__main__":

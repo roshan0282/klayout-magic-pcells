@@ -1,21 +1,15 @@
-"""The ``sky130_power`` KLayout library: the HW FET as a PCell.
+"""The ``sky130_power`` KLayout library: the hybrid-waffle FET as a PCell.
 
-Behaviour, after klayout-magic-pcells' PCells:
-
-* produce draws through ``backend.HWGenerator`` (memo, disk cache, then the
-  generator), copies the flat GDS into the cell and stamps it (generated-by
-  stamp, a GDS property on one shape). It never raises: refused values or a
-  failed generation draw a 1 x 1 um box and an ``HW_ERROR HW_FET: <reason>``
-  text on 255/0.
-* coerce makes W, L and nf what Magic's dialog shows for the unit device
-  (Magic's ``_check`` limits, e.g. ``Mos length must be >= 0.15 um``), as the
-  device PCells of klayout-magic-pcells do, and fills the read-only fields
-  that report the pitch, the number of fingers, the total W and the size.
-* The form's icons: a warning on a value Magic's dialog changed, an error on
-  the parameter that makes the generator refuse (with its reason), as tool
-  tips.
-* ``hw_created`` (hidden) is the created-with stamp. An instance reopened
-  under another Magic, PDK or generator logs a warning once.
+* produce draws through ``backend.HWGenerator`` (memo, disk cache, then
+  waffle.py), copies the flat GDS into the cell and stamps it. It never
+  raises: values the generator refuses draw a 1 x 1 um box and an
+  ``HW_ERROR HW_FET: <reason>`` text on 255/0.
+* The form: an error icon on the parameter the generator blames (its
+  reason as the tool tip), a warning icon on nx and ny when the diffusion
+  lies more than 15 um from the guard ring (Magic's LU.2/LU.3), and a
+  read-only Result line with the gate count, total W and area.
+* ``hw_created`` (hidden) is the created-with stamp; an instance reopened
+  under another generator or rule table logs a warning once.
 * With ``KMP_LAZY=1`` the form shows an Update button instead of drawing on
   every edit.
 """
@@ -26,14 +20,18 @@ import json
 import klayout.db as db
 
 from . import backend
-from . import hybrid_waffle as hw
+from .rules import PDKS
+from .waffle import WaffleError, WaffleParams
 
 LIBRARY_NAME = "sky130_power"
 PCELL_NAME = backend.CELL
+PDK = "sky130A"
 ERROR_LAYER = (255, 0)
 CREATED_PARAM = "hw_created"
 INFO_PARAM = "info"
-EDITABLE = ("device", "bulk", "l", "w", "nf", "nx", "ny", "strap_w", "pitch")
+EDITABLE = ("device", "nx", "ny", "P", "L", "N", "gate_strap", "runners", "runner_style", "bus", "bus_w",
+            "guard_ring")
+RUNNER_CHOICES = ("met3,met4", "met3", "met3,met4,met5")
 
 
 def _warn(msg):
@@ -59,71 +57,63 @@ def draw_error(layout, cell, reason):
                                     db.DTrans()))
 
 
-def magic_corrections(values):
-    """{name: (typed, shown)} for W, L and nf that Magic's dialog changes,
-    and the dialog's message text."""
-    import klayout_magic_pcells as kmp
-    typed = {"w": values["w"], "l": values["l"], "nf": values["nf"], "guard": False}
-    shown = kmp.dialog_values(values["device"], typed, pdk=backend.PDK)
-    out = {}
-    for k in ("w", "l", "nf"):
-        sv = int(shown[k]) if k == "nf" else float(shown[k])
-        if abs(float(sv) - float(values[k])) > 1e-9:
-            out[k] = (values[k], sv)
-    return out
+def params_of_values(v):
+    """WaffleParams of the PCell's values (0 means 'the minimum' for L, N, bus_w)."""
+    return WaffleParams(device=v["device"], nx=v["nx"], ny=v["ny"], P=v["P"],
+                        L=v["L"] if v["L"] > 0 else None, N=v["N"] if v["N"] > 0 else None,
+                        gate_strap=v["gate_strap"], runners=tuple(str(v["runners"]).split(",")),
+                        runner_style=v["runner_style"], bus=v["bus"],
+                        bus_w=v["bus_w"] if v["bus_w"] > 0 else None, guard_ring=bool(v["guard_ring"]),
+                        pdk=PDK)
 
 
 def info_text(res):
     i = res.info
-    return ("pitch %.3f um, %d fingers (%d cells x nf %d), total W %.2f um, strap %.3f um"
-            % (i["pitch"], i["devices"], i["blocks"], i["nf"], i["total_w"], i["strap_w"]))
+    lu = i.get("lu_max_um")
+    return ("%d gates, W %.2f um, L %.3f, N %.3f um, %.1f um2 (W/area %.3f)%s"
+            % (i["n_gates"], i["W_total_um"], i["L_um"], i["N_um"], i["bbox_area_um2"], i["W_per_bbox_area"],
+               "" if lu is None or i.get("lu_ok") else "; diffusion %.1f um from a tap (Magic LU wants 15)" % lu))
 
 
 class HWFetPCell(db.PCellDeclarationHelper):
-    """Hybrid-waffle power MOSFET (sky130A), drawn from Magic's devices."""
+    """Hybrid-waffle power MOSFET (sky130A), drawn from raw layers."""
 
     def __init__(self):
         super().__init__()
-        d = hw.HWParams()
-        self.param("device", self.TypeString, "Device", default=d.device,
-                   choices=[(n.replace("sky130_fd_pr__", ""), n) for n in sorted(hw.DEVICES)])
-        self.param("bulk", self.TypeString, "Body", default=d.bulk,
-                   choices=[("Tap ring around the array (pin B)", "ring"),
-                            ("Tap in every source tile, tied to S", "source")])
-        self.param("l", self.TypeDouble, "Gate length L", default=d.l, unit="um")
-        self.param("w", self.TypeDouble, "Finger width W", default=d.w, unit="um")
-        self.param("nf", self.TypeInt, "Fingers per cell", default=d.nf)
-        self.param("nx", self.TypeInt, "Tiles per row (N)", default=d.nx)
-        self.param("ny", self.TypeInt, "Tiles per column (M)", default=d.ny)
-        self.param("strap_w", self.TypeDouble, "Diagonal strap width", default=d.strap_w, unit="um")
-        self.param("pitch", self.TypeDouble, "Tile pitch (0 = minimum)", default=0.0, unit="um")
+        d = WaffleParams()
+        devs = sorted(PDKS[PDK]["devices"])
+        self.param("device", self.TypeString, "Device", default=d.device, choices=[(n, n) for n in devs])
+        self.param("nx", self.TypeInt, "Squares in x (nx)", default=d.nx)
+        self.param("ny", self.TypeInt, "Squares in y (ny)", default=d.ny)
+        self.param("P", self.TypeDouble, "Square pitch P", default=d.P, unit="um")
+        self.param("L", self.TypeDouble, "Gate length L (0 = device minimum)", default=0.0, unit="um")
+        self.param("N", self.TypeDouble, "Notch side N (0 = minimum)", default=0.0, unit="um")
+        self.param("gate_strap", self.TypeString, "Gate strap", default=d.gate_strap,
+                   choices=[("met1 mesh, contacts in every notch", "met1_mesh"),
+                            ("frame only (high gate resistance)", "frame_only")])
+        self.param("runners", self.TypeString, "Diagonal S/D runners", default=",".join(d.runners),
+                   choices=[(c, c) for c in RUNNER_CHOICES])
+        self.param("runner_style", self.TypeString, "Runner style", default=d.runner_style,
+                   choices=[("45 degree", "diag45")])
+        self.param("bus", self.TypeString, "S/D buses", default=d.bus,
+                   choices=[("L buses: S top/right, D bottom/left", "L_buses"), ("none: a pin per stripe", "none")])
+        self.param("bus_w", self.TypeDouble, "Bus width (0 = auto)", default=0.0, unit="um")
+        self.param("guard_ring", self.TypeBoolean, "Guard ring (pin B)", default=d.guard_ring)
         self.param(INFO_PARAM, self.TypeString, "Result", default="", readonly=True)
         self.param(CREATED_PARAM, self.TypeString, "Created with", hidden=True, readonly=True,
-                   default=backend.state.created_stamp)
+                   default=backend.state.created_stamp or backend.make_stamp())
         self._warned = set()
-
-    # -- helpers ---------------------------------------------------------
 
     def _values(self, states=None):
         if states is not None:
             return {n: states.parameter(n).value for n in EDITABLE}
         return {n: getattr(self, n) for n in EDITABLE}
 
-    @staticmethod
-    def _params(v):
-        return hw.HWParams(l=v["l"], w=v["w"], nf=v["nf"], nx=v["nx"], ny=v["ny"],
-                           strap_w=v["strap_w"], pitch=v["pitch"] if v["pitch"] > 0 else None,
-                           device=v["device"], bulk=v["bulk"])
-
-    # -- KLayout hooks ---------------------------------------------------
-
     def display_text_impl(self):
-        return "HW_FET(%s %dx%d nf=%d W=%g L=%g %s)" % (
-            self.device.replace("sky130_fd_pr__", ""), self.nx, self.ny, self.nf, self.w, self.l,
-            self.bulk)
+        return "HW_FET(%s %dx%d P=%g %s)" % (self.device, self.nx, self.ny, self.P, self.gate_strap)
 
     def cell_name_impl(self):
-        req = backend.request_of(self._params(self._values()))
+        req = backend.request_of(params_of_values(self._values()))
         req[CREATED_PARAM] = getattr(self, CREATED_PARAM)
         text = json.dumps(req, sort_keys=True, separators=(",", ":"))
         return "HW_FET__%s" % hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
@@ -133,24 +123,10 @@ class HWFetPCell(db.PCellDeclarationHelper):
         return bool(cfg is not None and cfg.lazy)
 
     def coerce_parameters_impl(self):
-        if backend.state.generator is None:
+        if backend.state.generator is None or self.wants_lazy_evaluation():
             return
         try:
-            corr = magic_corrections(self._values())
-        except Exception as e:
-            backend.log.debug("coerce: Magic's dialog failed: %s", e)
-            return
-        for k, (typed, shown) in corr.items():
-            setattr(self, k, shown)
-            key = ("corr", k, typed)
-            if key not in self._warned:
-                self._warned.add(key)
-                _warn("%s %s: Magic's dialog shows %s=%s (entered %s)"
-                      % (LIBRARY_NAME, PCELL_NAME, k, shown, typed))
-        if self.wants_lazy_evaluation():
-            return
-        try:
-            res = backend.state.generator.get(self._params(self._values()))
+            res = backend.state.generator.get(params_of_values(self._values()))
             setattr(self, INFO_PARAM, info_text(res))
         except Exception as e:
             setattr(self, INFO_PARAM, "not drawn: %s" % " ".join(str(e).split()))
@@ -161,7 +137,7 @@ class HWFetPCell(db.PCellDeclarationHelper):
                 raise RuntimeError("the sky130_power backend is not running")
             from klayout_magic_pcells.importer import insert_gds_flat
             gen = backend.state.generator
-            p = self._params(self._values())
+            p = params_of_values(self._values())
             res = gen.get(p)
             try:
                 insert_gds_flat(self.layout, self.cell, res.gds_path)
@@ -193,8 +169,7 @@ class HWFetPCell(db.PCellDeclarationHelper):
             draw_error(self.layout, self.cell, e)
 
     def callback_impl(self, name):
-        # GUI form only. KLayout calls this before coerce, which then writes
-        # the corrected values into the form; the icons say why.
+        # GUI form only: icons say why a value can't be drawn, or warn.
         states = getattr(self, "_param_states", None)
         if states is None:
             return
@@ -202,46 +177,43 @@ class HWFetPCell(db.PCellDeclarationHelper):
             st = states.parameter(n)
             st.icon = db.PCellParameterState.NoIcon
             st.tooltip = ""
+        if self.wants_lazy_evaluation() or backend.state.generator is None:
+            return
         try:
-            values = self._values(states)
-            corr = magic_corrections(values)
-            for k, (typed, shown) in corr.items():
-                st = states.parameter(k)
-                st.icon = db.PCellParameterState.WarningIcon
-                st.tooltip = "Magic's dialog shows %s (entered %s)" % (shown, typed)
-                values[k] = shown
-            if self.wants_lazy_evaluation():
-                return
-            backend.state.generator.get(self._params(values))
-        except hw.HWParamError as e:
+            res = backend.state.generator.get(params_of_values(self._values(states)))
+            i = res.info
+            if i.get("lu_max_um") is not None and not i.get("lu_ok"):
+                for n in ("nx", "ny"):
+                    st = states.parameter(n)
+                    st.icon = db.PCellParameterState.WarningIcon
+                    st.tooltip = ("diffusion lies %.1f um from the guard ring; Magic's LU.2/LU.3 want "
+                                  "15 um (KLayout's sky130 deck doesn't check it)" % i["lu_max_um"])
+        except WaffleError as e:
             st = states.parameter(e.param if e.param in EDITABLE else "device")
             st.icon = db.PCellParameterState.ErrorIcon
             st.tooltip = str(e)
         except Exception as e:
             st = states.parameter("device")
             st.icon = db.PCellParameterState.ErrorIcon
-            st.tooltip = "generation failed: %s" % e
+            st.tooltip = "drawing failed: %s" % e
 
 
 class PowerLibrary(db.Library):
     def __init__(self):
         super().__init__()
-        self.description = "Power MOSFET layouts for sky130A built from Magic's devices"
-        self.layout().dbu = hw.DBU
+        self.description = "Hybrid-waffle power MOSFET for sky130A"
+        self.layout().dbu = 0.001
         self.layout().register_pcell(PCELL_NAME, HWFetPCell())
         self.register(LIBRARY_NAME)
 
 
 def register(cfg=None):
-    """Register the ``sky130_power`` library and return it, or None.
-
-    It needs klayout-magic-pcells' sky130A library (registered here if it
-    isn't yet). When that can't register, one error is logged and nothing is
-    registered: cells of open files stay ``<defunct>sky130_power.HW_FET`` with
-    their stored geometry until a later register() succeeds. Idempotent."""
+    """Register the ``sky130_power`` library and return it (idempotent).
+    Needs only KLayout; returns None, with one logged error, if the cache
+    or configuration can't be set up."""
     st = backend.state
-    lib = db.Library.library_by_name(LIBRARY_NAME)
-    if lib is not None and st.library is not None and st.generator is not None:
+    if db.Library.library_by_name(LIBRARY_NAME) is not None and st.library is not None \
+            and st.generator is not None:
         return st.library
     try:
         backend.start(cfg)

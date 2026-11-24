@@ -6,13 +6,14 @@
 #
 # with KMP_SHOT_SESSION one of:
 #
-#   main     the Package Manager entry, the library list, the HW_FET form,
-#            an error icon (strap too narrow) and a warning icon (L below
-#            Magic's minimum) with their tool tips, placing the FET, editing
-#            it in the Properties dialog (pfet, taps in the source tiles),
-#            the log; saves $KMP_SHOT_WORK/power-demo.gds
-#   reopen   opens that file with the libraries registered
-#   defunct  opens it with Magic missing, so sky130_power doesn't register
+#   main     the library list, the HW_FET form with the latch-up warning of
+#            the 10 x 10 default, error icons for a pitch and a notch that
+#            are too small (with their tool tips), placing a 4 x 4 FET,
+#            editing it in the Properties dialog (pfet, gate strapped at
+#            the frame only, 5 x 5); saves $KMP_SHOT_WORK/power-demo.gds
+#   reopen   opens that file with the library registered
+#   defunct  opens it without the package (KLAYOUT_HOME without it), so
+#            sky130_power isn't registered
 #
 # What each step saw (field values, icon tool tips, cell titles) goes to
 # $KMP_SHOT_WORK/notes-<session>.json; raw PNGs to $KMP_SHOT_WORK/raw/.
@@ -287,41 +288,69 @@ def hw_form_grab():
     shot("power-form")
 
 
-def hw_type_strap():
-    type_text(field(pcell_page(), "strap_w"), "1.0")
-
-
-def hw_hover_strap():
+def _hover_grab_note(name, fld):
     pp = pcell_page()
-    notes["after_strap"] = {"icons": icons(pp)}
-    hover_widget(icon_of(pp, field(pp, "strap_w")))
+    notes[name] = {"icons": icons(pp), "info": field(pp, "info").text, fld: field(pp, fld).text}
+    hover_widget(icon_of(pp, field(pp, fld)))
 
 
-def hw_strap_grab():
+def _form_grab(png):
     pp = pcell_page()
     r = global_rect(pp)
-    shot("power-strap-error", (r[0], r[1] - 34, min(r[2], 640), r[3] + 34))
+    shot(png, (r[0], r[1] - 34, min(r[2], 700), r[3] + 34))
 
 
-def hw_type_strap_ok():
-    type_text(field(pcell_page(), "strap_w"), "3.0")
+def hw_hover_lu():
+    _hover_grab_note("form_default", "nx")
 
 
-def hw_type_l():
-    type_text(field(pcell_page(), "l"), "0.1")
+def hw_lu_grab():
+    _form_grab("power-form-lu-warning")
 
 
-def hw_hover_l():
+def hw_type_p():
+    type_text(field(pcell_page(), "P"), "0.5")
+
+
+def hw_hover_p():
+    _hover_grab_note("after_p", "P")
+
+
+def hw_p_grab():
+    _form_grab("power-p-error")
+
+
+def hw_type_p_ok():
+    type_text(field(pcell_page(), "P"), "4")
+
+
+def hw_type_n():
+    type_text(field(pcell_page(), "N"), "0.3")
+
+
+def hw_hover_n():
+    _hover_grab_note("after_n", "N")
+
+
+def hw_n_grab():
+    _form_grab("power-n-error")
+
+
+def hw_type_n_ok():
+    type_text(field(pcell_page(), "N"), "0")
+
+
+def hw_type_nx():
+    type_text(field(pcell_page(), "nx"), "4")
+
+
+def hw_type_ny():
+    type_text(field(pcell_page(), "ny"), "4")
+
+
+def hw_small_note():
     pp = pcell_page()
-    notes["after_l"] = {"l": field(pp, "l").text, "icons": icons(pp),
-                        "info": field(pp, "info").text}
-    hover_widget(icon_of(pp, field(pp, "l")))
-
-
-def hw_l_grab():
-    pp = pcell_page()
-    r = global_rect(pp)
-    shot("power-l-corrected", (r[0], r[1] - 34, min(r[2], 640), r[3] + 34))
+    notes["before_place"] = {"icons": icons(pp), "info": field(pp, "info").text}
 
 
 def hw_place():
@@ -361,7 +390,8 @@ def props_tab():
 def _pd_state(tag):
     pd = toplevel(name="properties_dialog")
     notes.setdefault("props_steps", []).append({
-        "after": tag, "device": combo(pd, "device").currentText, "bulk": combo(pd, "bulk").currentText,
+        "after": tag, "device": combo(pd, "device").currentText,
+        "gate_strap": combo(pd, "gate_strap").currentText,
         "nx": field(pd, "nx").text, "ny": field(pd, "ny").text})
 
 
@@ -371,13 +401,13 @@ def props_device():
     choose(combo(toplevel(name="properties_dialog"), "device"), "pfet_01v8")
 
 
-def props_bulk():
+def props_strap():
     _pd_state("device")
-    choose(combo(toplevel(name="properties_dialog"), "bulk"), "Tap in every source tile, tied to S")
+    choose(combo(toplevel(name="properties_dialog"), "gate_strap"), "frame only (high gate resistance)")
 
 
 def props_nx():
-    _pd_state("bulk")
+    _pd_state("gate_strap")
     type_text(field(toplevel(name="properties_dialog"), "nx"), "5", finish="Tab")
 
 
@@ -441,11 +471,13 @@ MAIN = [
     # package index, and a failed fetch opens a modal error that blocks the
     # session. The Salt install is checked by the klayout -zz autorun test.
     (1500, window), (500, tips), (500, new_layout), (800, libs_popup), (800, libs_grab), (500, libs_choose),
-    (800, hw_tool), (1500, hw_form), (2500, hw_form_grab),
-    (300, hw_type_strap), (2500, hw_hover_strap), (1500, hw_strap_grab),
-    (300, hw_type_strap_ok), (1500, hw_type_l), (2500, hw_hover_l), (1500, hw_l_grab),
+    (800, hw_tool), (1500, hw_form), (3000, hw_form_grab), (500, hw_hover_lu), (1500, hw_lu_grab),
+    (300, hw_type_p), (2500, hw_hover_p), (1500, hw_p_grab), (300, hw_type_p_ok), (2000, hw_type_n),
+    (2500, hw_hover_n), (1500, hw_n_grab), (300, hw_type_n_ok), (1500, hw_type_nx), (1500, hw_type_ny),
+    (2500, hw_small_note),
     (500, hw_place), (3000, hw_placed), (1500, hw_placed_grab),
-    (500, hw_select), (2500, props_tab), (800, props_device), (2500, props_bulk), (2500, props_nx), (2500, props_ny), (4000, props_grab),
+    (500, hw_select), (2500, props_tab), (800, props_device), (2500, props_strap), (2500, props_nx),
+    (2500, props_ny), (4000, props_grab),
     (500, props_ok), (4000, props_after), (1500, props_after_grab), (500, save), (500, finish),
 ]
 REOPEN = [(1500, window), (500, tips), (500, open_file), (1500, tips), (3000, expand_cells),
