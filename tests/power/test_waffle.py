@@ -37,6 +37,9 @@ CASES = [
     ("no_source_taps_3x3", dict(nx=3, ny=3, source_taps=False)),      # body on its own pin, B
     # 45 degree stripes stay under 3 um wide at a large pitch (Magic's wide-metal halo)
     ("diag45_P8_3x3", dict(nx=3, ny=3, P=8.0)),
+    # narrower stripes than the widest that fits
+    ("runner_w_0.6_3x3", dict(nx=3, ny=3, runner_w=0.6)),
+    ("staircase_runner_w_1.2_3x3", dict(nx=3, ny=3, runner_style="staircase", runner_w=1.2)),
     # 0/90 degree runners
     ("staircase_3x3", dict(nx=3, ny=3, runner_style="staircase")),
     ("staircase_met5_3x3_P6", dict(nx=3, ny=3, P=6.0, runners=("met3", "met4", "met5"), runner_style="staircase")),
@@ -90,7 +93,9 @@ class Geometry(unittest.TestCase):
                           (dict(gate_strap="x"), "gate_strap"), (dict(runners=("met4",)), "runners"),
                           (dict(runner_style="bogus"), "runner_style"), (dict(bottom_net="G"), "bottom_net"), (dict(bus="ring"), "bus"),
                           (dict(P=5.0, runners=("met3", "met4", "met5")), "P"), (dict(P=2.0), "tap_w"),
-                          (dict(tap_w=0.3), "tap_w")):
+                          (dict(tap_w=0.3), "tap_w"), (dict(runner_w=3.0), "runner_w"),
+                          (dict(runner_w=0.1), "runner_w"), (dict(runner_w=0.4), "runner_w"),
+                          (dict(runner_style="planes", runner_w=1.0), "runner_w")):
             with self.subTest(params=kw):
                 with self.assertRaises(WaffleError) as cm:
                     build(WaffleParams(nx=kw.pop("nx", 3), ny=kw.pop("ny", 3), **kw))
@@ -129,6 +134,15 @@ class Geometry(unittest.TestCase):
                     for poly in w.regions[lay].each():
                         for e in poly.each_edge():
                             self.assertTrue(e.dx() == 0 or e.dy() == 0, "%s %s" % (lay, e))
+
+    def test_runner_w(self):
+        """runner_w sets the stripe width (to the 4-grid diagonal), 0 = the widest."""
+        from klayout_power_pcells.waffle import WaffleParams, build
+        auto = build(WaffleParams(nx=3, ny=3)).report["stripe_width_um"]
+        for st in ("diag45", "staircase"):
+            r = build(WaffleParams(nx=3, ny=3, runner_style=st, runner_w=1.2)).report
+            self.assertAlmostEqual(r["stripe_width_um"], 1.2, delta=0.006)
+        self.assertGreater(auto, 2.0)
 
     def test_fill_cuts(self):
         import klayout.db as db

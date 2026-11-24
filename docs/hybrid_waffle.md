@@ -164,6 +164,16 @@ All three pass both DRC decks and LVS.
   Each net's top layer is a solid plate, and its lower layers are meshes
   (a plate with a hole and island over each of the other net's squares).
 
+`runner_w` (diag45 and staircase) sets the stripe width, measured
+perpendicular to the stripe; 0, the default, takes the widest that fits,
+P - √2 x spacing, and keeps it under 3 um for diag45. The value is rounded
+up so the band's corners stay on the grid (1.0 gives 1.004 um). A narrower
+stripe cuts the S-D overlap capacitance between layers but raises the
+runner resistance. Each square must still hold a via2 (via3, via4) with
+its enclosures where it meets its stripe, which sets the minimum (about
+0.6 um on met3/met4, and met5's 1.6 um width with met5). Planes refuse a
+non-zero value.
+
 ## Extended-drain (LDMOS) devices
 
 `nfet_g5v0d16v0` and `pfet_g5v0d16v0` (10 V gate-drain / 16 V drain) are

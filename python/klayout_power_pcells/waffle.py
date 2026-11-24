@@ -57,12 +57,14 @@ class WaffleParams:
     are p-wells isolated from the substrate; without it every drain is on
     the substrate.
     bottom_net: planes only: the net on met3 (S or D); the runner layers
-    then alternate, e.g. D on met3, S on met4."""
+    then alternate, e.g. D on met3, S on met4.
+    runner_w: diag45 and staircase: the stripe width, perpendicular to the
+    stripe (um; None = the widest that fits P, under 3 um for diag45)."""
 
     def __init__(self, device="nfet_01v8", nx=10, ny=10, P=4.0, L=None, N=None,
                  gate_strap="met1_mesh", runners=("met3", "met4"), runner_style="diag45",
                  bus="L_buses", bus_w=None, guard_ring=True, frame_w=None, pdk="sky130A",
-                 source_taps=True, tap_w=None, deep_nwell=True, bottom_net="S"):
+                 source_taps=True, tap_w=None, deep_nwell=True, bottom_net="S", runner_w=None):
         self.device, self.nx, self.ny = device, int(nx), int(ny)
         self.P, self.L, self.N = float(P), (None if L is None else float(L)), (None if N is None else float(N))
         self.gate_strap, self.runners, self.runner_style = gate_strap, tuple(runners), runner_style
@@ -73,6 +75,7 @@ class WaffleParams:
         self.tap_w = None if tap_w is None else float(tap_w)
         self.deep_nwell = bool(deep_nwell)
         self.bottom_net = bottom_net
+        self.runner_w = None if runner_w is None else float(runner_w)
 
     def as_dict(self):
         return dict(device=self.device, nx=self.nx, ny=self.ny, P=self.P, L=self.L, N=self.N,
@@ -80,7 +83,7 @@ class WaffleParams:
                     runner_style=self.runner_style, bus=self.bus, bus_w=self.bus_w,
                     guard_ring=self.guard_ring, frame_w=self.frame_w, pdk=self.pdk,
                     source_taps=self.source_taps, tap_w=self.tap_w, deep_nwell=self.deep_nwell,
-                    bottom_net=self.bottom_net)
+                    bottom_net=self.bottom_net, runner_w=self.runner_w)
 
 
 class Waffle:
@@ -783,6 +786,9 @@ def runner_plan(params, P=None):
                               "hold a %.2f um via with its enclosures (needs P >= %.3f um)"
                               % (_um(P), ",".join(layers), _um(P - 2 * margin), _um(need),
                                  _um(_snap_up(need + 2 * margin, 2 * G))))
+        if params.runner_w is not None:
+            raise WaffleError("runner_w", "planes have no stripe width (each square has its own island); "
+                              "set the runner width to 0 (auto)")
         return layers, margin, space
     delta = _snap_down(P - math.sqrt(2.0) * space, 4 * G)      # horizontal band width, corners on grid
     if params.runner_style == "diag45":
@@ -798,6 +804,21 @@ def runner_plan(params, P=None):
         raise WaffleError("P", "P %.3f um is too small for %s runners on %s: needs about P >= %.3f um "
                           "(width %.2f and spacing %.2f um)"
                           % (_um(P), params.runner_style, ",".join(layers), _um(p_min), _um(width), _um(space)))
+    if params.runner_w is not None:
+        # a narrower stripe than the widest that fits: less S-D overlap, more resistance
+        want = _snap_up(int(round(params.runner_w * 1000 * math.sqrt(2.0))), 4 * G)
+        lo = _snap_up(int(math.ceil(width * math.sqrt(2.0))), 4 * G)
+        if params.runner_style == "staircase":
+            lo = max(lo, _snap_up(2 * width + 4 * G, 4 * G))
+        if want > delta:
+            raise WaffleError("runner_w", "runner width %.3f um is more than fits: at most %.3f um at P %.3f "
+                              "(spacing %.2f um%s)" % (params.runner_w, _um(delta) / math.sqrt(2.0), _um(P),
+                                                       _um(space), ", and under 3 um for diag45"
+                                                       if params.runner_style == "diag45" else ""))
+        if want < lo:
+            raise WaffleError("runner_w", "runner width %.3f um is less than the %s minimum %.3f um"
+                              % (params.runner_w, params.runner_style, _um(lo) / math.sqrt(2.0) + 0.0005))
+        delta = want
     return layers, delta, space
 
 
@@ -832,8 +853,11 @@ def _vias(w, i, j, area, stack):
         cuts = fill_cuts(area, R[v], R[v + "_s"], R[v + "_enc_lo"], R[v + "_enc_hi"], grid=w.pdk["grid"])
         if cuts.is_empty():
             k = R[v] + 2 * max(R[v + "_enc_lo"], R[v + "_enc_hi"])
-            raise WaffleError("P", "no %s fits where square (%d, %d) meets its %s %s: a %.2f um square "
-                              "must fit; increase P" % (v, i, j, hi, w.params.runner_style, _um(k)))
+            narrow = w.params.runner_w is not None
+            raise WaffleError("runner_w" if narrow else "P",
+                              "no %s fits where square (%d, %d) meets its %s %s: a %.2f um square "
+                              "must fit; increase %s" % (v, i, j, hi, w.params.runner_style, _um(k),
+                                                         "the runner width" if narrow else "P"))
         w.add(v, cuts)
 
 

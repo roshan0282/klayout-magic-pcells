@@ -11,7 +11,7 @@
 
 Values are HW_FET's parameters (devices lists them), e.g.
   device=pfet_01v8 nx=6 ny=6 P=4 gate_strap=frame_only runners=met3,met4 bus=none guard_ring=0
-L, N and bus_w of 0 mean "the minimum".
+L, N and bus_w of 0 mean "the minimum"; runner_w=0 the widest stripe that fits.
 
 Exit status: 0 when the FET is drawn (and, for verify, DRC and LVS pass),
 1 when it isn't or a check fails, 2 for a value that isn't a number or not

@@ -30,7 +30,8 @@ PDK = "sky130A"
 ERROR_LAYER = (255, 0)
 CREATED_PARAM = "hw_created"
 INFO_PARAM = "info"
-EDITABLE = ("device", "nx", "ny", "P", "L", "N", "gate_strap", "runners", "runner_style", "bottom_net", "bus", "bus_w",
+EDITABLE = ("device", "nx", "ny", "P", "L", "N", "gate_strap", "runners", "runner_style", "runner_w", "bottom_net",
+            "bus", "bus_w",
             "guard_ring", "source_taps", "tap_w", "deep_nwell")
 RUNNER_CHOICES = ("met3,met4", "met3", "met3,met4,met5")
 
@@ -59,14 +60,15 @@ def draw_error(layout, cell, reason):
 
 
 def params_of_values(v):
-    """WaffleParams of the PCell's values (0 means 'the minimum' for L, N, bus_w)."""
+    """WaffleParams of the PCell's values (0 means 'the minimum' for L, N, bus_w; 'auto' for runner_w)."""
     return WaffleParams(device=v["device"], nx=v["nx"], ny=v["ny"], P=v["P"],
                         L=v["L"] if v["L"] > 0 else None, N=v["N"] if v["N"] > 0 else None,
                         gate_strap=v["gate_strap"], runners=tuple(str(v["runners"]).split(",")),
                         runner_style=v["runner_style"], bus=v["bus"],
                         bus_w=v["bus_w"] if v["bus_w"] > 0 else None, guard_ring=bool(v["guard_ring"]),
                         source_taps=bool(v["source_taps"]), tap_w=v["tap_w"] if v["tap_w"] > 0 else None,
-                        deep_nwell=bool(v["deep_nwell"]), bottom_net=v["bottom_net"], pdk=PDK)
+                        deep_nwell=bool(v["deep_nwell"]), bottom_net=v["bottom_net"],
+                        runner_w=v["runner_w"] if v["runner_w"] > 0 else None, pdk=PDK)
 
 
 def info_text(res):
@@ -100,6 +102,8 @@ class HWFetPCell(db.PCellDeclarationHelper):
                    choices=[("45 degree stripes", "diag45"),
                             ("staircase stripes (0/90 only)", "staircase"),
                             ("planes: alternating S/D plates (0/90 only)", "planes")])
+        self.param("runner_w", self.TypeDouble, "Runner width (0 = widest that fits; not for planes)",
+                   default=0.0, unit="um")
         self.param("bottom_net", self.TypeString, "Planes: net on met3", default=d.bottom_net,
                    choices=[("S on met3, D on met4 (S on met5)", "S"), ("D on met3, S on met4 (D on met5)", "D")])
         self.param("bus", self.TypeString, "S/D buses", default=d.bus,

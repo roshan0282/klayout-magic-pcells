@@ -88,7 +88,7 @@ def params_of(request):
                         guard_ring=r["guard_ring"] == "1", frame_w=f("frame_w"), pdk=r["pdk"],
                         source_taps=r.get("source_taps", "1") == "1", tap_w=f("tap_w"),
                         deep_nwell=r.get("deep_nwell", "1") == "1",
-                        bottom_net=r.get("bottom_net", "S"))
+                        bottom_net=r.get("bottom_net", "S"), runner_w=f("runner_w"))
 
 
 # -- stamps ----------------------------------------------------------------------

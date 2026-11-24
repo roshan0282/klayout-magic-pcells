@@ -52,13 +52,13 @@ class Requests(unittest.TestCase):
         from klayout_power_pcells.waffle import WaffleParams
         p = WaffleParams(device="pfet_01v8", nx=4, ny=3, P=4.0000000000000009, L=0.35000000000000003, N=None,
                          gate_strap="frame_only", runners=("met3",), bus="none", bus_w=None, guard_ring=False,
-                         source_taps=False, tap_w=0.5)
+                         source_taps=False, tap_w=0.5, runner_w=1.2)
         r = backend.request_of(p)
         self.assertEqual(r["P"], "4")
         self.assertEqual(r["L"], "0.35")
         self.assertEqual(r["N"], "")
         self.assertEqual(r["guard_ring"], "0")
-        self.assertEqual((r["source_taps"], r["tap_w"]), ("0", "0.5"))
+        self.assertEqual((r["source_taps"], r["tap_w"], r["runner_w"]), ("0", "0.5", "1.2"))
         q = backend.params_of(r)
         self.assertEqual(backend.request_of(q), r)
 
@@ -107,6 +107,7 @@ class Declaration(unittest.TestCase):
         self.assertIsNone(p.N)
         self.assertIsNone(p.bus_w)
         self.assertIsNone(p.tap_w)
+        self.assertIsNone(p.runner_w)
         self.assertTrue(p.source_taps)
 
 
