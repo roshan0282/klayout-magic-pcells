@@ -2,13 +2,19 @@
 (GAPS-gf180mcuD section 2): five controls
 (3.3 V and 6 V nfet and pfet, a p-tap) and one-change cells, every mask
 layer drawn by hand on the GDS numbers generic_layers.rb reads. The table
-is that suite's, unchanged, so that expect-gf180mcuD.json still applies.
+is that suite's, unchanged, so that expect-gf180mcuD.json still applies,
+except for four cases that did not break the rule they target: NW2a_s050,
+NP3_s006, V1_3_m1ov0 and V1_3_m1ov002 were redrawn in 0.6.1, and their
+expect entries were measured again on the new shapes (SOURCES).
 """
 
 import klayout.db as db
 
 PDK = "gf180mcuD"
 SOURCE = "GAPS-gf180mcuD 2"
+_REDRAWN = ("GAPS-gf180mcuD 2, redrawn in 0.6.1 to break its target rule; expect measured on the new "
+            "shapes with Magic 8.3.681 and gf180mcu.drc in the pinned image, 2026-11-24")
+SOURCES = {n: _REDRAWN for n in ("NW2a_s050", "NP3_s006", "V1_3_m1ov0", "V1_3_m1ov002")}
 
 LAYERS = {"comp": (22, 0), "poly": (30, 0), "np": (32, 0), "pp": (31, 0), "nwell": (21, 0),
           "cont": (33, 0), "m1": (34, 0), "v1": (35, 0), "m2": (36, 0), "dg": (55, 0),
@@ -96,8 +102,15 @@ add("C_PTAP", ptap(), "control: p-tap alone")
 # ---------------------------------------------------------------- wells
 s = {"nw": ("nwell", B(0, 0, 0.80, 5))}
 add("NW1a_w080", s, "nwell 0.80 wide (NW.1a 0.86)")
+# NW.2a 0.6 is the space between wells on one net; wells on different nets
+# need NW.2b 1.4. KLayout tells the two apart by connectivity (Nwell, NCOMP,
+# contact, Metal1), so each well gets an n-tap and one Metal1 strip joins
+# the taps.
 s = {"nw1": ("nwell", B(0, 0, 2, 2)), "nw2": ("nwell", B(2.5, 0, 4.5, 2))}
-add("NW2a_s050", s, "two nwells 0.50 apart (NW.2a 0.6)")
+for i, x in enumerate((0.7, 3.2)):
+    s.update({k + str(i): v for k, v in ptap(x=x, y=0.7, kind="n").items()})
+s["m1strap"] = ("m1", B(0.81, 0.81, 3.69, 1.19))
+add("NW2a_s050", s, "two nwells 0.50 apart on one net, an n-tap in each joined by metal1 (NW.2a 0.6)")
 s = mos("p", nw_ov=0.5)
 s["nwell"] = ("nwell", s["nwell"][1].enlarged(db.DVector(0, 0)))
 nb = s["nwell"][1]
@@ -250,10 +263,13 @@ add("V1_1_b032", v1cell(0, 0, 0.32, 0.32, big1, big1), "via1 0.32 x 0.32 (V1.1 i
 s = v1cell(0, 0, 0.26, 0.26, B(-0.3, -0.3, 0.78, 0.56), B(-0.3, -0.3, 0.78, 0.56))
 s["v2"] = ("v1", B(0.48, 0, 0.74, 0.26))
 add("V1_2a_s022", s, "two via1 0.22 apart (V1.2a 0.26)")
-add("V1_3_m1ov0", v1cell(0, 0, 0.26, 0.26, B(0.0, -0.2, 0.6, 0.46), big1),
-    "via1: metal1 flush on one side, 0.06 on the others (Magic V1.3; KLayout V1.3a/d)")
-add("V1_3_m1ov002", v1cell(0, 0, 0.26, 0.26, B(-0.02, -0.06, 0.6, 0.32), big1),
-    "via1: metal1 overlap 0.02 on one side, 0.06 on the adjacent sides (Magic V1.3 needs 0.04/0.06)")
+# V1.3 (Vn.3 ii): where Metal1 overlaps Via1 by less than 0.04 on one side,
+# the adjacent Metal1 edges must overlap it by 0.06. These overlap by 0.05.
+# Metal1 is 0.36 high, so V1.3c (end of a Metal1 line under 0.34) does not apply.
+add("V1_3_m1ov0", v1cell(0, 0, 0.26, 0.26, B(0.0, -0.05, 0.6, 0.31), big1),
+    "via1: metal1 flush on one side, 0.05 on the adjacent sides (V1.3 0.06; Magic V1.3, KLayout V1.3d)")
+add("V1_3_m1ov002", v1cell(0, 0, 0.26, 0.26, B(-0.02, -0.05, 0.6, 0.31), big1),
+    "via1: metal1 overlap 0.02 on one side, 0.05 on the adjacent sides (V1.3 0.06; Magic V1.3, KLayout V1.3d)")
 add("V1_4_m2ov0", v1cell(0, 0, 0.26, 0.26, big1, B(0.0, -0.2, 0.6, 0.46)),
     "via1: metal2 flush on one side (V1.4 0.01)")
 s = {"a": ("m1", B(-0.2, -0.2, 2.0, 2.0)), "b": ("m2", B(-0.2, -0.2, 2.0, 2.0))}
@@ -294,9 +310,21 @@ s["nwell"] = ("nwell", B(nb.left, nb.bottom, s["comp"][1].right + 0.5, nb.top))
 del s["tcomp"], s["timp"], s["tc"], s["m1t"]
 s["nwell"] = ("nwell", grow(s["comp"][1], 0.5))
 add("DF13_nwnotap", s, "LV pfet in an nwell with no n-tap (KLayout DF.13_LV 20 um)")
+# NP.3ci 0.16: NPLUS space to a PCOMP outside DNWELL that is less than 0.43
+# from an Nwell (NP.3cii, 0.08, covers PCOMP farther away). The p-tap is
+# narrowed to 0.22 x 1.4 without a contact (DF.1a 0.22, DF.9 0.2025), and an
+# Nwell ends 0.17 to its left (DF.17 0.12), so that the whole tap is within
+# 0.43 of the Nwell. The nfet's NPLUS stops 0.06 short of the tap; the tap's
+# PPLUS keeps its 0.16 (PP.5dii), so the two implants overlap off COMP.
 s = mos("n")
-s["imp"] = ("np", B(s["imp"][1].left - 0.33, s["imp"][1].bottom, s["imp"][1].right, s["imp"][1].top))
-add("NP3_s006", s, "nfet NPLUS reaches 0.06 from the p-tap COMP (KLayout NP.3ci 0.16), overlapping its PPLUS")
+tx = s["comp"][1].left - 0.49
+s["tcomp"] = ("comp", B(tx - 0.22, -0.4, tx, 1.0))
+s["timp"] = ("pp", grow(s["tcomp"][1], 0.16))
+del s["tc"], s["m1t"]
+s["nwx"] = ("nwell", B(tx - 0.22 - 0.17 - 1.0, -0.8, tx - 0.22 - 0.17, 1.4))
+s["imp"] = ("np", B(tx + 0.06, s["imp"][1].bottom, s["imp"][1].right, s["imp"][1].top))
+add("NP3_s006", s, "nfet NPLUS 0.06 from a p-tap COMP that is 0.17 from an nwell (KLayout NP.3ci 0.16), "
+    "overlapping the tap's PPLUS")
 s = mos("n")
 cb = s["comp"][1]
 tb = s["tcomp"][1]

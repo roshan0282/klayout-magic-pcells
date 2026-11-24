@@ -1,13 +1,28 @@
 """sky130A cases. The gaps set is the sky130A gap study's one-change suite
 (GAPS-sky130A section 2.1 and 2.2, batch A and batch E): one change each to
 the clean hand-drawn inverter, and standalone structures paired with a
-control drawn at the legal value. The tables below are that suite's; the
-geometry is unchanged so that the measured results in expect-sky130A.json
-still apply.
+control drawn at the legal value. The tables below are that suite's, with
+the changes of 0.6.1: a check against SkyWater's published rules found
+cases that did not break the rule they were filed under. Four were redrawn
+(s_m1_adj_mcon, s_via_m1_adj, s_m1_wide_space, e_butt_short), two filed
+under the rule they break (s_li_45deg, c_pc_to_pdiff), and two that break
+no published rule target none (d_tap_area, e_ntap_area). One case was
+added for met1.3b: s_m1_huge_space, with the shapes that s_m1_wide_space
+had before 0.6.1. The comments at those cases cite the rule pages of
+google/skywater-pdk at 7198cf6 (docs/rules/periphery-rules.rst,
+errors.csv, assumptions/07-other.csv). The redrawn and added cases'
+entries in expect-sky130A.json are from the gap table's runs of 0.6.1,
+and SOURCES says so; every other case keeps the study's geometry and its
+entry.
 """
 
 PDK = "sky130A"
 SOURCE = "GAPS-sky130A 2.2"
+_CHANGED = ("GAPS-sky130A 2.2, changed in 0.6.1 after a check against google/skywater-pdk 7198cf6; "
+            "expect measured on the new shapes with Magic 8.3.681 and KLayout 0.30.11 in the pinned image, 2026-11-24")
+SOURCES = {n: _CHANGED for n in ("s_m1_adj_mcon", "s_m1_adj_mcon_ok", "s_via_m1_adj", "s_via_m1_adj_ok",
+                                 "s_m1_wide_space", "s_m1_wide_space_ok", "e_butt_short",
+                                 "s_m1_huge_space", "s_m1_huge_space_ok")}
 
 LAYERS = {
     "nwell": (64, 20), "dnwell": (64, 18), "diff": (65, 20), "tap": (65, 44), "psdm": (94, 20),
@@ -141,7 +156,12 @@ inverter("d_gate_w036", "NMOS W = 0.36 (diff/tap.2: transistor width 0.42)",
                  "li_y": (2.18, 1.30, 2.55, 4.17)})
 inverter("d_sd_020", "NMOS drain side 0.20 long, no drain contact (poly.7: S/D 0.25)",
          change={"ndiff": (0.40, 1.30, 1.70, 1.95)}, drop=["nd_licon"])
-inverter("d_tap_area", "p-tap 0.41 x 0.17 around its licon: area 0.0697 um^2 (psd.10b 0.07011)",
+# The manual's n/psd.10b is the psdm's area, 0.255 um^2 (periphery-rules.rst:1500-1504); a contacted
+# tap in a psdm at the minimum 0.125 enclosure has 0.66 x 0.42 = 0.277 um^2 of it, so no such tap
+# breaks the rule. Magic checks the tap's own area instead. The case targets no rule: Magic's
+# report on it is one the manual does not support.
+inverter("d_tap_area", "p-tap 0.41 x 0.17 around its licon, area 0.0697 um^2, in a 1.84 um^2 psdm: "
+         "legal by the manual; Magic's p-tap area rule psd.10b 0.07011 reports it",
          change={"ptap": (0.43, 0.52, 0.84, 0.69)})
 inverter("d_tap_w014", "0.14-wide finger on the p-tap (diff/tap.1 0.15)",
          add=[("tap", (2.60, 0.50, 2.90, 0.64)), ("psdm", (2.725, 0.225, 3.05, 0.975))])
@@ -172,7 +192,11 @@ inverter("c_licon_out", "NMOS source licon 0.05 outside the diffusion",
          change={"ns_licon": (0.35, 1.55, 0.52, 1.72), "li_gnd": (0.27, 0.05, 0.82, 1.82)})
 inverter("c_tap_encl", "p-tap licon enclosed by 0.07 on all sides (licon.7: 0.12 in one direction)",
          change={"ptap": (0.48, 0.45, 0.79, 0.76)})
-inverter("c_pc_to_pdiff", "gate licon 0.19 from the PMOS diffusion (licon.9 + psdm.5a: 0.235)",
+# licon.9: "Spacing, no overlap, between poly_licon and psdm", 0.110 (periphery-rules.rst:1611-1615).
+# The psdm edge is at y 3.375, 0.065 above the licon. Magic checks the rule as 0.235 to the
+# p-diffusion, licon.9 plus the 0.125 psdm enclosure it regenerates; the drawn psdm encloses
+# the diffusion by exactly 0.125, so psd.5a holds.
+inverter("c_pc_to_pdiff", "gate licon 0.065 from the PMOS psdm, 0.19 from its diffusion (licon.9 0.11)",
          change={"pad": (1.20, 3.00, 1.65, 3.40), "npc": (1.24, 3.04, 1.61, 3.41),
                  "g_licon": (1.34, 3.14, 1.51, 3.31), "li_a": (1.24, 3.04, 1.61, 3.41),
                  "pin_a": (1.30, 3.10, 1.55, 3.35)},
@@ -231,7 +255,20 @@ pair("s_m1_space013", "two met1 0.14 x 1.0, 0.13 apart (met1.2 0.14)",
      [("met1", (0, 0, 0.14, 1.0)), ("met1", (0.28, 0, 0.42, 1.0))])
 pair("s_m1_area", "met1 0.20 x 0.41 = 0.082 um^2 (met1.6 0.083)", [("met1", (0, 0, 0.20, 0.41))],
      [("met1", (0, 0, 0.20, 0.42))])
-pair("s_m1_wide_space", "met1 3.1 um wide, 0.27 from another met1 (met1.3a/3b 0.28)",
+# m1.3a: "Min. spacing of features attached to or extending from huge_met1 for a distance of up
+# to 0.280 um to metal1", 0.280 (periphery-rules.rst:2039-2043; errors.csv:783 "spacing/notch of
+# huge met1+nearby met1"); huge metal is 3 um in W and L (assumptions/07-other.csv:10). Both stubs
+# are such features, 0.27 apart. No other met1 is near the huge met1, so m1.3b
+# (periphery-rules.rst:2044-2048) is not involved.
+pair("s_m1_wide_space", "two met1 stubs 0.30 x 0.28 on the edge of a 3.1 um met1, 0.27 apart (met1.3a 0.28)",
+     [("met1", (0, 0, 3.1, 3.1)), ("met1", (3.1, 1.0, 3.38, 1.3)), ("met1", (3.1, 1.57, 3.38, 1.87))],
+     [("met1", (0, 0, 3.1, 3.1)), ("met1", (3.1, 1.0, 3.38, 1.3)), ("met1", (3.1, 1.58, 3.38, 1.88))])
+# m1.3b: "Min. spacing of huge_met1 to metal1 excluding features checked by m1.3a", 0.280
+# (periphery-rules.rst:2044-2048; errors.csv:782 "min. spacing between huge met1 and normal met1").
+# The 3.1 um square is huge metal (3 um in W and L, assumptions/07-other.csv:10); the 0.30 um strip
+# is a separate shape, not a feature attached to it, so m1.3a (periphery-rules.rst:2039-2043) does
+# not apply. This is s_m1_wide_space as drawn before 0.6.1.
+pair("s_m1_huge_space", "met1 0.30 wide, 0.27 from a 3.1 um square met1 (met1.3b 0.28)",
      [("met1", (0, 0, 3.1, 3.1)), ("met1", (3.37, 0, 3.67, 3.1))],
      [("met1", (0, 0, 3.1, 3.1)), ("met1", (3.38, 0, 3.68, 3.1))])
 pair("s_m1_hole", "met1 ring 1.0 x 1.0 with a 0.3 x 0.3 hole (met1.7: hole area 0.14)",
@@ -251,9 +288,12 @@ pair("s_mcon_no_li", "mcon on met1 with no li (ct.4)", [("met1", (0, 0, 0.5, 0.5
 pair("s_m1_encl_mcon", "met1 0.21 x 0.6 over mcon: 0.02 on two sides (met1.4 0.03)",
      [("li", (0, 0, 0.5, 0.6)), ("met1", (0.145, 0, 0.355, 0.6)), ("mcon", (0.165, 0.215, 0.335, 0.385))],
      [("li", (0, 0, 0.5, 0.6)), ("met1", (0.135, 0, 0.365, 0.6)), ("mcon", (0.165, 0.215, 0.335, 0.385))])
-pair("s_m1_adj_mcon", "met1 0.23 x 0.6 over mcon: 0.03 left/right, 0.215 top/bottom (met1.5 0.06)",
-     [("li", (0, 0, 0.5, 0.6)), ("met1", (0.135, 0, 0.365, 0.6)), ("mcon", (0.165, 0.215, 0.335, 0.385))],
-     [("li", (0, 0, 0.5, 0.6)), ("met1", (0.105, 0, 0.395, 0.6)), ("mcon", (0.165, 0.215, 0.335, 0.385))])
+# m1.5: "Mcon must be enclosed by Met1 on one of two adjacent sides by at least" 0.060
+# (periphery-rules.rst:2059-2063). 0.03 on the left, right and bottom leaves both sides of each
+# bottom corner under 0.06; m1.4's 0.03 on every side holds (periphery-rules.rst:2049-2053).
+pair("s_m1_adj_mcon", "met1 0.23 x 0.415 over mcon: 0.03 left/right/bottom, 0.215 top (met1.5 0.06)",
+     [("li", (0, 0, 0.5, 0.6)), ("met1", (0.135, 0.185, 0.365, 0.6)), ("mcon", (0.165, 0.215, 0.335, 0.385))],
+     [("li", (0, 0, 0.5, 0.6)), ("met1", (0.105, 0.185, 0.395, 0.6)), ("mcon", (0.165, 0.215, 0.335, 0.385))])
 pair("s_li_adj_licon", "li 0.23 x 0.6 over a poly licon: 0.03 left/right (li.5 0.08)",
      [("poly", (0, 0, 0.5, 0.6)), ("npc", (0, 0, 0.5, 0.6)), ("li", (0.135, 0, 0.365, 0.6)),
       ("licon", (0.165, 0.215, 0.335, 0.385))],
@@ -273,9 +313,12 @@ pair("s_via_space", "two via1 cuts 0.16 apart (via.2 0.17)",
 pair("s_via_m1_encl", "met1 0.21 wide over a via1 cut: 0.03 left/right (via.4a 0.055)",
      [("met1", (0.145, 0, 0.355, 0.6)), ("met2", (0, 0, 0.5, 0.6)), ("via", (0.175, 0.225, 0.325, 0.375))],
      [("met1", (0.115, 0, 0.385, 0.6)), ("met2", (0, 0, 0.5, 0.6)), ("via", (0.175, 0.225, 0.325, 0.375))])
-pair("s_via_m1_adj", "met1 0.26 wide over a via1 cut: 0.055 left/right, 0.225 top/bottom (via.5a 0.085)",
-     [("met1", (0.12, 0, 0.38, 0.6)), ("met2", (0, 0, 0.5, 0.6)), ("via", (0.175, 0.225, 0.325, 0.375))],
-     [("met1", (0.09, 0, 0.41, 0.6)), ("met2", (0, 0, 0.5, 0.6)), ("via", (0.175, 0.225, 0.325, 0.375))])
+# via.5a: "0.150 um Via must be enclosed by Met1 on one of two adjacent sides by at least" 0.085
+# (periphery-rules.rst:2175-2179). 0.055 on the left, right and bottom leaves both sides of each
+# bottom corner under 0.085; via.4a's 0.055 holds (periphery-rules.rst:2160-2164).
+pair("s_via_m1_adj", "met1 0.26 x 0.43 over a via1 cut: 0.055 left/right/bottom, 0.225 top (via.5a 0.085)",
+     [("met1", (0.12, 0.17, 0.38, 0.6)), ("met2", (0, 0, 0.5, 0.6)), ("via", (0.175, 0.225, 0.325, 0.375))],
+     [("met1", (0.09, 0.17, 0.41, 0.6)), ("met2", (0, 0, 0.5, 0.6)), ("via", (0.175, 0.225, 0.325, 0.375))])
 pair("s_via_no_m2", "via1 cut with met1 but no met2", [("met1", (0, 0, 0.5, 0.6)), ("via", (0.175, 0.225, 0.325, 0.375))],
      MM + [("via", (0.175, 0.225, 0.325, 0.375))])
 # wells and implants alone
@@ -304,7 +347,10 @@ pair("s_m1_offgrid", "met1 box with one corner 1 nm off the 5 nm grid",
 pair("s_m1_30deg", "met1 polygon with a 30 degree edge (x.3a: 45/90 only)",
      [("met1", ((0, 0), (1.0, 0), (1.0, 0.6), (0.0, 1.175)))],
      [("met1", ((0, 0), (1.0, 0), (1.0, 0.6), (0.4, 1.2), (0.0, 1.2)))])
-pair("s_li_45deg", "li polygon with a 45 degree edge (x.3a allows 45)",
+# x.2 lists li1(periphery) among the layers with n x 90 degree angles only (periphery-rules.rst:145-149;
+# errors.csv:118 "non-manhattan li1Peri_noSEAL_noAnch edge"); x.3a's 45 degrees are for the other
+# layers (periphery-rules.rst:170-174).
+pair("s_li_45deg", "li polygon with a 45 degree edge (x.2: li outside the SRAM core is 90 degree only)",
      [("li", ((0, 0), (1.0, 0), (1.0, 0.6), (0.4, 1.2), (0.0, 1.2)))],
      [("li", (0, 0, 1.0, 1.2))])
 
@@ -329,14 +375,21 @@ BUTT = [("tap", (0.10, 1.30, 0.40, 1.95)), ("psdm", (-0.025, 0.225, 0.40, 2.075)
 inverter_e("e_inv_base", "inverter with the NMOS nsdm starting at x 0.40 (control for e_ inverter cases)", control=None)
 inverter_e("e_butt_ok", "p-tap 0.30 x 0.65 butting the NMOS source, implant boundary on the butting edge", add=BUTT,
          control="e_inv_base")
-inverter_e("e_butt_short", "butting p-tap only 0.20 along the butting edge (diff/tap.4 0.29)",
-         add=[("tap", (0.10, 1.30, 0.40, 1.50)), BUTT[1]], control="e_butt_ok")
+# difftap.4: "Min tap bound by one diffusion", 0.290 (periphery-rules.rst:895-899); the figure
+# (periphery/p026-difftap_dotdash.svg) measures it from the butting edge to the tap's far edge.
+# The tap is 0.20 deep and butts the whole 0.65 of the source edge.
+inverter_e("e_butt_short", "butting p-tap only 0.20 deep from the butting edge (diff/tap.4 0.29)",
+         add=[("tap", (0.20, 1.30, 0.40, 1.95)), BUTT[1]], control="e_butt_ok")
 inverter_e("e_butt_shift", "implant boundary 0.05 inside the NMOS diffusion (psdm over 0.05 of it)",
          add=[BUTT[0], ("psdm", (-0.025, 0.225, 0.45, 2.075))], change={"ndiff_nsdm": (0.45, 1.175, 2.725, 2.075)},
          control="e_butt_ok")
 inverter_e("e_butt_licon5b", "licon on the butting tap 0.03 from the butting edge, li over it (licon.5b 0.06)",
          add=BUTT + [("licon", (0.20, 1.50, 0.37, 1.67)), ("li", (0.12, 1.42, 0.50, 1.75))], control="e_butt_ok")
-inverter_e("e_ntap_area", "n-tap 0.41 x 0.17 around its licon: area 0.0697 um^2 (nsd.10b 0.07011)",
+# The manual's nsdm area rule is n/psd.10a, 0.265 um^2 (periphery-rules.rst:1495-1499); a contacted
+# tap in an nsdm at the minimum 0.125 enclosure has 0.277 um^2 of it. Like d_tap_area, the
+# case targets no rule.
+inverter_e("e_ntap_area", "n-tap 0.41 x 0.17 around its licon, area 0.0697 um^2, in a 1.84 um^2 nsdm: "
+         "legal by the manual; Magic's n-tap area rule nsd.10b 0.07011 reports it",
          change={"ntap": (0.43, 5.22, 0.84, 5.39)}, control="e_inv_base")
 inverter_e("e_bent_gate", "gate with a jog inside the NMOS diffusion (poly.11: no bends in transistors)",
          add=[("poly", (1.35, 1.55, 1.70, 1.70))], control="e_inv_base")

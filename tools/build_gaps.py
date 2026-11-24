@@ -43,6 +43,8 @@ DOCS = os.path.join(REPO, "docs", "gaps")
 ALIASES = os.path.join(REPO, "tests", "gaps")
 PDKS = ("sky130A", "gf180mcuD", "ihp-sg13g2", "ihp-sg13cmos5l")
 SCHEMA = 1
+# pkg/data/gaps-<pdk>.json: 2 keys its entries by row, with the statements' lines.
+PKG_SCHEMA = 2
 
 STATUSES = ("both", "both, values differ", "folded", "measured on other shapes",
             "same name for another check", "in the deck, did not fire on its case",
@@ -486,11 +488,15 @@ def test_results(tests, data, aliases, by_line, rows, run_info):
             out[run] = ks
         return out
 
+    # The rows each printed ID names, without the rows that its statement
+    # names only as a later operand of a composite: Magic prints via.5a for
+    # sky130A's "via.5a - via.4a", and a case filed under via.5a is not a
+    # test of via.4a.
     printed = collections.defaultdict(set)
     klname = collections.defaultdict(set)
     for k, r in rows.items():
         for e in r["magic"]:
-            if e["id"]:
+            if e["id"] and not e["operand"]:
                 printed[e["id"]].add(k)
         for e in r["klayout"]:
             klname[e["name"]].add(k)
@@ -701,33 +707,33 @@ def table_json(pdk, data, raw, rows, one_side, counts):
 
 
 def pkg_json(pdk, rows):
-    """pkg/data/gaps-<pdk>.json for the DRC job: one entry per Magic rule
-    ID as Magic prints it, and per why-text where the rule has no ID or its
-    row is not its ID's row."""
+    """pkg/data/gaps-<pdk>.json for the DRC job: one entry per row that has a
+    Magic statement of its own, under the row's key, with the row's status
+    and KLayout outputs, the IDs Magic prints for those statements ("ids")
+    and their tech-file lines ("lines", as "file:line"). The job finds a
+    why-text's rows through its statements' lines, so that one printed ID
+    whose statements sit in several rows (IHP's AFil.i, sky130A's hvi.5)
+    gives each statement its own row. A statement that names a row only as a
+    later operand of a composite is not that row's: Magic's message for it
+    is the first ID's."""
     out = {}
-
-    def add(k, r, line=None):
-        ent = out.setdefault(k, {"status": r["status"], "key": r["key"], "klayout": [], "lines": []})
+    for r in rows:
+        own = [e for e in r["magic"] if not e["operand"]]
+        if not own:
+            continue
+        kl, lines, ids = [], [], []
         for e in r["klayout"]:
             item = {"deck": e["deck"], "name": e["name"], "value": e["value"]}
-            if item not in ent["klayout"]:
-                ent["klayout"].append(item)
-        if line is not None and line not in ent["lines"]:
-            ent["lines"].append(line)
-        if r["key"] != ent["key"] and r["key"] not in ent.setdefault("keys", [ent["key"]]):
-            ent["keys"].append(r["key"])
-
-    for r in rows:
-        for e in r["magic"]:
-            if e["operand"]:
-                continue
-            if e["id"]:
-                add(e["id"], r, e["line"])
-                if e["id"] != r["key"] and e["why"]:
-                    add(e["why"], r, e["line"])
-            elif e["why"]:
-                add(e["why"], r, e["line"])
-    return {"schema": SCHEMA, "pdk": pdk, "rules": out}
+            if item not in kl:
+                kl.append(item)
+        for e in own:
+            fl = "%s:%d" % (e["file"], e["line"])
+            if fl not in lines:
+                lines.append(fl)
+            if e["id"] and e["id"] not in ids:
+                ids.append(e["id"])
+        out[r["key"]] = {"status": r["status"], "key": r["key"], "klayout": kl, "lines": lines, "ids": ids}
+    return {"schema": PKG_SCHEMA, "pdk": pdk, "rules": out}
 
 
 def _deck_label(decks):
@@ -757,10 +763,11 @@ def table_md(pdk, data, raw, rows, one_side, counts):
     L.append("")
     L.append("- **What a row is.** One rule, under the rule ID that Magic's why-text gives it (the why-text is "
              "the message Magic's DRC gives an error box, and the ID is the text in its last parentheses), under "
+             "a name from `tests/gaps/aliases-%s.json` where the two tools name the rule differently, under "
              "the KLayout name where Magic has no such rule, or under Magic's whole message where the message "
              "has no ID. The row gives the statements of Magic's tech file that check the rule, each KLayout "
              "deck's outputs for it (the report categories the deck writes), and what both engines reported on "
-             "the test cases that target it.")
+             "the test cases that target it." % pdk)
     L.append("- **How it is made.** Magic's rules come from `python/klayout_magic_pcells/data/pdk-%s.json`. "
              "Each KLayout run below checked a layout of one box. Its report has a category for every rule the "
              "deck ran under its switches, and those categories are the deck's side of the table; a text scan "

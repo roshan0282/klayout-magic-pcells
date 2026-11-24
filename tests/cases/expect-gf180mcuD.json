@@ -667,12 +667,7 @@
  "NP3_s006": {
   "klayout": {
    "kl_alone": {
-    "DF.3b": null,
-    "NP.3d": null,
-    "NP.3e": null,
-    "NP.5b": null,
-    "PP.3d": null,
-    "PP.3e": null
+    "NP.3ci": null
    }
   },
   "magic": {
@@ -796,7 +791,7 @@
  "NW2a_s050": {
   "klayout": {
    "kl_alone": {
-    "NW.2b_LV": null
+    "NW.2a_LV": null
    }
   },
   "magic": {
@@ -1073,22 +1068,38 @@
  },
  "V1_3_m1ov0": {
   "klayout": {
-   "kl_alone": {}
+   "kl_alone": {
+    "V1.3d": null
+   }
   },
   "magic": {
-   "drc(fast)": {},
-   "drc(full)": {},
-   "drc(routing)": {}
+   "drc(fast)": {
+    "V1.3": 2
+   },
+   "drc(full)": {
+    "V1.3": 2
+   },
+   "drc(routing)": {
+    "V1.3": 2
+   }
   }
  },
  "V1_3_m1ov002": {
   "klayout": {
-   "kl_alone": {}
+   "kl_alone": {
+    "V1.3d": null
+   }
   },
   "magic": {
-   "drc(fast)": {},
-   "drc(full)": {},
-   "drc(routing)": {}
+   "drc(fast)": {
+    "V1.3": 2
+   },
+   "drc(full)": {
+    "V1.3": 2
+   },
+   "drc(routing)": {
+    "V1.3": 2
+   }
   }
  },
  "V1_4_m2ov0": {

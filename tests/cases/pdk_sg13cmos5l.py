@@ -219,6 +219,11 @@ for _vid in V:
         SOURCES[_vid] = "GAPS-ihp-sg13cmos5l 4"
 CASES = [(vid, V[vid][0], (lambda v: lambda d: draw_variant(v, d))(vid), None if vid == "base" else "base")
          for vid in V]
+# A variant targets the rule in its name (tests/cases/build.py), except where
+# no row of the gap table has that name: u_angle.poly's 30-degree poly edge
+# breaks Magic's x.2 and KLayout's gatpoly_drw_Angle45, which the table joins
+# as grid.Angle45 (tests/gaps/aliases-ihp-sg13cmos5l.json).
+RULE_OF = {"u_angle.poly": "grid.Angle45"}
 
 
 # ---------------------------------------------------------------- hier

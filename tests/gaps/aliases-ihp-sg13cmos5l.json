@@ -9,7 +9,8 @@
    ]
   },
   "ids": {
-   "Cnd.d": "Cnt.d"
+   "Cnd.d": "Cnt.d",
+   "x.2": "grid.Angle45"
   },
   "lines": {
    "ihp-sg13cmos5l-drc.tech:79": [
@@ -17,6 +18,9 @@
    ],
    "ihp-sg13cmos5l-drc.tech:88": [
     "PWB.f1"
+   ],
+   "ihp-sg13cmos5l-drc.tech:140": [
+    "AFil.i.angle"
    ]
   },
   "why": [
@@ -78,6 +82,10 @@
      "\\1"
     ],
     [
+     "^(Seal\\.(?:c1|d|f))\\.(?:Cont|Via[1-3]|TopVia1|Activ|pSD|Metal[1-4]|TopMetal1)$",
+     "\\1"
+    ],
+    [
      "^(Pad\\.fR)_.+$",
      "\\1"
     ],
@@ -92,7 +100,24 @@
    ]
   }
  },
- "status": {},
+ "status": {
+  "AFil.i.angle": {
+   "status": "same name for another check",
+   "note": "Magic prints AFil.i for a rule that allows only 90-degree angles on Activ fill, which IHP's SG13CMOS5L layout rules (Rev. 0.1) do not have; their AFil.i, which the maximal deck checks, is the 1.50 µm Activ:filler space to PWell:block (row AFil.i). KLayout checks Activ:filler for acute angles only"
+  },
+  "Seal.c1": {
+   "status": "both",
+   "note": "Magic checks only the minimum width of the Via1-Via3 seal rings; the maximal deck also flags rings wider than 0.19 µm"
+  },
+  "Seal.d": {
+   "status": "both",
+   "note": "Magic checks the Activ enclosure of the EdgeSeal-Cont ring only; the maximal deck checks it for the Cont, Via1-Via3 and TopVia1 rings"
+  },
+  "Seal.f": {
+   "status": "both",
+   "note": "Magic's statement lists pdiff and m1-m4, not m5 (TopMetal1); the maximal deck checks EdgeSeal Activ, pSD, Metal1-Metal4 and TopMetal1, and pSD is not in the layout rules' Seal.f list"
+  }
+ },
  "parts": [
   {
    "name": "Front end, Metal1, Via1, grid, pins",

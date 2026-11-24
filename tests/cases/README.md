@@ -4,9 +4,12 @@
 plugin's Magic checks are tested on: DRC, extraction, LVS, the
 generated-layer check and the port check, all added in version 0.6. It
 also writes a `cases.json` that says what each case targets and what Magic
-and KLayout reported on it when the gap studies and the review measured
-it (see Sources). Every GDS is drawn at run time with `klayout.db`; there
-are no layout files in the repository.
+and KLayout reported on it when it was measured. The gap studies and the
+review measured most cases; the few gaps cases that were redrawn or
+added after a check against the foundries' published rules were measured
+in the pinned image (see Sources and "Where expect comes from"). Every
+GDS is drawn at run time with
+`klayout.db`; there are no layout files in the repository.
 
 ```
 python3 tests/cases/build.py --pdk sky130A --out out/cases/sky130A
@@ -40,6 +43,21 @@ long well, design-0.6.md 3.1 and 6.4". The raw results that the gap
 studies' tables were made from, and the review's logs, are outside the
 repository too.
 
+For version 0.6.1, the rows of the gap tables (`docs/gaps/`) on which
+Magic and the KLayout decks disagreed, and the gaps cases filed under
+them, were checked against the foundries' published rules: on sky130A,
+SkyWater's rule pages in
+google/skywater-pdk at commit 7198cf6 (`docs/rules/periphery-rules.rst`,
+`errors.csv` and `assumptions/07-other.csv`); on gf180mcuD, GF's design
+rules in google/gf180mcu-pdk at commit de3240d; on ihp-sg13g2, IHP's
+SG13G2 Layout Rules, Rev. 0.4; and on ihp-sg13cmos5l, IHP's SG13CMOS5L
+Layout Rules, Rev. 0.1 (the two PDFs in IHP-GmbH/IHP-Open-PDK, under
+`<pdk>/libs.doc/doc/`, which the PDKs in the pinned image also carry). A case that did not break the rule it was filed
+under was redrawn, filed under the rule it breaks, or, where it breaks
+none of the published rules, filed under no rule (see Files). The
+comments at those cases in `pdk_sky130a.py` cite the rule pages by file
+and line; those in `pdk_gf180mcud.py` name the rule and its value.
+
 ## Files
 
 | File | What it holds |
@@ -53,7 +71,18 @@ repository too.
 
 The tables of gaps cases in the per-PDK modules are the gap studies' own
 builders, brought under one interface with the geometry unchanged, so that
-the measured results still apply to the shapes drawn here.
+the measured results still apply to the shapes drawn here. The exceptions
+are the cases that did not break the rule they target, which were
+redrawn: sky130A `s_m1_adj_mcon`, `s_via_m1_adj`, `s_m1_wide_space` (with
+their controls) and `e_butt_short`, and gf180mcuD `NW2a_s050`,
+`NP3_s006`, `V1_3_m1ov0` and `V1_3_m1ov002`. sky130A `s_m1_huge_space`
+and its control were added for `met1.3b`; they hold `s_m1_wide_space`'s
+shapes as the study drew them. Some cases keep their shapes but target
+another rule than the study gave them: sky130A `s_li_45deg` targets
+`x.2` and `c_pc_to_pdiff` `licon.9`, ihp-sg13cmos5l `u_angle.poly`
+targets the row `grid.Angle45` (through the module's `RULE_OF`), and
+sky130A `d_tap_area` and `e_ntap_area`, whose taps SkyWater's rules allow
+and Magic's `psd.10b` and `nsd.10b` report, target none.
 
 ## The sets
 
@@ -65,7 +94,7 @@ the measured results still apply to the shapes drawn here.
 | `names` | the twelve names the review tried, each a cell under `NTOP` with one minimal-width Metal1 box, plus `does_not_exist`, a name the file doesn't have | the review's cell names, design-0.6.md 2.2 and 6.5 |
 | `inverters` | the hand-drawn inverter, broken variants (open drain, A and Y swapped, no texts; on sky130A also W 0.36, the A pin without li, and A's text on li1.pin, `inv_text_on_pin`), the PCell inverter, and a schematic `<case>.spice` for each | GAPS-sky130A 5.2, GAPS-gf180mcuD 5, GAPS-ihp-sg13g2 6, GAPS-ihp-sg13cmos5l 5 |
 | `controls` | the negative controls, correct layouts that must give no finding: the review's seven standard cells, a row of them, the Magic-written row, and the hand-drawn inverter | the review's negative controls, design-0.6.md 3.3 and 6.2 |
-| `sheet` | the gaps cases as `D<top>` cells 40 µm apart in `SHEET`, placed by `tests/parity/sheet.py` | design-0.6.md 5.1; GAPS-sky130A 2.4 |
+| `sheet` | the gaps cases as `D<top>` cells 40 µm apart in `SHEET`, placed by `tests/parity/sheet.py`, which moves each cell by a multiple of 5 nm so that its shapes stay on the PDKs' 5 nm grid | design-0.6.md 5.1; GAPS-sky130A 2.4 |
 
 Per-PDK choices:
 
@@ -117,9 +146,10 @@ wrote them.
   devices Magic extracted, by model.
 - `klayout`: per run of the KLayout deck, markers per category. Where the
   gf180mcuD study recorded the category without a count (`kl_alone`), the
-  count is `null`. The sky130A runs are the parity harness's switches
+  count is `null`, and the four redrawn gf180mcuD cases record theirs the
+  same way. The sky130A runs are the parity harness's switches
   (`kl_harness`), Run DRC (Full) (`kl_menu_full`), and `sky130A.lydrc` as
-  shipped and with FEOL on.
+  shipped (`kl_lydrc_shipped`) and with FEOL on (`kl_lydrc_feol`).
 - `netgen` and `klayout.lvs` in the inverters set: the result line each tool
   printed, as the gap studies quote it.
 - `magic_area` on sky130A `nwtap`: Magic's own area check of that box.
@@ -131,10 +161,11 @@ wrote them.
 - `magic_plain_load` in the names set (sky130A only): what Magic's plain
   `load` and a check did with that name in the review's run.
 
-`expect` is `{}` wherever neither the gap studies nor the review
-measured the case. The suite never fills it from its own runs. Where this
-build measured something new, it goes in `measured` (whole_shape) or
-`notes`, with what ran it.
+`expect` is `{}` wherever no one measured the case. The builder never
+fills it from its own runs; the entries of the redrawn and added gaps
+cases were measured once and written into `expect-<pdk>.json` (see
+"Where expect comes from"). Where this build measured something new, it
+goes in `measured` (whole_shape) or `notes`, with what ran it.
 
 Keys the suite adds: `control` (gaps), `moved` and `child` (hier), `box` and
 `measured` (whole_shape), `klayout_name` (names), `schematic` (inverters),
@@ -146,6 +177,14 @@ Keys the suite adds: `control` (gaps), `moved` and `child` (hier), `box` and
 studies, the files that their tables were made from (on gf180mcuD, the
 run that checked each cell as the top cell). The hier, whole_shape and
 names results are typed into the PDK modules from the review's runs.
+
+The entries of the redrawn cases, and of sky130A `s_m1_huge_space` and
+its control, are not the studies'. They were measured on the shapes
+drawn here, on 2026-11-24 in the pinned image (Magic 8.3.681, KLayout
+0.30.11): on sky130A by the gap table's runs (`scripts/gaps.sh`), whose
+four KLayout runs give the four `kl_*` keys above, and on gf180mcuD with
+Magic and `gf180mcu.drc`. Each of these cases' `source` in `cases.json`
+says so.
 
 ## The Magic-written row
 
@@ -163,7 +202,7 @@ Cases per set, as built on 2026-11-24:
 
 | PDK | gaps | hier | whole_shape | names | inverters | controls | sheet |
 |---|---|---|---|---|---|---|---|
-| sky130A | 130 | 4 | 1 | 13 | 8 | 10 | 1 |
+| sky130A | 132 | 4 | 1 | 13 | 8 | 10 | 1 |
 | gf180mcuD | 69 | 8 | 1 | 13 | 5 | 10 | 1 |
 | ihp-sg13g2 | 151 | 4 | 1 | 13 | 5 | 10 | 1 |
 | ihp-sg13cmos5l | 49 | 4 | 1 | 13 | 5 | 10 | 1 |
@@ -185,8 +224,9 @@ seven cells, the row, the Magic-written row and the inverter.
 `tests/unit/test_cases.py` builds every set but the PCell inverter on all
 four PDKs into a temporary folder (the controls only where `PDK_ROOT` has the
 library) and reads everything back: the schema, each file's top cell, the
-hier split, the names, the sheet's spacing, the anchors' rules, the
-schematics and the row positions. It needs `klayout.db` and runs in the image:
+hier split, the names, the sheet's spacing and its 5 nm steps, the
+anchors' rules, the schematics and the row positions. It needs
+`klayout.db` and runs in the image:
 
 ```
 python3 -m unittest tests.unit.test_cases

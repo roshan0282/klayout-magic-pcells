@@ -2,7 +2,7 @@
 
 This table compares Magic's DRC rules for ihp-sg13cmos5l with the PDK's KLayout DRC decks, one row per rule, and shows where they disagree. `tools/build_gaps.py` generates it; do not edit it by hand.
 
-- **What a row is.** One rule, under the rule ID that Magic's why-text gives it (the why-text is the message Magic's DRC gives an error box, and the ID is the text in its last parentheses), under the KLayout name where Magic has no such rule, or under Magic's whole message where the message has no ID. The row gives the statements of Magic's tech file that check the rule, each KLayout deck's outputs for it (the report categories the deck writes), and what both engines reported on the test cases that target it.
+- **What a row is.** One rule, under the rule ID that Magic's why-text gives it (the why-text is the message Magic's DRC gives an error box, and the ID is the text in its last parentheses), under a name from `tests/gaps/aliases-ihp-sg13cmos5l.json` where the two tools name the rule differently, under the KLayout name where Magic has no such rule, or under Magic's whole message where the message has no ID. The row gives the statements of Magic's tech file that check the rule, each KLayout deck's outputs for it (the report categories the deck writes), and what both engines reported on the test cases that target it.
 - **How it is made.** Magic's rules come from `python/klayout_magic_pcells/data/pdk-ihp-sg13cmos5l.json`. Each KLayout run below checked a layout of one box. Its report has a category for every rule the deck ran under its switches, and those categories are the deck's side of the table; a text scan of the deck gives each output's line and the switches it sits under. The two sides are joined on rule ID, with the mappings made by hand in `tests/gaps/aliases-ihp-sg13cmos5l.json`. The test cases are the `gaps` set of the case suite (`tests/cases`): a clean control layout, and cases that each change one thing in it. Magic checked each case cell alone in all three styles, at most 15 cells per process; KLayout checked them on one sheet, 40 µm apart. A case's results are the rules reported on it and not on its control.
 - **Image.** The pinned Docker image `hpretl/iic-osic-tools@sha256:3c371645b19c6f6564dc8c7b21e39ad1c1833d274fe5b85639afe1ba9d7987e7`, with Magic 8.3.681 and KLayout 0.30.11; PDK commit ff32f48c (Magic tech 1.0.0).
 - **Rebuild.** `scripts/gaps.sh --pdk ihp-sg13cmos5l` rewrites this page; `scripts/gaps.sh --pdk ihp-sg13cmos5l --check` fails if it would change.
@@ -22,11 +22,11 @@ In the Magic column each statement reads `value [styles] :line`, with the styles
 
 ## Counts
 
-| Part | both | folded | in the deck, did not fire on its case | Magic only | KLayout only | total |
-|---|---|---|---|---|---|---|
-| Front end, Metal1, Via1, grid, pins | 80 | 6 | 3 | 2 | 68 | 159 |
-| Other layers | 63 | 4 | 0 | 10 | 61 | 138 |
-| all | 143 | 10 | 3 | 12 | 129 | 297 |
+| Part | both | folded | same name for another check | in the deck, did not fire on its case | Magic only | KLayout only | total |
+|---|---|---|---|---|---|---|---|
+| Front end, Metal1, Via1, grid, pins | 80 | 6 | 0 | 3 | 1 | 68 | 158 |
+| Other layers | 66 | 4 | 1 | 0 | 7 | 46 | 124 |
+| all | 146 | 10 | 1 | 3 | 8 | 114 | 282 |
 
 ## KLayout runs
 
@@ -96,7 +96,7 @@ Cases: 49 in the `gaps` set.
 | Gat.f | both | – [FUR] :186 | – | Gat.f – sg13cmos5l_maximal.drc:2022 |  |
 | Gat.g | both | 0.16 [FUR] :199 | Gat.g 0.16 [TABLES.include?('gatpoly') \|\| FEOL & not PRECHECK_DRC] 5_8_gatpoly.drc:73 | – |  |
 | grid.Acute | KLayout only | – | 97 names, e.g. activ_drw_Acute, activ_filler_Acute, activ_iopc_Acute :199-199 | – |  |
-| grid.Angle45 | both | 45 [FUR] :354; 45 [FUR] :414; 45 [FUR] :472; 45 [FUR] :530; 45 [FUR] :585 | 7 names, e.g. activ_drw_Angle45, gatpoly_drw_Angle45, metal1_drw_Angle45 :221-221 | – |  |
+| grid.Angle45 | both | as x.2 45 [FUR] :197; 45 [FUR] :354; 45 [FUR] :414; 45 [FUR] :472; 45 [FUR] :530; 45 [FUR] :585 | 7 names, e.g. activ_drw_Angle45, gatpoly_drw_Angle45, metal1_drw_Angle45 :221-221 | – | u_angle.poly: Magic FUR, KLayout harness_main |
 | grid.Angle90 | KLayout only | – | 5 names, e.g. cont_drw_Angle90, topvia1_drw_Angle90, via1_drw_Angle90 :210-210 | – |  |
 | grid.Offgrid | KLayout only | – | 78 names, e.g. activ_drw_Offgrid, activ_filler_Offgrid, activ_iopc_Offgrid :37-37 | – |  |
 | LU.a | both | 20 [U] :117 | – | LU.a 20 [latchUpRules] sg13cmos5l_maximal.drc:2568 |  |
@@ -149,9 +149,9 @@ Cases: 49 in the `gaps` set.
 | pSD.a | KLayout only | – | – | pSD.a 0.31 sg13cmos5l_maximal.drc:2041 | u_pSD.a: Magic no, KLayout harness_maximal |
 | pSD.b | KLayout only | – | – | pSD.b 0.31 sg13cmos5l_maximal.drc:2044 | u_pSD.b: Magic no, KLayout harness_maximal |
 | pSD.c | folded: Magic checks it only inside a composite rule | in (Rsil.d + Rsil.e + pSD.c) 0.54 [FUR] :644 | – | pSD.c 0.18 sg13cmos5l_maximal.drc:2047 | u_pSD.c: Magic no, KLayout harness_maximal |
-| pSD.c1 | folded: Magic checks it only inside a composite rule | in (pSD.j + pSD.c1) 0.33 [FUR] :157; in (pSD.j1 + pSD.c1) 0.43 [FUR] :161; in (Seal.b - pSD.c1) 4.87 [U] :329; in (Rsil.d + Rsil.e + pSD.c1) 0.39 [FUR] :646 | pSD.c1 0.03 [TABLES.include?('psd') \|\| FEOL & not PRECHECK_DRC] 5_10_psd.drc:34 | – | u_pSD.c1: Magic no, KLayout harness_main; u_pSD.j: Magic no, KLayout no |
+| pSD.c1 | folded: Magic checks it only inside a composite rule | in (pSD.j + pSD.c1) 0.33 [FUR] :157; in (pSD.j1 + pSD.c1) 0.43 [FUR] :161; in (Seal.b - pSD.c1) 4.87 [U] :329; in (Rsil.d + Rsil.e + pSD.c1) 0.39 [FUR] :646 | pSD.c1 0.03 [TABLES.include?('psd') \|\| FEOL & not PRECHECK_DRC] 5_10_psd.drc:34 | – | u_pSD.c1: Magic no, KLayout harness_main |
 | pSD.d | KLayout only | – | – | pSD.d 0.18 sg13cmos5l_maximal.drc:2050 | u_pSD.d: Magic no, KLayout harness_maximal |
-| pSD.d1 | folded: Magic checks it only inside a composite rule | in (pSD.i + pSD.d1) 0.33 [FUR] :150; in (pSD.i1 + pSD.d1) 0.43 [FUR] :153 | – | pSD.d1 0.03 sg13cmos5l_maximal.drc:2053 | u_pSD.i: Magic no, KLayout no |
+| pSD.d1 | folded: Magic checks it only inside a composite rule | in (pSD.i + pSD.d1) 0.33 [FUR] :150; in (pSD.i1 + pSD.d1) 0.43 [FUR] :153 | – | pSD.d1 0.03 sg13cmos5l_maximal.drc:2053 |  |
 | pSD.e | both | as pSD.e/f 0.3 [U] :146 | – | pSD.e 0.3 sg13cmos5l_maximal.drc:2060 |  |
 | pSD.f | both | as pSD.e/f 0.3 [U] :146 | – | pSD.f 0.3 sg13cmos5l_maximal.drc:2066 |  |
 | pSD.g | both | 0.09 µm² [U] :145 | – | pSD.g 0.09 sg13cmos5l_maximal.drc:2072 |  |
@@ -203,7 +203,6 @@ Cases: 49 in the `gaps` set.
 | V1.b1 | KLayout only | – | – | V1.b1 0.29 sg13cmos5l_maximal.drc:2309 | u_V1.b1: Magic no, KLayout harness_maximal |
 | V1.c | both | in (V1.c - M2.c) 0.005 [FUR] :393 | V1.c 0.01 [TABLES.include?('via1') \|\| BEOL & not PRECHECK_DRC] 5_19_via1.drc:60 | – |  |
 | V1.c1 | both | in (V1.c1 - M2.c) 0.045 [FUR] :396 | – | V1.c1 0.05 sg13cmos5l_maximal.drc:2316 |  |
-| x.2 | Magic only | 45 [FUR] :197 | – | – |  |
 
 ### Other layers
 
@@ -216,7 +215,8 @@ Cases: 49 in the `gaps` set.
 | AFil.c1 | both | 0.42 [U] :128 | AFil.c1 0.42 [TABLES.include?('activfiller') \|\| FEOL] 5_6_activfiller.drc:49 | – |  |
 | AFil.d | both | 1 [U] :136 | AFil.d 1 [TABLES.include?('activfiller') \|\| FEOL & not PRECHECK_DRC] 5_6_activfiller.drc:69 | – |  |
 | AFil.e | Magic only | 1 [U] :138 | – | – |  |
-| AFil.i | both | 1.5 [FU] :90; 1.5 [FU] :92; 90 [U] :140 | – | AFil.i 1.5 [fillerRules] sg13cmos5l_maximal.drc:1982 |  |
+| AFil.i | both | 1.5 [FU] :90; 1.5 [FU] :92 | – | AFil.i 1.5 [fillerRules] sg13cmos5l_maximal.drc:1982 |  |
+| AFil.i.angle | same name for another check: Magic prints AFil.i for a rule that allows only 90-degree angles on Activ fill, which IHP's SG13CMOS5L layout rules (Rev. 0.1) do not have; their AFil.i, which the maximal deck checks, is the 1.50 µm Activ:filler space to PWell:block (row AFil.i). KLayout checks Activ:filler for acute angles only | as AFil.i 90 [U] :140 | – | – |  |
 | AFil.j | KLayout only | – | AFil.j 0.25 [TABLES.include?('activfiller') \|\| FEOL & not PRECHECK_DRC] 5_6_activfiller.drc:87 | – |  |
 | GFil.a | both | 5 [FUR] :206 | – | GFil.a 5 [fillerRules] sg13cmos5l_maximal.drc:2027 |  |
 | GFil.b | both | 0.7 [FUR] :205 | – | GFil.b 0.7 [fillerRules] sg13cmos5l_maximal.drc:2030 |  |
@@ -238,7 +238,7 @@ Cases: 49 in the `gaps` set.
 | LBE.h | KLayout only | – | LBE.h – [TABLES.include?('lbe') \|\| BEOL] 9_1_lbe.drc:67 | – |  |
 | M2.a | both | 0.2 [FUR] :410 | M2.a 0.2 [TABLES.include?('metaln') \|\| BEOL] 5_17_metaln.drc:44 | – |  |
 | M2.b | both | 0.21 [FUR] :411 | M2.b 0.21 [TABLES.include?('metaln') \|\| BEOL] 5_17_metaln.drc:51 | – |  |
-| M2.c | folded: Magic checks it only inside a composite rule | in (V1.a + 2 * M2.c) 0.2 [FUR] :391; in (V1.b - 2 * M2.c) 0.21 [FUR] :392; in (V1.c - M2.c) 0.005 [FUR] :393; in (V1.c1 - M2.c) 0.045 [FUR] :396; in (M2.c1 - M2.c) 0.045 [FUR] :399 | – | M2.c 0.005 sg13cmos5l_maximal.drc:2214 | m_V1.a: Magic no, KLayout no |
+| M2.c | folded: Magic checks it only inside a composite rule | in (V1.a + 2 * M2.c) 0.2 [FUR] :391; in (V1.b - 2 * M2.c) 0.21 [FUR] :392; in (V1.c - M2.c) 0.005 [FUR] :393; in (V1.c1 - M2.c) 0.045 [FUR] :396; in (M2.c1 - M2.c) 0.045 [FUR] :399 | – | M2.c 0.005 sg13cmos5l_maximal.drc:2214 |  |
 | M2.c1 | both | in (M2.c1 - M2.c) 0.045 [FUR] :399 | – | M2.c1 0.05 sg13cmos5l_maximal.drc:2220 |  |
 | M2.d | both | 0.144 µm² [FUR] :412 | – | M2.d 0.144 sg13cmos5l_maximal.drc:2223 |  |
 | M2.e | both | – [FU] :422; – [FU] :424 | M2.e 0.24 [TABLES.include?('metaln') \|\| BEOL] 5_17_metaln.drc:63 | – |  |
@@ -289,26 +289,11 @@ Cases: 49 in the `gaps` set.
 | Seal.a | both | 3.5 [U] :326; 3.5 [U] :384; 3.5 [U] :444; 3.5 [U] :502; 3.5 [U] :560; 3.5 [U] :598 | – | 7 names, e.g. Seal.a_Activ, Seal.a_Metal1, Seal.a_Metal2 :2480-2498 |  |
 | Seal.b | both | 4.9 [U] :327; in (Seal.b - pSD.c1) 4.87 [U] :329 | 7 names, e.g. Seal.b_activ, Seal.b_metal1, Seal.b_metal2 :102-102 | – |  |
 | Seal.c | both | 0.16 [FUR] :240 | – | Seal.c 0.16 sg13cmos5l_maximal.drc:2502 |  |
-| Seal.c1 | Magic only | 0.19 [FUR] :404; 0.19 [FUR] :462; 0.19 [FUR] :520 | – | – |  |
-| Seal.c1.Via1 | KLayout only | – | – | Seal.c1.Via1 0.19 sg13cmos5l_maximal.drc:2507 |  |
-| Seal.c1.Via2 | KLayout only | – | – | Seal.c1.Via2 0.19 sg13cmos5l_maximal.drc:2512 |  |
-| Seal.c1.Via3 | KLayout only | – | – | Seal.c1.Via3 0.19 sg13cmos5l_maximal.drc:2517 |  |
+| Seal.c1 | both: Magic checks only the minimum width of the Via1-Via3 seal rings; the maximal deck also flags rings wider than 0.19 µm | 0.19 [FUR] :404; 0.19 [FUR] :462; 0.19 [FUR] :520 | – | Seal.c1.Via1 0.19 sg13cmos5l_maximal.drc:2507; Seal.c1.Via2 0.19 sg13cmos5l_maximal.drc:2512; Seal.c1.Via3 0.19 sg13cmos5l_maximal.drc:2517 |  |
 | Seal.c2 | both | 0.42 [FUR] :576 | – | Seal.c2 0.42 sg13cmos5l_maximal.drc:2522 |  |
-| Seal.d | Magic only | 1.3 [FUR] :242 | – | – |  |
-| Seal.d.Cont | KLayout only | – | – | Seal.d.Cont 1.3 sg13cmos5l_maximal.drc:2526 |  |
-| Seal.d.TopVia1 | KLayout only | – | – | Seal.d.TopVia1 1.3 sg13cmos5l_maximal.drc:2538 |  |
-| Seal.d.Via1 | KLayout only | – | – | Seal.d.Via1 1.3 sg13cmos5l_maximal.drc:2529 |  |
-| Seal.d.Via2 | KLayout only | – | – | Seal.d.Via2 1.3 sg13cmos5l_maximal.drc:2532 |  |
-| Seal.d.Via3 | KLayout only | – | – | Seal.d.Via3 1.3 sg13cmos5l_maximal.drc:2535 |  |
+| Seal.d | both: Magic checks the Activ enclosure of the EdgeSeal-Cont ring only; the maximal deck checks it for the Cont, Via1-Via3 and TopVia1 rings | 1.3 [FUR] :242 | – | 5 names, e.g. Seal.d.Cont, Seal.d.TopVia1, Seal.d.Via1 :2526-2538 |  |
 | Seal.e | both | 4.2 [FUR] :698 | – | Seal.e 4.2 sg13cmos5l_maximal.drc:2541 |  |
-| Seal.f | Magic only | 1 [FUR] :699 | – | – |  |
-| Seal.f.Activ | KLayout only | – | – | Seal.f.Activ 1 sg13cmos5l_maximal.drc:2544 |  |
-| Seal.f.Metal1 | KLayout only | – | – | Seal.f.Metal1 1 sg13cmos5l_maximal.drc:2550 |  |
-| Seal.f.Metal2 | KLayout only | – | – | Seal.f.Metal2 1 sg13cmos5l_maximal.drc:2553 |  |
-| Seal.f.Metal3 | KLayout only | – | – | Seal.f.Metal3 1 sg13cmos5l_maximal.drc:2556 |  |
-| Seal.f.Metal4 | KLayout only | – | – | Seal.f.Metal4 1 sg13cmos5l_maximal.drc:2559 |  |
-| Seal.f.pSD | KLayout only | – | – | Seal.f.pSD 1 sg13cmos5l_maximal.drc:2547 |  |
-| Seal.f.TopMetal1 | KLayout only | – | – | Seal.f.TopMetal1 1 sg13cmos5l_maximal.drc:2562 |  |
+| Seal.f | both: Magic's statement lists pdiff and m1-m4, not m5 (TopMetal1); the maximal deck checks EdgeSeal Activ, pSD, Metal1-Metal4 and TopMetal1, and pSD is not in the layout rules' Seal.f list | 1 [FUR] :699 | – | 7 names, e.g. Seal.f.Activ, Seal.f.Metal1, Seal.f.Metal2 :2544-2562 |  |
 | Seal.k | KLayout only | – | Seal.k 21 [TABLES.include?('sealring') \|\| BEOL & not PRECHECK_DRC] 6_10_sealring.drc:113 | – |  |
 | Seal.m | KLayout only | – | Seal.m – [TABLES.include?('sealring') \|\| BEOL & not PRECHECK_DRC] 6_10_sealring.drc:121 | – |  |
 | Seal.n | KLayout only | – | Seal.n – [TABLES.include?('sealring') \|\| BEOL] 6_10_sealring.drc:85 | – |  |
@@ -362,7 +347,6 @@ Each line gives a rule and the cases, controls left out, on which one engine rep
 - `M2.c`: u_V1.noM2
 - `M2.d`: u_V1.noM2
 - `NW.d`: g_nopsd_pmos
-- `x.2`: u_angle.poly
 
 ### Reported by KLayout and not by Magic
 
@@ -376,8 +360,7 @@ Each line gives a rule and the cases, controls left out, on which one engine rep
 - `CntB.a1`: u_CntB
 - `Gat.a`: u_angle.poly
 - `grid.Acute`: u_angle.poly
-- `grid.Angle45`: u_angle.poly
-- `grid.Offgrid`: g_hv_notgo, g_hv_ok, g_hv_tgo_small, g_nopsd_pmos, g_psd_half, g_psd_on_nmos, port_lbl, port_m1 and 6 more
+- `grid.Offgrid`: u_offgrid
 - `M1.c`: u_Cnt.h, u_Cnt.j
 - `M1.c1`: u_Cnt.h, u_Cnt.j
 - `nSDB.a`: u_nSDB.a

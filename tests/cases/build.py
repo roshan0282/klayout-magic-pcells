@@ -96,9 +96,10 @@ def _write_one(mod, draw, out, rel, top):
 
 
 def _targets(mod, name, desc):
-    """The rule IDs a gaps case targets: the test's rule on ihp-sg13g2, the
-    variant's name on ihp-sg13cmos5l, else the IDs in the description's
-    parentheses. A control targets nothing."""
+    """The rule IDs a gaps case targets: the module's RULE_OF where it names
+    the case (the test's rule on ihp-sg13g2, u_angle.poly on
+    ihp-sg13cmos5l), the variant's name on ihp-sg13cmos5l, else the IDs in
+    the description's parentheses. A control targets nothing."""
     if "control" in desc:
         return []
     rule_of = getattr(mod, "RULE_OF", {})

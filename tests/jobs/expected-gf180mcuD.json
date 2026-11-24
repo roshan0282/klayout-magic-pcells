@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "pdk": "gf180mcuD",
- "comment": "Findings of the plugin's layers and ports checks on the case suite, per case (F1 to F5 as [layer, l, b, r, t, information], boxes in um; ports as [check, cell, layer, l, b, r, t]). Written by tests/jobs/run_jobs.py --update-baseline (run_sweep.py --update-baseline). The negative controls' F1 to F4 lists are asserted empty in code; a control with such a finding is never written here.",
+ "comment": "Findings of the plugin's layers and ports checks on the case suite, per case (F1 to F5 as [layer, l, b, r, t, information], boxes in um; ports as [check, cell, layer, l, b, r, t]). Written by tests/jobs/run_jobs.py --update-baseline (run_sweep.py --update-baseline). The negative controls' F1 to F4 lists are asserted empty in code, and the GAPS F1 positives, the cells Magic reads nothing in and cases.json's expect.ports are asserted there too; a case that fails one of them is never written here as it ran.",
  "cases": {
   "BUTT_ok": {
    "layers": {
@@ -1153,19 +1153,10 @@
   },
   "NP3_s006": {
    "layers": {
-    "status": 1,
+    "status": 0,
     "F1": [],
     "F2": [],
-    "F3": [
-     [
-      "COMP",
-      -1.24,
-      0.0,
-      -1.17,
-      0.6,
-      false
-     ]
-    ],
+    "F3": [],
     "F4": [],
     "F5": [],
     "devices": [

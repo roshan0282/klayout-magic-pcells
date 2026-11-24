@@ -276,14 +276,39 @@ class Statuses(unittest.TestCase):
         self.assertEqual(bg.message_keys("Something Magic says (Z.9)", d, by_line), ["Z.9"])
         self.assertEqual(bg.message_keys("Can't overlap those layers", d, by_line), ["Can't overlap those layers"])
 
+    def test_composite_operand_is_not_a_target(self):
+        """A case filed under via.1 is not via.4's test, though Magic prints
+        via.1 for "via.1 + 2 * via.4"; a case that names via.4 itself is."""
+        t = self.tests_fixture()
+        t["cases"] += [{"name": "bad_via1", "top": "bad_via1", "targets": ["via.1"], "control": None},
+                       {"name": "bad_via4", "top": "bad_via4", "targets": ["via.4"], "control": None}]
+        t["magic"]["bad_via1"] = {"drc(fast)": {"Via width < 0.26um (via.1 + 2 * via.4)": 1}, "drc(full)": {}}
+        t["magic"]["bad_via4"] = {"drc(fast)": {"Via width < 0.26um (via.1 + 2 * via.4)": 1}, "drc(full)": {}}
+        t["klayout"]["harness"].update({"bad_via1": {"via.1": 1}, "bad_via4": {"via.4": 1}})
+        r, _, _ = self.rows(t)
+        self.assertEqual(r["via.1"]["tested"], [{"case": "bad_via1", "magic": "F", "klayout": ["harness"]}])
+        self.assertEqual(r["via.4"]["tested"], [{"case": "bad_via4", "magic": "F", "klayout": ["harness"]}])
+        self.assertEqual(r["via.4"]["status"], "folded")
+
     def test_pkg_json(self):
         rows, _, _ = bg.build_rows("test", data(), ALIASES, raw(self.INV))
-        p = bg.pkg_json("test", rows)["rules"]
-        self.assertEqual(p["poly.1"]["status"], "both")
-        self.assertEqual(p["poly.1"]["klayout"], [{"deck": "deckA", "name": "poly.1", "value": 0.15}])
-        self.assertIn("Ohmic overhang < %d (FIXME)", p)
-        self.assertEqual(p["Same ID, second meaning < %d (D.5)"]["key"], "D.17")
-        self.assertNotIn("via.4", p)    # an operand only: Magic never prints it first
+        doc = bg.pkg_json("test", rows)
+        self.assertEqual(doc["schema"], 2)
+        p = doc["rules"]
+        self.assertEqual(p["poly.1"], {"status": "both", "key": "poly.1", "ids": ["poly.1"], "lines": ["t.tech:10"],
+                                       "klayout": [{"deck": "deckA", "name": "poly.1", "value": 0.15}]})
+        # one entry per row, under the row's key: D.5's two statements are two rows
+        self.assertEqual((p["D.5"]["lines"], p["D.5"]["ids"]), (["t.tech:16"], ["D.5"]))
+        self.assertEqual((p["D.17"]["lines"], p["D.17"]["ids"]), (["t.tech:17"], ["D.5"]))
+        self.assertNotIn("Same ID, second meaning < %d (D.5)", p)
+        # a split ID: one statement, two rows
+        self.assertEqual((p["W.e"]["lines"], p["W.f"]["lines"]), (["t.tech:14"], ["t.tech:14"]))
+        self.assertEqual((p["varactor overhang"]["lines"], p["varactor overhang"]["ids"]), (["t.tech:18"], []))
+        self.assertEqual(p["via.1"]["lines"], ["t.tech:12"])
+        self.assertNotIn("via.4", p)    # an operand only: its statement's message is via.1's
+        self.assertNotIn("KL.only", p)  # no Magic statement
+        lines = [fl for e in p.values() for fl in e["lines"]]
+        self.assertEqual(sorted(set(lines)), sorted("t.tech:%d" % r["line"] for r in RULES))
 
 
 class Check(unittest.TestCase):

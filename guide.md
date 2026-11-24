@@ -72,7 +72,7 @@ package under Current Packages:
 ![KLayout's Salt Package Manager, Current Packages tab, with klayout-magic-pcells 0.5.0 selected: its title, description and the licence Apache-2.0](docs/img/guide/salt-package.png)
 
 The screenshot was taken at version 0.5.0. The list shows the version that
-the package's `grain.xml` gives, which is 0.6.0 for this version.
+the package's `grain.xml` gives, which is 0.6.1 for this version.
 
 For this guide the package was installed with the link above and checked
 only in this list. Installing through the Package Manager's Install tab, or
@@ -486,12 +486,18 @@ a category of its own. Magic's error list has no layer, so the rule's
 description, in the Info pane, says what Magic checks: the message, the
 styles that have the rule, the tech-file statement with its line, the
 Magic types, and the GDS layers that Magic writes those types on. The
-last line is the rule's row in the [gap table](#rule-differences), with
-the rule's names in the PDK's KLayout decks. The screenshot was taken
-before the report followed the tech file's synonyms of each type, so its
-GDS layers line names one layer. Version 0.6.0's report follows them, and
-for nwell.2a the line reads
-`GDS layers: 64/20 (nwell.drawing), 82/44 (pnp.drawing)`.
+last lines are the rule's rows in the [gap table](#rule-differences),
+one `Gap table:` line for each row that holds one of the rule's
+statements, with its status and the rule's names in the PDK's KLayout
+decks. A line names its row when the row's rule ID isn't the one that
+Magic prints: sky130A's Magic prints `hvi.5` for a spacing that SkyWater's
+rules call `hvi.2a`, and that message's line reads
+`Gap table: both (row hvi.2a); KLayout: sky130A_mr.drc: hvi.2a (0.7); sky130A.lydrc: hvi.2 (0.7)`.
+The screenshot was taken while version 0.6.0 was being written, when the report did
+not yet follow the tech file's synonyms of each type, so its GDS layers
+line names one layer; for nwell.2a the report gives
+`GDS layers: 64/20 (nwell.drawing), 82/44 (pnp.drawing)`. Its
+`Gap table:` line is the one the report gives for nwell.2a.
 
 ### A subcell's own boxes
 
@@ -790,14 +796,16 @@ A row is one rule ID, with one of these statuses: both; both, values
 differ; folded (Magic checks the ID only inside a composite rule); measured
 on other shapes; same name for another check; in the deck, did not fire on
 its case; Magic only; KLayout only. The DRC report's rule descriptions
-quote the row, as in the Info pane under [Magic DRC](#magic-drc).
+quote the rows, as in the Info pane under [Magic DRC](#magic-drc). The
+screenshot shows the sky130A page as version 0.6.0 wrote it, with 398
+rules and 130 cases; version 0.6.1's page has 390 rules and 132 cases.
 `tools/build_gaps.py` makes the tables from the PDK data, the decks, and
 runs of both tools on the case suite's gaps cases.
 `scripts/gaps.sh --pdk sky130A` rebuilds the sky130A table, and with
 `--check` it fails when the table would change. The README's [Where KLayout and Magic
 disagree](README.md#where-klayout-and-magic-disagree) section has the
-details. When the package is installed without its `docs` folder, the
-entry says where it looked for the table.
+details and the current counts. When the package is installed without
+its `docs` folder, the entry says where it looked for the table.
 
 ## Settings
 
@@ -1110,9 +1118,13 @@ Without options, the script runs the full sweep on all four PDKs. `--pdk`
 picks one PDK, `--quick` sweeps only each generator's defaults, and
 `--devices` takes a pattern of device names; the README's
 [Tests](README.md#tests) section lists the options. The quick run on
-sky130A below, on 2026-11-24, took 6 minutes 57 seconds, 3 minutes 7
-seconds of them in the DRC step. This is its console output, without the
-`[INFO]` lines the image prints when a container starts:
+sky130A below, on 2026-11-24 with version 0.6.0, took 6 minutes 57
+seconds, 3 minutes 7 seconds of them in the DRC step. This is its console
+output, without the `[INFO]` lines the image prints when a container
+starts. Version 0.6.1 has 380 unit tests and 132 sky130A gaps cases, so
+a run of it prints `'ran': 380` and `gaps=132` where this one prints 378
+and 130; the README's [Last full run](README.md#last-full-run) lists the
+checks that passed on 0.6.1:
 
 ```
 $ scripts/parity.sh --pdk sky130A --quick

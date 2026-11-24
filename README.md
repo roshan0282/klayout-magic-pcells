@@ -37,11 +37,15 @@ PDK, a generated table lists the DRC rules on which Magic and the PDK's
 KLayout decks differ (see [Where KLayout and Magic
 disagree](#where-klayout-and-magic-disagree)).
 
-Status: version 0.6.0. The repository is on GitHub as
+Status: version 0.6.1. The repository is on GitHub as
 uoftasic/klayout-magic-pcells. It moved there from vproHacks at 0.6.0, and
 GitHub redirects the old URL. The last full run of the parity harness, on
-2026-11-24, passed all 10,399 points on the four PDKs (see [Last full
-run](#last-full-run)).
+2026-11-24 on version 0.6.0's code, passed all 10,399 points on the four
+PDKs. Version 0.6.1 fixes the gap tables and their test cases: rules
+that Magic and the KLayout decks name differently share a row, and
+test cases that didn't break the rule they target were redrawn. [Last
+full run](#last-full-run) lists its changes and the checks that passed
+on its code.
 The libraries load under `klayout -b -rm`, from the Salt autorun under
 `klayout -zz`, and in the full KLayout GUI under Xvfb, where the Magic
 menu's entries have also run, on sky130A. [guide.md](guide.md) walks
@@ -509,8 +513,10 @@ Hierarchical mode also lists more than Magic's check of the top cell alone,
 which is what `drc check` gives on the loaded top cell in Magic, and every
 DRC database says so in its description: "this mode checks every cell and
 then the top cell; Magic's check from the top cell alone can report fewer
-errors". On the case suite's DRC sheets (each case a subcell, 40 µm apart,
-in `drc(full)`):
+errors". On the case suite's DRC sheets as version 0.6.0 built them (130,
+69, 151 and 49 cases, each a subcell, 40 µm apart; version 0.6.1 redrew
+four sky130A and four gf180mcuD cases and added two sky130A cases), in
+`drc(full)`:
 
 | PDK | Hierarchical | Subcell boxes in the top cell's list | Subcell boxes only in the flattened layout's check | The top cell's own check | Flat |
 |---|---|---|---|---|---|
@@ -579,9 +585,10 @@ Magic DRC (drc(full), hierarchical) of nwtap on sky130A in the area 85,0,100,3 u
 (`diff/tap.8`, `licon.9 + psdm.5a`, `Grid Rules`); a message with no ID,
 such as `Can't overlap those layers`, is a category of its own under
 "Magic DRC". A rule's description names its styles, each tech-file
-statement (file, line, keyword, types and value), the Magic types and GDS
-layers it checks, and its status and KLayout names in the [gap
-table](#where-klayout-and-magic-disagree):
+statement (file, line, keyword, types and value), and the Magic types and
+GDS layers it checks. Then comes one `Gap table:` line for each row of the
+[gap table](#where-klayout-and-magic-disagree) that holds one of its
+statements, with the row's status and KLayout names:
 
 ```
 Magic: All nwells must contain metal-connected N+ taps (nwell.4)
@@ -590,6 +597,29 @@ Tech file sky130A.tech:4199: cifmaxwidth nwell_missing_tap 0 um
 Magic types: nwell_missing_tap
 Gap table: Magic only
 ```
+
+The check finds a row by the tech-file line of the statement, not by the
+ID that Magic prints, because one printed ID can stand for more than one
+rule. sky130A's Magic prints `hvi.5` both for the spacing between two HVI
+areas, which SkyWater's rules call `hvi.2a`, and for HVI to an LV
+n-well, their `hvi.5`, and the gap table has a row for each. Where a
+row's rule ID isn't the one that Magic prints, the line names the row:
+
+```
+Magic: HVI to HVI spacing < 0.7um (hvi.5)
+In the styles: drc(full) (drc(full) only)
+Tech file sky130A.tech:4266: cifspacing drawn_hvi drawn_hvi 0.7 um
+Magic types: drawn_hvi
+Gap table: both (row hvi.2a); KLayout: sky130A_mr.drc: hvi.2a (0.7); sky130A.lydrc: hvi.2 (0.7)
+```
+
+`HVI to LV nwell spacing < 0.7um (hvi.5)` gets `Gap table: Magic only`.
+A statement that checks two rules gives a line for each of their rows:
+sky130A's message that ends in `(nwell.5a, 7)` is about the rules
+`nwell.5a` and `nwell.7`. A composite rule such as
+`via.1a + 2 * via.4a` gives a line for the first rule's row only. A
+message with no statement in the PDK's data file (`data/pdk-<pdk>.json`)
+gets the row named by its rule ID.
 
 Magic's error list has no layer, so an item's text names the types and
 layers instead. The layers are those the tech file's GDS output style
@@ -635,11 +665,12 @@ that fails or is cancelled. The export's findings don't change it.
   reads nothing in are listed that way, four of them (`TGO_e`, `TGO_f` and
   their controls) because Magic's reading has no cell for them.
 - One Magic process checks at most 15 cells; a larger tree takes several
-  processes, one after another (9 for the sky130A sheet's 130 cases in a
-  run during version 0.6's development), and the check of the flattened
-  layout, when it runs, costs about as much as `--mode flat`. Measured
-  during version 0.6's development on a 100 µm block of sky130A standard
-  cells, that check took 8.8 s of an 18.1 s run, as long as `--mode flat`
+  processes, one after another (9 for the sky130A sheet, which held 130
+  cases, in a run during version 0.6's development), and the check of
+  the flattened layout, when it runs, costs about as much as
+  `--mode flat`. Measured during version 0.6's development on a 100 µm
+  block of sky130A standard cells, that check took 8.8 s of an 18.1 s
+  run, as long as `--mode flat`
   alone; it ran there because a standard cell checked on its own has no
   tap. There is no tiling: Magic checks the whole cell.
 - The Marker Database Browser shows a subcell's errors at one placement of
@@ -1016,19 +1047,27 @@ data file knows; texts on other layer numbers are skipped. P8 needs Magic.
 DRC decks disagree, one row per rule: [sky130A](docs/gaps/sky130A.md),
 [gf180mcuD](docs/gaps/gf180mcuD.md), [ihp-sg13g2](docs/gaps/ihp-sg13g2.md)
 and [ihp-sg13cmos5l](docs/gaps/ihp-sg13cmos5l.md), each also as a `.json`
-file. A row is a rule ID as Magic's message names it (or the KLayout name
-where Magic has none). It holds Magic's statements, with value, styles and
-tech-file line; each KLayout deck's outputs, with name, value, the switch
-that enables it and the deck line; and what both tools reported on the case
-suite's cases that target the rule. Magic's rules come from the PDK's data
-file (`python/klayout_magic_pcells/data/pdk-<pdk>.json`). The KLayout side
+file. A row is a rule ID: the one Magic's message names; where the two
+tools name a rule differently, a name from the PDK's alias file,
+`tests/gaps/aliases-<pdk>.json` (Magic prints `hvi.5` for sky130A's
+HVI-to-HVI spacing, and the row is SkyWater's `hvi.2a`); or the KLayout
+name where Magic has no such rule. It holds Magic's statements, with
+value, styles and tech-file line; each KLayout deck's outputs, with name,
+value, the switch that enables it and the deck line; and what both tools
+reported on the cases of the [case suite](#the-case-suite) that target
+the rule. Magic's rules come from the PDK's data file
+(`python/klayout_magic_pcells/data/pdk-<pdk>.json`). The KLayout side
 comes from running each deck on a one-box layout, whose report lists every
 rule the deck runs under its switches, and from a scan of the deck for each
 output's line and switch; no deck text is stored. The two are joined on the
-rule ID, with the hand-made mappings in `tests/gaps/aliases-<pdk>.json`,
-the only part typed by hand. Magic checks each case cell alone in all
-three styles, and KLayout checks them on one sheet; a case's result is what
-was reported on it and not on its control case.
+rule ID, with the alias file's mappings, the only part typed by hand.
+Magic checks each case cell alone in all three styles, and KLayout checks
+them on one sheet; a case's result is what was reported on it and not on
+its control case. For version 0.6.1, the rows on which the two tools
+disagreed, and their cases, were checked against the foundries' published
+rules ([tests/cases/README.md](tests/cases/README.md#sources) names the
+sources, and [Last full run](#last-full-run) lists what changed), and
+the notes beside some rows' statuses cite those rules.
 
 The status compares Magic with `sky130A_mr.drc` on sky130A (with the parity
 harness's switches; the page has columns for the switches of Efabless
@@ -1050,24 +1089,31 @@ The counts, from `docs/gaps/README.md`:
 
 | PDK | both | both, values differ | folded | measured on other shapes | same name for another check | in the deck, did not fire on its case | Magic only | KLayout only | rules | cases |
 |---|---|---|---|---|---|---|---|---|---|---|
-| sky130A | 72 | 2 | 5 | 0 | 2 | 11 | 93 | 213 | 398 | 130 |
-| gf180mcuD | 89 | 9 | 2 | 2 | 1 | 6 | 38 | 421 | 568 | 69 |
-| ihp-sg13g2 | 199 | 0 | 12 | 0 | 0 | 4 | 17 | 151 | 383 | 151 |
-| ihp-sg13cmos5l | 143 | 0 | 10 | 0 | 0 | 3 | 12 | 129 | 297 | 49 |
+| sky130A | 76 | 1 | 5 | 0 | 3 | 7 | 93 | 205 | 390 | 132 |
+| gf180mcuD | 105 | 7 | 8 | 2 | 0 | 3 | 14 | 406 | 545 | 69 |
+| ihp-sg13g2 | 203 | 0 | 12 | 0 | 1 | 4 | 12 | 130 | 362 | 151 |
+| ihp-sg13cmos5l | 146 | 0 | 10 | 0 | 1 | 3 | 8 | 114 | 282 | 49 |
 
-`scripts/gaps.sh` rebuilds all four in the image, one container per PDK
-(about 4.5 minutes in a run during version 0.6's development), and writes
-`docs/gaps/` and `python/klayout_magic_pcells/data/gaps-<pdk>.json`, which
-the DRC check reads for its category descriptions. `--pdk P` rebuilds one.
-`--check` rebuilds the tables without writing them, and exits 1 with
-`GAPS DIFFER <file>` and a diff when one would change, for example after a
-PDK or Magic update. The run below shared the machine with four other
-containers:
+`scripts/gaps.sh` rebuilds all four in the image, one container per PDK,
+and writes `docs/gaps/` and
+`python/klayout_magic_pcells/data/gaps-<pdk>.json`, which the DRC check
+reads for its category descriptions. `--pdk P` rebuilds one. `--check`
+rebuilds the tables without writing them, and exits 1 with
+`GAPS DIFFER <file>` and a diff when one would change, for example after
+a PDK or Magic update. On 0.6.1's code, `scripts/gaps.sh --check` took
+249 s for the four PDKs; its output, without the `[INFO]` lines that the
+image prints when a container starts:
 
 ```
-$ scripts/gaps.sh --pdk sky130A --check
-sky130A: 398 rules (both 72, both, values differ 2, folded 5, same name for another check 2, in the deck, did not fire on its case 11, Magic only 93, KLayout only 213), 130 cases, 146 s
+$ scripts/gaps.sh --check
+sky130A: 390 rules (both 76, both, values differ 1, folded 5, same name for another check 3, in the deck, did not fire on its case 7, Magic only 93, KLayout only 205), 132 cases, 75 s
 GAPS OK sky130A
+gf180mcuD: 545 rules (both 105, both, values differ 7, folded 8, measured on other shapes 2, in the deck, did not fire on its case 3, Magic only 14, KLayout only 406), 69 cases, 42 s
+GAPS OK gf180mcuD
+ihp-sg13g2: 362 rules (both 203, folded 12, same name for another check 1, in the deck, did not fire on its case 4, Magic only 12, KLayout only 130), 151 cases, 98 s
+GAPS OK ihp-sg13g2
+ihp-sg13cmos5l: 282 rules (both 146, folded 10, same name for another check 1, in the deck, did not fire on its case 3, Magic only 8, KLayout only 114), 49 cases, 32 s
+GAPS OK ihp-sg13cmos5l
 ```
 
 The rule list is what the decks run under the switches used; rules that
@@ -1087,10 +1133,16 @@ checked by Magic:
   - `nwell.4`, `LU.2` and `LU.3`, a missing tap, are Magic only and in
     `drc(full)` alone: Magic reported them on the cases without a tap and
     KLayout didn't. Magic starts in `drc(fast)`, which doesn't have them.
-  - `poly.8` (gate endcap) and `psd.10b` (tap area) are Magic only;
-    `sky130A.lydrc` has `poly.8` with FEOL on.
+  - `poly.8` (gate endcap) is Magic only; `sky130A.lydrc` has it with
+    FEOL on.
+  - `psd.10b` and `nsd.10b` are Magic only, and they aren't SkyWater's
+    area rules: Magic checks the area of a tap, 0.07011 µm², where
+    SkyWater's `n/psd.10a` and `n/psd.10b` are the minimum areas of the
+    drawn nsdm and psdm (0.265 and 0.255 µm²). Magic reported the taps of
+    `d_tap_area` and `e_ntap_area`, which SkyWater's rules allow.
   - `x.2`: Magic reported the 45° diffusion corners of `d_diff_45` and
-    `d_diff_45b`, and KLayout's angle checks reported nothing.
+    `d_diff_45b` and the 45° li edge of `s_li_45deg` (li outside the SRAM
+    core takes 90° only), and KLayout's angle checks reported nothing.
   - `licon.1` and `via.1a`: KLayout flags a 0.20 µm licon and a 0.16 µm
     via1 that Magic accepts, since Magic draws its own cuts.
   - `difftap.2` and `poly.3` are the same names for other checks in
@@ -1143,7 +1195,7 @@ dialog shows them](#values-as-magics-dialog-shows-them)):
 | number entry | double | the 15 significant digits that KLayout saves, rounded to 12, written like a Python float (`0.35`, `31.0`); any zero as `0.0`; a value equal to Magic's default as Magic's default text (`0.420`) |
 | `nf`, `ng`, `m`, `nx`, `ny`, `turns` | int | `3` |
 | checkbox | boolean | `1` or `0` |
-| the "[+/-](%)" coverage entries (`viasrc`, `viadrn`, `viagate`, `viagb`, `viagr`, `viagl`, `viagt`, `ccov`) | string | the text as typed, whitespace included, if it is a number; anything else is refused (see below) |
+| the "\[+/-\](%)" coverage entries (`viasrc`, `viadrn`, `viagate`, `viagb`, `viagr`, `viagl`, `viagt`, `ccov`) | string | the text as typed, whitespace included, if it is a number; anything else is refused (see below) |
 | a selectlist other than the device switch (gf180mcuD `guard_type`; IHP `via` `metalbot`, `metaltop`, `orient`, `pattern`; IHP `bondpad` `shape`; sg13cmos5l `cap_cmomf` `mmin`, `mmax`) | string with Magic's choices | the choice; anything else is refused |
 | IHP `via` `nxcuts` and `nycuts` | string | the text as typed if every word is a number (`2`, or `1 2` for one value per via layer); anything else is refused |
 
@@ -2011,7 +2063,7 @@ container. This list numbers them 1 to 12; `run_sweep.py` and its log
 number the same steps from 0 and join some of them, so the extraction
 check (item 11) is its step 8 and the jobs step (item 12) its step 9:
 
-1. the unit tests (`tests/unit`, 378 tests) and the backend tests for that
+1. the unit tests (`tests/unit`, 380 tests) and the backend tests for that
    PDK (`tests/backend`, 95 tests, each run with the PDK's own devices).
    The unit tests cover:
    - configuration, including the PDK selection and per-PDK settings;
@@ -2056,21 +2108,24 @@ check (item 11) is its step 8 and the jobs step (item 12) its step 9:
      the choice of PDK, also with a technology that the layers contradict
      (`test_pdk_choice.py`, 11); the reader of the PDKs' Magic tech files
      behind the data files (`test_pdk_data.py`, 42); DRC's rule IDs,
-     units, area filter, dropped copies, the sorting of subcell boxes and
-     the layer names from the tech file's type synonyms (`test_drcjob.py`,
-     32); the `.ext` reader, its unit and the instance transforms in all
-     eight orientations and in arrays (`test_extfile.py`, 12); netgen's
+     units, area filter, dropped copies, the sorting of subcell boxes,
+     the layer names from the tech file's type synonyms, a message's
+     gap-table rows, found by its statements' tech-file lines, and that
+     each shipped gap file holds every statement of the PDK's data file
+     (`test_drcjob.py`, 34); the `.ext` reader, its unit and the instance
+     transforms in all eight orientations and in arrays
+     (`test_extfile.py`, 12); netgen's
      verdicts and JSON, from saved reports (`test_netgen.py`, 25, two of
      which read a folder of saved netgen reports outside the repository
      and are skipped unless `KMP_NETGEN_EVIDENCE` names that folder); F1
      to F5 on small layouts, and failed exports (`test_layercheck.py`,
-     28); P1 to P8 (`test_portcheck.py`, 15); the
-     case suite's builder (`test_cases.py`, 15); and the Magic menu against
-     a stand-in for KLayout: no menu with `KMP_MENU=0` or without a main
-     window, one menu after two installs, `state.json`, the options a Rerun
-     gets, the progress text, the PDK dialog's sentence, job directories
-     released once a result is shown, and Extract never replacing a file
-     the plugin didn't write (`test_gui.py`, 21).
+     28); P1 to P8 (`test_portcheck.py`, 15); the case suite's builder,
+     with its sheet's 5 nm steps (`test_cases.py`, 15); and the Magic menu
+     against a stand-in for KLayout: no menu with `KMP_MENU=0` or without
+     a main window, one menu after two installs, `state.json`, the options
+     a Rerun gets, the progress text, the PDK dialog's sentence, job
+     directories released once a result is shown, and Extract never
+     replacing a file the plugin didn't write (`test_gui.py`, 21).
 
    The backend tests cover:
    - every generator generated twice in one Magic session with no restart;
@@ -2344,9 +2399,10 @@ check (item 11) is its step 8 and the jobs step (item 12) its step 9:
 Every generator of every PDK is in the sweep; the excluded helpers are listed
 in each report with the reason.
 
-A run of `scripts/test.sh` on the release's code, on 2026-11-24 in the
-image, passed the 378 unit tests, with the two of `test_netgen.py` that
-need `KMP_NETGEN_EVIDENCE` skipped, and the gap table builder's 17 tests.
+A run of `scripts/test.sh` on 0.6.1's code, on 2026-11-24 in the
+image, ran the 380 unit tests, all of which passed but the two of
+`test_netgen.py` that need `KMP_NETGEN_EVIDENCE`, which were skipped; the
+gap table builder's 18 tests passed.
 The 95 backend tests passed on each PDK, with the tests written for
 another PDK skipped: 3 on sky130A, 11 on gf180mcuD, 8 on ihp-sg13g2 and 10
 on ihp-sg13cmos5l. The harness's first step runs the unit
@@ -2366,7 +2422,7 @@ describes the sets and the file. Per PDK:
 
 | Set | What it holds | sky130A | gf180mcuD | ihp-sg13g2 | ihp-sg13cmos5l |
 |---|---|---|---|---|---|
-| `gaps` | a clean control and one-change cases, each with the rule it breaks | 130 | 69 | 151 | 49 |
+| `gaps` | a clean control and one-change cases, each with the rule it breaks; two sky130A cases, `d_tap_area` and `e_ntap_area`, break no rule of SkyWater's and target none, and Magic's `psd.10b` and `nsd.10b` report them | 132 | 69 | 151 | 49 |
 | `hier` | the flat original and copies with some layers moved into a parent cell (see [Magic DRC](#magic-drc)) | 4 | 8 | 4 | 4 |
 | `whole_shape` | a 100 µm well for a rule about a whole shape: with its tap at one end (sky130A, IHP), or with a 3.3 V and a 6 V pfet at its two ends (gf180mcuD) | 1 | 1 | 1 | 1 |
 | `names` | twelve cells with awkward names (`a b`, `x/y`, `br[0]`, `café`, ...) under one top cell, each holding one error, and as a 13th case a name the file doesn't have | 13 | 13 | 13 | 13 |
@@ -2377,7 +2433,7 @@ describes the sets and the file. Per PDK:
 The PCell inverter needs Magic (`--no-pcell` leaves it out), the controls
 need the PDK's `libs.ref`, and `--magic-row` has Magic write the row. The
 builds for this README printed, for example,
-`CASES sky130A controls=10 gaps=130 hier=4 inverters=8 names=13 sheet=1 whole_shape=1`.
+`CASES sky130A controls=10 gaps=132 hier=4 inverters=8 names=13 sheet=1 whole_shape=1`.
 
 ### Last full run
 
@@ -2397,7 +2453,8 @@ another and took 79 minutes. Each PDK's run included the unit and backend
 tests, the manifest check and the jobs step, and checked DRC and the GDS
 census against the committed baselines.
 
-After that run, the code changed in these ways:
+After that run, the code changed in these ways. Before the 0.6.0
+release:
 
 - `extract` and `lvs` on a cell Magic reads nothing in give the finding
   "Magic reads nothing in this cell" with status 1, and `drc`'s summary
@@ -2422,21 +2479,102 @@ these changes is on the path that the sweep's points measure. Of the
 modules that the PCell libraries load, only `cache.py` changed in its
 code, and only in the job cache's prune; `config.py` changed in its
 docstring alone. In the command line (`__main__.py`), only the handling
-of `--box` changed.
+of `--box` changed. On the released 0.6.0 code, `scripts/test.sh`,
+`scripts/parity.sh --pdk all --quick` and the full jobs step on each PDK
+passed, the jobs step with the full run's numbers of checks.
 
-On the release's code, which has these changes, these ran on 2026-11-24
-and passed:
+Version 0.6.1 came out of a check of the gap tables against the
+foundries' published rules: the rows on which the two tools disagreed,
+and their cases (see
+[tests/cases/README.md](tests/cases/README.md#sources)). It made these
+changes:
 
-- `scripts/test.sh`: 378 unit tests (2 skipped), which are the 372 that
-  each PDK's results below give and six added with the changes above;
-  the gap table builder's 17 tests; and the 95 backend tests on each PDK;
+- the alias files of all four gap tables join rules that the two tools
+  name differently, and the tables went from 398 rules to 390 on
+  sky130A, 568 to 545 on gf180mcuD, 383 to 362 on ihp-sg13g2 and 297 to
+  282 on ihp-sg13cmos5l. Among the joins:
+  - sky130A: `hvi.2a` (Magic's HVI-to-HVI `hvi.5` and `sky130A.lydrc`'s
+    `hvi.2`), `via.5a` (`sky130A.lydrc`'s `via1.5a`) and `varac.1`, `.2`
+    and `.4` (Magic's `var.1`, `.2` and `.4`);
+  - gf180mcuD: Magic's via rules (`V2.3` to `V4.4i`, `VT.*`), its
+    `HRES.2` and `HRES.3`, which are the deck's `HRES.3` and `HRES.2`,
+    and its SRAM rules, under the deck's names. `MIMTM.5` stays
+    "both, values differ" (Magic 0.39 µm, KLayout 0.4 µm), with a note
+    that Magic measures to its via4 area, and that if that area is the
+    cut plus 0.01 µm per side, Magic's 0.39 µm is 0.4 µm from the cut;
+    that area wasn't measured;
+  - both IHP PDKs: Magic's `x.2` with the main deck's output
+    `gatpoly_drw_Angle45` (row `grid.Angle45`), and the seal-ring rules
+    with the maximal deck's outputs per layer. Magic's second `AFil.i`, a rule that allows only
+    90° angles on Activ fill, has a row of its own, `AFil.i.angle`;
+  - ihp-sg13g2: Magic's `Padc.e`, a 40 µm pad spacing, is filed as
+    `Padc.b`, IHP's name for that rule;
+- the gaps cases that didn't break the rule they target were redrawn:
+  sky130A `s_m1_adj_mcon`, `s_via_m1_adj`, `s_m1_wide_space` and
+  `e_butt_short`, and gf180mcuD `NW2a_s050`, `NP3_s006`, `V1_3_m1ov0`
+  and `V1_3_m1ov002`. sky130A `s_m1_huge_space` and its control were
+  added for `met1.3b`, which brings sky130A's gaps set to 132 cases.
+  sky130A `s_li_45deg` now targets `x.2` and `c_pc_to_pdiff` `licon.9`,
+  ihp-sg13cmos5l `u_angle.poly` targets `grid.Angle45`, and sky130A
+  `d_tap_area` and `e_ntap_area` target no rule. The `expect` entries
+  of the redrawn and added cases were measured on the new shapes, and
+  the jobs step's baselines changed with them: `e_butt_short` lost its
+  F1 item and `NP3_s006` its F3 item (see [Generated
+  layers](#generated-layers)), and `s_m1_huge_space` and its control
+  were added;
+- `tools/build_gaps.py` no longer counts a case as a test of a rule that
+  is only a later operand of its target's composite rule: Magic checks
+  `via.5a` as `via.5a - via.4a`, and a case filed under `via.5a` is not a
+  test of `via.4a`. Four sky130A cases left the `via.4a` row:
+  `s_via_014` and `s_via_016` (which target `via.1a`, checked by Magic
+  as `via.1a + 2 * via.4a`), `s_via_space` (`via.2 - 2 * via.4a`) and
+  `s_via_m1_adj` (`via.5a - via.4a`);
+- `data/gaps-<pdk>.json` is in schema 2, with an entry per row and the
+  tech-file lines of its statements (schema 1 had an entry per ID that
+  Magic prints), and the DRC check finds a message's rows by those
+  lines, with a `Gap table:` line per row (see [Magic DRC](#magic-drc));
+- `tests/parity/sheet.py` moves each cell of a DRC sheet by a multiple of
+  5 nm. In 0.6.0, a case whose bounding box is off the grid on purpose
+  (sky130A `s_m1_offgrid`, ihp-sg13g2's `Offgrid` test, ihp-sg13cmos5l
+  `u_offgrid`) moved every later cell of its row 1 nm off the grid, and
+  KLayout's grid checks reported every layer of those cells;
+- `grain.xml` and `__version__` say 0.6.1.
+
+Of these, only the change to `tests/parity/sheet.py` is on the path that
+the sweep's points measure: the sweep's DRC step (item 10 under
+[Tests](#tests)) builds its sheets with it. It places a cell elsewhere
+than 0.6.0's code only when that cell's bounding box, or the box of a
+cell placed before it on the sheet, is off the 5 nm grid. Every
+bounding box that the full run's reports record (from the shapes, texts
+left out) is on that grid: 20,040 boxes, the reference's and the PCell's
+of every point whose cell isn't empty. The quick run below put each of
+its 226 points on three sheets of one cell each (the reference, the
+PCell, and the PCell again as a default run alone; see item 10), 678
+sheets in all; the boxes that they record for the
+669 cells that aren't empty are on the grid too, and every cell is where
+0.6.0's code places it. The other changes touch no module that the PCell
+libraries load but `__init__.py`, whose version string neither the
+PCells' cache key nor their stamps hold. The changes to the DRC check
+and the gap tables are on the jobs step's path, which ran again in full.
+
+On 0.6.1's code these ran on 2026-11-24, one container at a time, and
+passed:
+
+- `scripts/test.sh`: 380 unit tests (2 skipped), which are the 372 that
+  each PDK's results below give, six added before the 0.6.0 release and
+  two in 0.6.1; the gap table builder's 18 tests; and the 95 backend
+  tests on each PDK;
+- `scripts/gaps.sh --check`: `GAPS OK` on all four PDKs, with the counts
+  under [Where KLayout and Magic disagree](#where-klayout-and-magic-disagree);
+- the full jobs step on each PDK (`tests/jobs/run_jobs.py --pdk <pdk>`,
+  on 6 workers): 1,834 checks passed on sky130A, the full run's 1,816
+  and 18 on the two added cases, and 1,279 on gf180mcuD, 1,944 on
+  ihp-sg13g2 and 1,006 on ihp-sg13cmos5l, as in the full run; none
+  failed;
 - `scripts/parity.sh --pdk all --quick`: 73 points on sky130A, 59 on
   gf180mcuD, 53 on ihp-sg13g2 and 41 on ihp-sg13cmos5l, and the jobs
-  step's quick set on each, with the summary `PARITY PASS over 4 PDKs`;
-- the full jobs step on each PDK, one PDK at a time on 6 workers
-  (`tests/jobs/run_jobs.py --pdk <pdk>`): 1,816 checks passed on sky130A,
-  1,279 on gf180mcuD, 1,944 on ihp-sg13g2 and 1,006 on ihp-sg13cmos5l,
-  none failed, the same numbers as in the full run.
+  step's quick set on each, with the summary `PARITY PASS over 4 PDKs`,
+  in 26 minutes.
 
 Version 0.5.0's full run, on 2026-11-23, passed the same 10,399 points.
 It had neither the jobs step nor the checks it tests. The sweep's counts
@@ -2476,7 +2614,9 @@ about 1 s more). Its GDS
 read-back check extracts every device default from Magic's database and
 again after a GDS write and read, and passes when the two differ only on
 the devices that `readback-<pdk>.json` lists; its gap-table check is
-`tools/build_gaps.py --check`.
+`tools/build_gaps.py --check`, and the rules and cases it names are those
+of the full run's tables (the current counts are under [Where KLayout and
+Magic disagree](#where-klayout-and-magic-disagree)).
 
 The notes under each table are points that pass but are listed in the
 report. "Typed with no Return" counts the points with one typed value on
@@ -2854,10 +2994,13 @@ The checks of [Checking a layout with Magic](#checking-a-layout-with-magic):
 - No view in KLayout's Netlist Database Browser: LVS gives netgen's report
   and the markers. KLayout's `NetlistComparer.same_nets` could impose
   netgen's pairing on a KLayout comparison; it isn't built.
-- No KLayout deck for the rules that only Magic checks. On sky130A the candidates
-  would be the tap and latch-up rules (`nwell.4`, `LU.2`, `LU.3`), the tap
-  area `psd.10b` and `x.2` on diffusion, which no KLayout deck reported on
-  their cases in the gap table; on the other PDKs KLayout's decks check
+- No KLayout deck for the rules that only Magic catches. On sky130A the
+  candidates would be the rules that Magic reported on their cases in the
+  gap table and no KLayout deck did, among them the tap and latch-up
+  rules (`nwell.4`, `LU.2`, `LU.3`), `diff/tap.4` (a butting tap 0.20 µm
+  deep, `e_butt_short`), `met1.3a` (two stubs on the edge of a huge met1
+  area, 0.27 µm apart, `s_m1_wide_space`) and `x.2` (45° edges on
+  diffusion and on li); on the other PDKs KLayout's decks check
   more of the front end than Magic does (see [Where KLayout and Magic
   disagree](#where-klayout-and-magic-disagree)). The Magic menu doesn't run
   `sky130A.lydrc` with FEOL on either, which in research for version 0.6
@@ -2909,7 +3052,7 @@ The checks of [Checking a layout with Magic](#checking-a-layout-with-magic):
 - The server puts back the session state (layer locks, units, box stack)
   after each request, and keeps cells a generator places in its device
   rather than restarting Magic for them.
-- The eight "[+/-](%)" coverage parameters are strings, not doubles (see
+- The eight "\[+/-\](%)" coverage parameters are strings, not doubles (see
   [Parameters](#parameters)), and selectlists are choice parameters. The
   design typed the coverage values as floats and left selectlists out.
 - Floats are sent as the 15-digit text KLayout saves, rounded to 12
@@ -3038,7 +3181,7 @@ and made from the same PDK installs:
 | `pdk-<pdk>.json` | Magic's DRC rules, the layers Magic reads and writes, the implants it grows and by how much, and the label and pin layers | `tools/build_pdk_data.py` reads the PDK's Magic tech files, the layer names of its KLayout layer properties file (`.lyp`), and the layer pairs that the PDK's KLayout LVS deck reads labels from |
 | `devices-<pdk>.json` | how Magic's GDS reader decides each device type, for the generated-layer check | typed from the tech file's GDS input and output styles, each row citing its lines |
 | `readback-<pdk>.json` | the devices that Magic's GDS reader doesn't keep | measured in Magic by a backend test |
-| `gaps-<pdk>.json` | the gap table's status per rule, with the KLayout deck outputs' names, values, switches and line numbers | `tools/build_gaps.py`, from the data file, runs of the decks and Magic in the image, and the alias files |
+| `gaps-<pdk>.json` | one entry per row of the gap table that has a Magic statement of its own (a row whose statements all name its rule only as a later operand of a composite rule, as `via.4a` in `via.1a + 2 * via.4a`, has none): the row's status, the names and values of its KLayout deck outputs, the IDs that Magic prints for its statements and their tech-file lines | `tools/build_gaps.py`, from the data file, runs of the decks and Magic in the image, and the alias files |
 
 These ship under Apache-2.0, as the manifests do. The project lead decided
 this for data read out of the PDKs' Magic files, as other tools under that

@@ -781,17 +781,8 @@
   },
   "e_butt_short": {
    "layers": {
-    "status": 1,
-    "F1": [
-     [
-      "nsdm",
-      0.276,
-      1.501,
-      0.4,
-      1.95,
-      false
-     ]
-    ],
+    "status": 0,
+    "F1": [],
     "F2": [],
     "F3": [],
     "F4": [],
@@ -2802,6 +2793,38 @@
    }
   },
   "s_m1_hole_ok": {
+   "layers": {
+    "status": 0,
+    "F1": [],
+    "F2": [],
+    "F3": [],
+    "F4": [],
+    "F5": [],
+    "devices": []
+   },
+   "ports": {
+    "status": 0,
+    "findings": [],
+    "magic_ports": null
+   }
+  },
+  "s_m1_huge_space": {
+   "layers": {
+    "status": 0,
+    "F1": [],
+    "F2": [],
+    "F3": [],
+    "F4": [],
+    "F5": [],
+    "devices": []
+   },
+   "ports": {
+    "status": 0,
+    "findings": [],
+    "magic_ports": null
+   }
+  },
+  "s_m1_huge_space_ok": {
    "layers": {
     "status": 0,
     "F1": [],

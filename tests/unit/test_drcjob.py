@@ -338,6 +338,61 @@ class Texts(unittest.TestCase):
         self.assertEqual(none.item_text(), "Can't overlap those layers")
         self.assertIn("no rule statement", none.description())
 
+    def test_gap_table_row_by_statement_line(self):
+        """One printed ID, two rows: sky130A prints hvi.5 for its HVI-to-HVI
+        spacing, the manual's hvi.2a (tech line 4266), and for HVI to nwell
+        (4268). Each why-text gets the row of its own statement, and a
+        statement that checks two rules (4177) gets both."""
+        data = FakeData()
+        st = {"HVI to HVI spacing < 0.7um (hvi.5)": (4266, "HVI to HVI spacing < %d (hvi.5)", ["hvi.5"]),
+              "HVI to LV nwell spacing < 0.7um (hvi.5)": (4268, "HVI to LV nwell spacing < 0.7um (hvi.5)", ["hvi.5"]),
+              "N-well spacing < 1.27um (nwell.5a, 7)": (4177, "N-well spacing < %d (nwell.5a, 7)", ["nwell.5a", "7"])}
+        for line, why, ids in st.values():
+            data.rules.append({"line": line, "file": "sky130A.tech", "keyword": "spacing", "styles": ["drc(full)"],
+                               "types": ["hvi"], "value_um": 0.7, "unit": "um", "why": why, "ids": ids})
+        data.rules_by_why = lambda why: [r for r in data.rules if r["why"] == st.get(why, (0, why))[1]]
+        gaps = {
+            "hvi.2a": {"key": "hvi.2a", "status": "both", "ids": ["hvi.5"], "lines": ["sky130A.tech:4266"],
+                       "klayout": [{"deck": "sky130A_mr.drc", "name": "hvi.2a", "value": 0.7}]},
+            "hvi.5": {"key": "hvi.5", "status": "Magic only", "ids": ["hvi.5"], "klayout": [],
+                      "lines": ["sky130A.tech:4264", "sky130A.tech:4268"]},
+            "nwell.5a": {"key": "nwell.5a", "status": "both", "ids": ["nwell.5a"], "lines": ["sky130A.tech:4177"],
+                         "klayout": [{"deck": "sky130A_mr.drc", "name": "nwell.5a", "value": 1.27}]},
+            "nwell.7": {"key": "nwell.7", "status": "Magic only", "ids": ["nwell.5a"], "lines": ["sky130A.tech:4177"],
+                        "klayout": []}}
+
+        def gap_lines(why, g=gaps, d=data):
+            return [ln for ln in drcjob.RuleInfo(d, why, g, {}).description().split("\n")
+                    if ln.startswith("Gap table")]
+
+        self.assertEqual(gap_lines("HVI to HVI spacing < 0.7um (hvi.5)"),
+                         ["Gap table: both (row hvi.2a); KLayout: sky130A_mr.drc: hvi.2a (0.7)"])
+        self.assertEqual(gap_lines("HVI to LV nwell spacing < 0.7um (hvi.5)"), ["Gap table: Magic only"])
+        self.assertEqual(gap_lines("N-well spacing < 1.27um (nwell.5a, 7)"),
+                         ["Gap table: both (row nwell.5a); KLayout: sky130A_mr.drc: nwell.5a (1.27)",
+                          "Gap table: Magic only (row nwell.7)"])
+        # No statement to go by: the row named by the rule ID.
+        self.assertEqual(drcjob.gap_rows(gaps, "Something (hvi.2a)"), [gaps["hvi.2a"]])
+        self.assertEqual(gap_lines("Something (hvi.2a)", d=None),
+                         ["Gap table: both; KLayout: sky130A_mr.drc: hvi.2a (0.7)"])
+        # A file keyed by printed ID, its lines numbers only (0.6.0): the ID's entry.
+        old = {"hvi.5": {"status": "Magic only", "key": "hvi.5", "klayout": [], "lines": [4264, 4266, 4268]}}
+        self.assertEqual(gap_lines("HVI to HVI spacing < 0.7um (hvi.5)", g=old), ["Gap table: Magic only"])
+
+    def test_shipped_gap_tables_hold_every_statement(self):
+        """Each rule statement of a PDK's data file is in a row of its gap
+        file, so that every why-text finds its rows by line."""
+        from klayout_magic_pcells import pdkdata
+        for pdk in ("sky130A", "gf180mcuD", "ihp-sg13g2", "ihp-sg13cmos5l"):
+            with self.subTest(pdk=pdk):
+                gaps = drcjob.load_gaps(pdk)
+                self.assertTrue(gaps)
+                lines = {fl for row in gaps.values() for fl in row["lines"]}
+                for r in pdkdata.load(pdk).drc["rules"]:
+                    self.assertIn("%s:%d" % (r["file"], r["line"]), lines)
+                for k, row in gaps.items():
+                    self.assertEqual(row["key"], k)
+
     def test_styles_are_the_drc_ones(self):
         self.assertEqual(drcjob.drc_styles(FakeData()), ["drc(fast)", "drc(full)", "drc(routing)"])
         self.assertEqual(drcjob.drc_styles(None), [])

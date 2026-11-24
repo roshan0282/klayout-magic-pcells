@@ -6,9 +6,9 @@ In the table below, each status column counts the rules with that status, `rules
 
 | PDK | both | both, values differ | folded | measured on other shapes | same name for another check | in the deck, did not fire on its case | Magic only | KLayout only | rules | cases |
 |---|---|---|---|---|---|---|---|---|---|---|
-| [sky130A](sky130A.md) | 72 | 2 | 5 | 0 | 2 | 11 | 93 | 213 | 398 | 130 |
-| [gf180mcuD](gf180mcuD.md) | 89 | 9 | 2 | 2 | 1 | 6 | 38 | 421 | 568 | 69 |
-| [ihp-sg13g2](ihp-sg13g2.md) | 199 | 0 | 12 | 0 | 0 | 4 | 17 | 151 | 383 | 151 |
-| [ihp-sg13cmos5l](ihp-sg13cmos5l.md) | 143 | 0 | 10 | 0 | 0 | 3 | 12 | 129 | 297 | 49 |
+| [sky130A](sky130A.md) | 76 | 1 | 5 | 0 | 3 | 7 | 93 | 205 | 390 | 132 |
+| [gf180mcuD](gf180mcuD.md) | 105 | 7 | 8 | 2 | 0 | 3 | 14 | 406 | 545 | 69 |
+| [ihp-sg13g2](ihp-sg13g2.md) | 203 | 0 | 12 | 0 | 1 | 4 | 12 | 130 | 362 | 151 |
+| [ihp-sg13cmos5l](ihp-sg13cmos5l.md) | 146 | 0 | 10 | 0 | 1 | 3 | 8 | 114 | 282 | 49 |
 
 Each page also has a `.json` file with the same rows. The plugin's DRC check (`drc`) reads `python/klayout_magic_pcells/data/gaps-<pdk>.json`, built at the same time, for the descriptions of its report categories.

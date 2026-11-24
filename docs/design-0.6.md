@@ -1,6 +1,9 @@
 # klayout-magic-pcells 0.6 design: Magic's checks from KLayout
 
-Written 2026-11-24 from the code of version 0.6.0, for a maintainer.
+Written 2026-11-24 from the code of version 0.6.0, for a maintainer, and
+updated for version 0.6.1, which changed the gap tables (3.5), their
+lines in the DRC descriptions (3.1) and some cases of the case suite
+(5.1).
 
 Version 0.6 adds checks for four PDKs: sky130A, gf180mcuD, ihp-sg13g2 and
 ihp-sg13cmos5l. It runs Magic's DRC, Magic's extraction and netgen's LVS
@@ -17,8 +20,9 @@ Claims carry a tag, as in `docs/design.md`:
 - **[run]**: run with the 0.6 code or its tests in the pinned image
   `hpretl/iic-osic-tools@sha256:3c371645b19c6f6564dc8c7b21e39ad1c1833d274fe5b85639afe1ba9d7987e7`
   (Magic 8.3.681, KLayout 0.30.11, Netgen 1.5.323), either while the 0.6
-  code was being written (*the build* below) or on 0.6.0; every quoted
-  command output is from 0.6.0.
+  code was being written (*the build* below), on 0.6.0 or on 0.6.1, as
+  the text says; a quoted command output is from 0.6.0 unless the text
+  says otherwise.
 - **[src]**: read from the code.
 - **UNVERIFIED**: neither. Section 7 collects these.
 
@@ -448,9 +452,11 @@ nor flat mode lists them, so they are information and `drc` exits 0
 so hierarchical mode drops a parent's box whose (why-text, box at 1 nm)
 equals a subcell's box at any depth through a placement (`drcjob.dedup`).
 The case suite's sheets place each case as a subcell, 40 µm apart.
-Checked in `drc(full)` without the cache, they gave the following; the
-last column is the flattened check's time, against about 8.7 s for the
-hierarchical batches of the sky130A sheet during the build [run]:
+Checked in `drc(full)` without the cache, the sheets of 0.6.0 (130, 69,
+151 and 49 cases; 0.6.1 redrew eight of these cases and added two, 5.1)
+gave the following; the last column is the flattened
+check's time, against about 8.7 s for the hierarchical batches of the
+sky130A sheet during the build [run]:
 
 | PDK | Error boxes, hierarchical / flat | Rules | Copies dropped | Top cell's boxes kept | Subcell boxes: in the top's check / flattened check only / information | Flattened check |
 |---|---|---|---|---|---|---|
@@ -463,11 +469,16 @@ hierarchical batches of the sky130A sheet during the build [run]:
 DRC / diff/tap.8 / N-well overlap ...`), made only when it holds errors.
 Magic's error list has no layer, so each category's description gives
 the styles, each rule statement's tech-file line and value, the Magic
-types, the GDS layers that the `gdsii` style writes them on, and the gap
-table's row (3.5). Rules name types by alias (`allm1`) or synonym (`m1`),
-and the `gdsii` style names them by the first name on the `types` line
-(`metal1`); `tech_aliases` and `tech_types` read both from the tech files
-[src], so the met1.6 items name 68/20 (met1.drawing), 68/13 (met1.res)
+types, the GDS layers that the `gdsii` style writes them on, and a line
+for each gap-table row (3.5) that holds one of its statements.
+`drcjob.gap_rows` finds the rows by the statements' tech-file lines
+rather than by the printed ID, because one printed ID can have
+statements in several rows (sky130A's `hvi.5`, IHP's `AFil.i`), and one
+statement can check two rules. Where a row's key is not the ID that
+Magic prints, the line names the row [src]. Rules name types by alias
+(`allm1`) or synonym (`m1`), and the `gdsii` style names them by the
+first name on the `types` line (`metal1`); `tech_aliases` and
+`tech_types` read both from the tech files [src], so the met1.6 items name 68/20 (met1.drawing), 68/13 (met1.res)
 and 68/98 (MET1BLOCK) [run].
 
 **A cell Magic reads nothing in.** When every layer of the top cell is
@@ -685,30 +696,50 @@ scan of the deck gives each name's line and switch. The decks' rules are
 joined with Magic's (from `data/pdk-<pdk>.json`) on rule ID through
 `tests/gaps/aliases-<pdk>.json`, the only part typed by hand. Both
 engines also run on the case suite's `gaps` set, where a case counts the
-rules that it reports and its control does not. Besides "both", "Magic
-only" and "KLayout only", a rule can be "both, values differ", "folded"
-(Magic checks it only inside a composite rule such as `via.1a + 2 *
-via.4a`), "measured on other shapes" (gf180mcuD PP.8a), "same name for
-another check", or "in the deck, did not fire on its case". The outputs
-are `docs/gaps/` and `data/gaps-<pdk>.json`, which the DRC job reads for
-its category descriptions (3.1):
+rules that it reports and its control does not. A case tests the rows of
+the rule it targets, but not a row that the target's statement names only
+as a later operand of a composite: Magic prints `via.5a` for sky130A's
+`via.5a - via.4a`, and a case filed under `via.5a` is not a test of
+`via.4a` [src]. Besides "both", "Magic only" and "KLayout only", a rule
+can be "both, values differ", "folded" (Magic checks it only inside a
+composite rule such as `via.1a + 2 * via.4a`), "measured on other
+shapes" (gf180mcuD PP.8a), "same name for another check", or "in the
+deck, did not fire on its case". The outputs are `docs/gaps/` and
+`data/gaps-<pdk>.json`. The second, which the DRC job reads for its
+category descriptions (3.1), has an entry per row that holds a Magic
+statement other than as a later operand: the row's status and KLayout
+names, the IDs that Magic prints, and the statements' tech-file lines
+as `file:line` (schema 2). On 0.6.1 the tables count [run]:
 
 | PDK | both | values differ | folded | other shapes | other check | did not fire | Magic only | KLayout only | rows |
 |---|---|---|---|---|---|---|---|---|---|
-| sky130A | 72 | 2 | 5 | 0 | 2 | 11 | 93 | 213 | 398 |
-| gf180mcuD | 89 | 9 | 2 | 2 | 1 | 6 | 38 | 421 | 568 |
-| ihp-sg13g2 | 199 | 0 | 12 | 0 | 0 | 4 | 17 | 151 | 383 |
-| ihp-sg13cmos5l | 143 | 0 | 10 | 0 | 0 | 3 | 12 | 129 | 297 |
+| sky130A | 76 | 1 | 5 | 0 | 3 | 7 | 93 | 205 | 390 |
+| gf180mcuD | 105 | 7 | 8 | 2 | 0 | 3 | 14 | 406 | 545 |
+| ihp-sg13g2 | 203 | 0 | 12 | 0 | 1 | 4 | 12 | 130 | 362 |
+| ihp-sg13cmos5l | 146 | 0 | 10 | 0 | 1 | 3 | 8 | 114 | 282 |
 
-The statuses that the deck runs give on their own agree with the gap
-studies' tables on 221 of 228 sky130A rows, 46 of 54 gf180mcuD rows, 161
-of 163 ihp-sg13g2 rows and 79 of 89 ihp-sg13cmos5l rows (a comparison
-made during the build). Only
+For 0.6.1, the rows on which the two tools disagreed were checked against
+the foundries' published rules (`tests/cases/README.md` names the
+sources). The check added aliases on all four PDKs, for rules that the
+two tools name differently, and the cases that did not break the rule
+they target were redrawn (5.1).
+
+Without the cases' results, the statuses from the deck runs of 0.6.1's
+tables agree with the gap studies' tables on 212 of 221 sky130A rows, 46
+of 54 gf180mcuD rows, 160 of 162 ihp-sg13g2 rows and 79 of 89
+ihp-sg13cmos5l rows, counting only the rows that both name. The
+comparison is the one made during the build; on 0.6.0's tables it gave
+221 of 228, 46 of 54, 161 of 163 and 79 of 89. Fewer rows compare on
+0.6.1 because its alias files put some statements and deck outputs in
+rows under other IDs (sky130A's
+`var.1` in `varac.1`, `denmos/depmos.2` in `denmos.7`, `sky130A.lydrc`'s
+`via1.5a` in `via.5a`; ihp-sg13g2's `x.2` in `grid.Angle45`), and a
+study row under the old ID has no row here to compare with. Only
 names, values, switches and line numbers of the decks reach the outputs,
 which ship under Apache-2.0 (the project lead's decision of 2026-11-23).
 `--check` rebuilds everything and exits 1 with `GAPS DIFFER <file>` when a
-table would change; on sky130A it printed `GAPS OK sky130A` in 114 s
-[run].
+table would change; during the build, on sky130A, it printed
+`GAPS OK sky130A` in 114 s [run].
 
 ## 4. The per-PDK data files
 
@@ -741,11 +772,11 @@ was typed from the tech file, and each row cites its lines.
 ### 5.1 Test suites
 
 `scripts/test.sh` runs the unit tests and the gap generator's tests, then
-`tests/backend` once per PDK [src]. On the release's code the unit tests
-ran 378 tests and the gap generator's 17 tests passed [run]. Two of the
-unit tests were skipped: they read a folder of saved netgen reports kept
-outside the repository, and run only when `KMP_NETGEN_EVIDENCE` names
-it. The backend tests ran 95 tests on sky130A in 150 s, 3 of them
+`tests/backend` once per PDK [src]. On 0.6.1's code the 380 unit tests
+and the gap generator's 18 tests passed [run]. Two of the unit tests
+were skipped: they read a folder of saved netgen reports kept outside
+the repository, and run only when `KMP_NETGEN_EVIDENCE` names it. In the
+same run the backend tests ran 95 tests on sky130A in 144 s, 3 of them
 skipped [run]. The backend files for the 0.6 checks build their cases
 with the case suite, in a temporary folder:
 
@@ -759,15 +790,20 @@ with the case suite, in a temporary folder:
 `python3 tests/cases/build.py --pdk P --out DIR [--set S]` draws the case
 suite with `klayout.db` at run time and writes `cases.json`; no layout file
 is committed. Its sets are `gaps` (the gap studies' one-change cases,
-drawn with the geometry of the studies' own builders), `hier`,
-`whole_shape` (a long well per PDK), `names` (twelve awkward cell names
-and a missing one), `inverters` (with schematics and a PCell inverter),
-`controls` and `sheet`; on sky130A it built 130, 4, 1, 13, 8, 10 and 1
-cases [run]. Each case's `expect` holds what the studies and the review
-measured, transcribed once; the suite never fills it from its own runs
-(`tests/cases/README.md`). The exception is sky130A `inv_text_on_pin`,
-with A's text on li1.pin (67/16): its `expect` of P3 is what the case
-was drawn to give.
+drawn with the geometry of the studies' own builders, except the cases
+that 0.6.1 redrew), `hier`, `whole_shape` (a long well per PDK), `names`
+(twelve awkward cell names and a missing one), `inverters` (with
+schematics and a PCell inverter), `controls` and `sheet`; on sky130A it
+built 132, 4, 1, 13, 8, 10 and 1 cases [run]. Each case's `expect`
+holds what the studies and the review measured, transcribed once; the
+suite never fills it from its own runs (`tests/cases/README.md`). There
+are two exceptions. The `expect` of sky130A `inv_text_on_pin`, with A's
+text on li1.pin (67/16), is P3, what the case was drawn to give. The
+gaps cases that 0.6.1 redrew because they did not break the rule they
+target (four on sky130A, four on gf180mcuD), and the two it added
+(sky130A `s_m1_huge_space` and its control), have an `expect` that was
+measured once on the new shapes in the pinned image and written into
+`tests/cases/expect-<pdk>.json` [run].
 
 ### 5.2 The harness's jobs step
 
@@ -817,7 +853,9 @@ In the full run of 2026-11-24, on version 0.6.0's code before the changes
 that the README's "Last full run" lists, each PDK ran
 `scripts/parity.sh --pdk P --jobs 2` in its own container. The four
 containers ran at the same time on 6 CPUs, so the times below overlap.
-The full jobs step passed on every PDK, and no check failed [run]:
+The full jobs step passed on every PDK, and no check failed [run]. The
+gap table column gives that run's tables; section 3.5 gives 0.6.1's
+counts.
 
 | PDK | Units of work | Checks passed | On 2 workers | Jobs' own times summed | Read-back: measured, differ | Gap table |
 |---|---|---|---|---|---|---|
@@ -828,10 +866,12 @@ The full jobs step passed on every PDK, and no check failed [run]:
 
 The summed times leave out the case suite's build, which the figure in
 `report.md` adds (about 1 s). Every device that differs on read-back is
-one that `data/readback-<pdk>.json` lists. On the release's code, the
-full step ran again on each PDK, one PDK at a time on 6 workers, with
-the same units of work, and passed the same numbers of checks with none
-failed [run].
+one that `data/readback-<pdk>.json` lists. On 0.6.1's code the full
+step ran again on each PDK, one PDK at a time on 6 workers, and no check
+failed: sky130A ran 183 units of work and passed 1,834 checks, the two
+cases that 0.6.1 added accounting for the difference, and the other PDKs
+ran the same units of work and passed the same numbers of checks as in
+the full run [run].
 
 ### 5.3 Mutations
 
@@ -844,7 +884,7 @@ unless noted [run]:
 | DRC boxes shifted 5 nm when Magic's listing is parsed | `--quick`: `drc_plumbing`, `drc_fidelity` |
 | DRC markers shifted in the RDB only | `--quick`: `drc_markers` |
 | hierarchical mode checks the top cell only | `--quick`: `drc_cells`, `drc_plumbing`, `drc_fidelity` (the last two also on gf180mcuD) |
-| the export flattens in hierarchical mode | full step: `drc_coverage` (130 cases), `drc_fidelity`, `drc_hier` (then called `drc_b1`); plumbing can't see it, as `mdrc.tcl` reads the same flat file |
+| the export flattens in hierarchical mode | full step: `drc_coverage` (all 130 gaps cases the suite had then), `drc_fidelity`, `drc_hier` (then called `drc_b1`); plumbing can't see it, as `mdrc.tcl` reads the same flat file |
 | `kmp_job_load` without its checks | `--quick`: `reads_nothing`, `layers`; `test_jobs_backend` |
 | netgen's verdict from the final line only | `--quick`: `lvs` (`inv_w036`, a property error) |
 | the `.ext` unit from its `scale` line | gf180mcuD `--quick`: `lvs_markers`; `test_lvs_backend` |

@@ -2,7 +2,7 @@
 
 This table compares Magic's DRC rules for gf180mcuD with the PDK's KLayout DRC decks, one row per rule, and shows where they disagree. `tools/build_gaps.py` generates it; do not edit it by hand.
 
-- **What a row is.** One rule, under the rule ID that Magic's why-text gives it (the why-text is the message Magic's DRC gives an error box, and the ID is the text in its last parentheses), under the KLayout name where Magic has no such rule, or under Magic's whole message where the message has no ID. The row gives the statements of Magic's tech file that check the rule, each KLayout deck's outputs for it (the report categories the deck writes), and what both engines reported on the test cases that target it.
+- **What a row is.** One rule, under the rule ID that Magic's why-text gives it (the why-text is the message Magic's DRC gives an error box, and the ID is the text in its last parentheses), under a name from `tests/gaps/aliases-gf180mcuD.json` where the two tools name the rule differently, under the KLayout name where Magic has no such rule, or under Magic's whole message where the message has no ID. The row gives the statements of Magic's tech file that check the rule, each KLayout deck's outputs for it (the report categories the deck writes), and what both engines reported on the test cases that target it.
 - **How it is made.** Magic's rules come from `python/klayout_magic_pcells/data/pdk-gf180mcuD.json`. Each KLayout run below checked a layout of one box. Its report has a category for every rule the deck ran under its switches, and those categories are the deck's side of the table; a text scan of the deck gives each output's line and the switches it sits under. The two sides are joined on rule ID, with the mappings made by hand in `tests/gaps/aliases-gf180mcuD.json`. The test cases are the `gaps` set of the case suite (`tests/cases`): a clean control layout, and cases that each change one thing in it. Magic checked each case cell alone in all three styles, at most 15 cells per process; KLayout checked them on one sheet, 40 µm apart. A case's results are the rules reported on it and not on its control.
 - **Image.** The pinned Docker image `hpretl/iic-osic-tools@sha256:3c371645b19c6f6564dc8c7b21e39ad1c1833d274fe5b85639afe1ba9d7987e7`, with Magic 8.3.681 and KLayout 0.30.11; open_pdks 026824c7 (Magic tech 1.0.588-56-g026824c).
 - **Rebuild.** `scripts/gaps.sh --pdk gf180mcuD` rewrites this page; `scripts/gaps.sh --pdk gf180mcuD --check` fails if it would change.
@@ -22,12 +22,12 @@ In the Magic column each statement reads `value [styles] :line`, with the styles
 
 ## Counts
 
-| Part | both | both, values differ | folded | measured on other shapes | same name for another check | in the deck, did not fire on its case | Magic only | KLayout only | total |
-|---|---|---|---|---|---|---|---|---|---|
-| Grid and angle checks | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 2 |
-| Upper metals, vias and MIM | 28 | 3 | 0 | 0 | 0 | 0 | 16 | 72 | 119 |
-| Wells to via1 | 61 | 6 | 2 | 2 | 1 | 6 | 22 | 347 | 447 |
-| all | 89 | 9 | 2 | 2 | 1 | 6 | 38 | 421 | 568 |
+| Part | both | both, values differ | folded | measured on other shapes | in the deck, did not fire on its case | Magic only | KLayout only | total |
+|---|---|---|---|---|---|---|---|---|
+| Grid and angle checks | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 2 |
+| Upper metals, vias and MIM | 34 | 3 | 6 | 0 | 0 | 1 | 60 | 104 |
+| Wells to via1 | 71 | 4 | 2 | 2 | 3 | 13 | 344 | 439 |
+| all | 105 | 7 | 8 | 2 | 3 | 14 | 406 | 545 |
 
 ## KLayout runs
 
@@ -81,7 +81,7 @@ Cases: 69 in the `gaps` set.
 | MIMTM.2 | both | 0.4 [U] :3204 | MIMTM.2 0.4 :51 |  |
 | MIMTM.3 | both | 0.6 [FUR] :3197 | MIMTM.3 – :64 |  |
 | MIMTM.4 | both | in (MIMTM.4-VT.4) 0.39 [FUR] :3186 | MIMTM.4 0.4 :75 |  |
-| MIMTM.5 | both, values differ: Magic 0.39, KLayout 0.4 | 0.39 [FUR] :3195 | MIMTM.5 0.4 :83 |  |
+| MIMTM.5 | both, values differ: Magic 0.39, KLayout 0.4; Magic measures to its via4 area, and if that area is the cut plus 0.01 µm per side, as tech:3053's V4.1 + 2 * V4.4 implies, its 0.39 µm is 0.4 µm from the cut (not measured) | 0.39 [FUR] :3195 | MIMTM.5 0.4 :83 |  |
 | MIMTM.6 | both | 0.6 [FUR] :3184 | MIMTM.6 0.6 :90 |  |
 | MIMTM.7 | KLayout only | – | MIMTM.7 0 :96 |  |
 | MIMTM.8a | both | 5 [FUR] :3183 | MIMTM.8a 25 µm² :102 |  |
@@ -132,45 +132,30 @@ Cases: 69 in the `gaps` set.
 | V2.1 | both | in (V2.1 + 2 * V2.3) 0.28 [FUR] :2997 | V2.1 0.26 :27 |  |
 | V2.2a | both | in (V2.2a - 2 * V2.3) 0.24 [FUR] :2998 | V2.2a 0.26 :35 |  |
 | V2.2b | KLayout only | – | V2.2b 0.36 :49 |  |
-| V2.3 | Magic only: only inside a composite rule | in (V2.1 + 2 * V2.3) 0.28 [FUR] :2997; in (V2.2a - 2 * V2.3) 0.24 [FUR] :2998; in (V2.3i - V2.3) 0.05 [FUR] :2999 | – |  |
-| V2.3b | KLayout only | – | V2.3b 0.01 :86 |  |
+| V2.3b | folded: Magic checks it only inside a composite rule | in (V2.1 + 2 * V2.3) 0.28 [FUR] :2997; in (V2.2a - 2 * V2.3) 0.24 [FUR] :2998; in (V2.3i - V2.3) 0.05 [FUR] :2999 | V2.3b 0.01 :86 |  |
 | V2.3c | KLayout only | – | V2.3c 0.06 :104 |  |
-| V2.3d | KLayout only | – | V2.3d 0.06 :127 |  |
-| V2.3i | Magic only | in (V2.3i - V2.3) 0.05 [FUR] :2999 | – |  |
-| V2.4 | Magic only: only inside a composite rule | in (V2.4i - V2.4) 0.05 [FUR] :3008 | – |  |
-| V2.4a | KLayout only | – | V2.4a 0.01 :148 |  |
+| V2.3d | both | in (V2.3i - V2.3) 0.05 [FUR] :2999 | V2.3d 0.06 :127 |  |
+| V2.4a | folded: Magic checks it only inside a composite rule | in (V2.4i - V2.4) 0.05 [FUR] :3008 | V2.4a 0.01 :148 |  |
 | V2.4b | KLayout only | – | V2.4b 0.06 :165 |  |
-| V2.4c | KLayout only | – | V2.4c 0.06 :186 |  |
-| V2.4i | Magic only | in (V2.4i - V2.4) 0.05 [FUR] :3008 | – |  |
+| V2.4c | both | in (V2.4i - V2.4) 0.05 [FUR] :3008 | V2.4c 0.06 :186 |  |
 | V3.1 | both | in (V3.1 + 2 * V3.4) 0.28 [FUR] :3025 | V3.1 0.26 :27 |  |
 | V3.2a | both | in (V3.2a - 2 * V3.4) 0.24 [FUR] :3026 | V3.2a 0.26 :35 |  |
 | V3.2b | KLayout only | – | V3.2b 0.36 :49 |  |
-| V3.3 | Magic only: only inside a composite rule | in (V3.3i - V3.3) 0.05 [FUR] :3027 | – |  |
-| V3.3b | KLayout only | – | V3.3b 0.01 :86 |  |
+| V3.3b | folded: Magic checks it only inside a composite rule | in (V3.3i - V3.3) 0.05 [FUR] :3027 | V3.3b 0.01 :86 |  |
 | V3.3c | KLayout only | – | V3.3c 0.06 :104 |  |
-| V3.3d | KLayout only | – | V3.3d 0.06 :127 |  |
-| V3.3i | Magic only | in (V3.3i - V3.3) 0.05 [FUR] :3027 | – |  |
-| V3.4 | Magic only: only inside a composite rule | in (V3.1 + 2 * V3.4) 0.28 [FUR] :3025; in (V3.2a - 2 * V3.4) 0.24 [FUR] :3026; in (V3.4i - V3.4) 0.05 [FUR] :3036 | – |  |
-| V3.4a | KLayout only | – | V3.4a 0.01 :148 |  |
+| V3.3d | both | in (V3.3i - V3.3) 0.05 [FUR] :3027 | V3.3d 0.06 :127 |  |
+| V3.4a | folded: Magic checks it only inside a composite rule | in (V3.1 + 2 * V3.4) 0.28 [FUR] :3025; in (V3.2a - 2 * V3.4) 0.24 [FUR] :3026; in (V3.4i - V3.4) 0.05 [FUR] :3036 | V3.4a 0.01 :148 |  |
 | V3.4b | KLayout only | – | V3.4b 0.06 :165 |  |
-| V3.4c | KLayout only | – | V3.4c 0.06 :186 |  |
-| V3.4i | Magic only | in (V3.4i - V3.4) 0.05 [FUR] :3036 | – |  |
-| V4.1 | both | in (V4.1 + 2 * V4.4) 0.28 [FUR] :3053 | V4.1 0.26 :27 |  |
+| V3.4c | both | in (V3.4i - V3.4) 0.05 [FUR] :3036 | V3.4c 0.06 :186 |  |
+| V4.1 | both | in (V4.1 + 2 * V4.4) 0.28 [FUR] :3053; in (VT.1+VT.3) 0.28 [FUR] :3199 | V4.1 0.26 :27 |  |
 | V4.2a | both | in (V4.2a - 2 * V4.4) 0.24 [FUR] :3054 | V4.2a 0.26 :35 |  |
 | V4.2b | KLayout only | – | V4.2b 0.36 :49 |  |
-| V4.3 | Magic only: only inside a composite rule | in (V4.3i - V4.3) 0.05 [FUR] :3062 | – |  |
-| V4.3b | KLayout only | – | V4.3b 0.01 :86 |  |
+| V4.3b | folded: Magic checks it only inside a composite rule | in (V4.3i - V4.3) 0.05 [FUR] :3062; in (MIMTM.9 - 2 * VT.3) 0.48 [FUR] :3189; in (VT.1+VT.3) 0.28 [FUR] :3199 | V4.3b 0.01 :86 |  |
 | V4.3c | KLayout only | – | V4.3c 0.06 :104 |  |
-| V4.3d | KLayout only | – | V4.3d 0.06 :127 |  |
-| V4.3i | Magic only | in (V4.3i - V4.3) 0.05 [FUR] :3062 | – |  |
-| V4.4 | Magic only: only inside a composite rule | in (V4.1 + 2 * V4.4) 0.28 [FUR] :3053; in (V4.2a - 2 * V4.4) 0.24 [FUR] :3054; in (V4.4i - V4.4) 0.05 [FUR] :3064 | – |  |
-| V4.4a | KLayout only | – | V4.4a 0.01 :148 |  |
+| V4.3d | both | in (V4.3i - V4.3) 0.05 [FUR] :3062 | V4.3d 0.06 :127 |  |
+| V4.4a | folded: Magic checks it only inside a composite rule | in (V4.1 + 2 * V4.4) 0.28 [FUR] :3053; in (V4.2a - 2 * V4.4) 0.24 [FUR] :3054; in (V4.4i - V4.4) 0.05 [FUR] :3064; in (MIMTM.4-VT.4) 0.39 [FUR] :3186 | V4.4a 0.01 :148 |  |
 | V4.4b | KLayout only | – | V4.4b 0.06 :165 |  |
-| V4.4c | KLayout only | – | V4.4c 0.06 :186 |  |
-| V4.4i | Magic only | in (V4.4i - V4.4) 0.05 [FUR] :3064 | – |  |
-| VT.1 | Magic only | in (VT.1+VT.3) 0.28 [FUR] :3199 | – |  |
-| VT.3 | Magic only: only inside a composite rule | in (MIMTM.9 - 2 * VT.3) 0.48 [FUR] :3189; in (VT.1+VT.3) 0.28 [FUR] :3199 | – |  |
-| VT.4 | Magic only: only inside a composite rule | in (MIMTM.4-VT.4) 0.39 [FUR] :3186 | – |  |
+| V4.4c | both | in (V4.4i - V4.4) 0.05 [FUR] :3064 | V4.4c 0.06 :186 |  |
 
 ### Wells to via1
 
@@ -210,7 +195,7 @@ Cases: 69 in the `gaps` set.
 | CO.4 | both: Magic grows each contact by 0.005 µm per side when it reads it (a 0.22 µm cut becomes a 0.23 µm contact area, GAPS-gf180mcuD 1), so its 0.065 µm is 0.07 µm from the cut | 0.065 [FUR] :2887; 0.065 [FUR] :2889; 0.065 [FUR] :2891; 0.065 [FUR] :2893; 0.065 [FUR] :2895; 0.065 [FUR] :2897; 7 more | CO.4 0.07 :81 | CO4_cov004: Magic FUR, KLayout harness |
 | CO.5a | KLayout only | – | CO.5a 0.1 :96 |  |
 | CO.5b | KLayout only | – | CO.5b 0.1 :111 |  |
-| CO.6 | both: Magic's directional overlap (tech:2885, 2906) is 0.055 µm from its contact area, 0.06 µm from the cut, as KLayout's CO.6a; both decks agreed on the two CO.6 cases (GAPS-gf180mcuD 1) | in (CO.1 + 2 * CO.6) 0.23 [FUR] :2880; in (CO.2a - 2 * CO.6) 0.24 [FUR] :2882; 0.055 [FUR] :2885; in (CO.1 + 2 * CO.6) 0.23 [FUR] :2901; in (CO.2a - 2 * CO.6) 0.24 [FUR] :2903; 0.055 [FUR] :2906; 8 more | CO.6 0.005 :125; CO.6a 0.06 :145; CO.6b 0.06 :175 | CO1_big030: Magic no, KLayout no; CO1_small020: Magic FUR, KLayout no; CO2a_s022: Magic no, KLayout no; CO2b_4x4_s010: Magic no, KLayout no; 4 more |
+| CO.6 | both: Magic's directional overlap (tech:2885, 2906) is 0.055 µm from its contact area, 0.06 µm from the cut, as KLayout's CO.6a; both decks agreed on the two CO.6 cases (GAPS-gf180mcuD 1) | in (CO.1 + 2 * CO.6) 0.23 [FUR] :2880; in (CO.2a - 2 * CO.6) 0.24 [FUR] :2882; 0.055 [FUR] :2885; in (CO.1 + 2 * CO.6) 0.23 [FUR] :2901; in (CO.2a - 2 * CO.6) 0.24 [FUR] :2903; 0.055 [FUR] :2906; 8 more | CO.6 0.005 :125; CO.6a 0.06 :145; CO.6b 0.06 :175 | CO6_m1ov0: Magic FUR, KLayout harness; CO6_m1ov002: Magic no, KLayout no |
 | CO.7 | both | in (CO.7 - 2 * CO.6) 0.145 [FUR] :2941 | CO.7 0.15 :196 | CO7_c2g012: Magic FUR, KLayout harness |
 | CO.8 | both | in (CO.8 - 2 * CO.6) 0.165 [FUR] :2939 | CO.8 0.17 :205 | CO8_pc2c014: Magic FUR, KLayout harness |
 | CO.9 | KLayout only | – | CO.9 – :215 | BUTT_straddle: Magic no, KLayout harness |
@@ -284,7 +269,7 @@ Cases: 69 in the `gaps` set.
 | DPF.19 | KLayout only | – | DPF.19 8 :131 |  |
 | DV.1 | KLayout only | – | DV.1 0.5 :34 |  |
 | DV.2 | KLayout only | – | DV.2 0.44 :42 |  |
-| DV.3 | folded: Magic checks it only inside a composite rule | in (DV.6 + DV.3) 0.48 [FUR] :2756; in (DV.6 + DV.3) 0.48 [FUR] :2758 | DV.3 0.24 :48 | DG_small: Magic no, KLayout no |
+| DV.3 | folded: Magic checks it only inside a composite rule | in (DV.6 + DV.3) 0.48 [FUR] :2756; in (DV.6 + DV.3) 0.48 [FUR] :2758 | DV.3 0.24 :48 |  |
 | DV.5 | KLayout only | – | DV.5 0.7 :57 |  |
 | DV.6 | in the deck, did not fire on its case: Magic reported nothing on DG_small | in (DV.6 + DV.3) 0.48 [FUR] :2756; in (DV.6 + DV.3) 0.48 [FUR] :2758 | DV.6 0.24 :66 | DG_small: Magic no, KLayout harness |
 | DV.7 | KLayout only | – | DV.7 – :74 | DG_partial: Magic no, KLayout harness |
@@ -339,13 +324,13 @@ Cases: 69 in the `gaps` set.
 | GR.6 | KLayout only | – | GR.6 16 :89 |  |
 | GR.11 | KLayout only | – | GR.11 – :109 |  |
 | HRES.1 | KLayout only | – | HRES.1 0.4 :38 |  |
-| HRES.2 | both, values differ: Magic 0.4, KLayout 1 | 0.4 [FUR] :3136 | HRES.2 1 :44 |  |
-| HRES.3 | both, values differ: Magic 1, KLayout 0.4 | 1 [FUR] :3135 | HRES.3 0.4 :50 |  |
+| HRES.2 | both | as HRES.3 1 [FUR] :3135 | HRES.2 1 :44 |  |
+| HRES.3 | both | as HRES.2 0.4 [FUR] :3136 | HRES.3 0.4 :50 |  |
 | HRES.4 | folded: Magic checks it only inside a composite rule | in (HRES.5 + HRES.4) 0.7 [U] :3140; in (HRES.6 + HRES.4) 0.7 [U] :3142 | HRES.4 0.4 :58 |  |
 | HRES.5 | both | in (HRES.5 + HRES.4) 0.7 [U] :3140 | HRES.5 0.3 :66 |  |
 | HRES.6 | both | in (HRES.6 + HRES.4) 0.7 [U] :3142 | HRES.6 0.3 :74 |  |
-| HRES.7 | both, values differ: Magic 0.22, KLayout 0.2 | as PRES/LRES/HRES.7 0.22 [U] :3145; as PRES/LRES/HRES.7 0.22 [U] :3147 | HRES.7 0.2 :86 |  |
-| HRES.8 | KLayout only | – | HRES.8 – :95 |  |
+| HRES.7 | KLayout only | – | HRES.7 0.2 :86 |  |
+| HRES.8 | both | as PRES/LRES/HRES.7 0.22 [U] :3145; as PRES/LRES/HRES.7 0.22 [U] :3147 | HRES.8 – :95 |  |
 | HRES.9 | KLayout only | – | HRES.9 – :109 |  |
 | HRES.10 | KLayout only | – | HRES.10 – :123 |  |
 | HRES.12a | KLayout only | – | HRES.12a – :137 |  |
@@ -478,7 +463,7 @@ Cases: 69 in the `gaps` set.
 | NP.3a | KLayout only | – | NP.3a 0.16 :59 |  |
 | NP.3bi | KLayout only | – | NP.3bi 0.16 :69 |  |
 | NP.3bii | KLayout only | – | NP.3bii 0.08 :79 |  |
-| NP.3ci | in the deck, did not fire on its case: KLayout reported nothing on NP3_s006 | – | NP.3ci 0.16 :89 | NP3_s006: Magic no, KLayout no |
+| NP.3ci | KLayout only | – | NP.3ci 0.16 :89 | NP3_s006: Magic no, KLayout harness |
 | NP.3cii | KLayout only | – | NP.3cii 0.08 :99 |  |
 | NP.3d | KLayout only | – | NP.3d 0 :107 |  |
 | NP.3e | KLayout only | – | NP.3e 0 :113 |  |
@@ -501,7 +486,7 @@ Cases: 69 in the `gaps` set.
 | NP.12 | KLayout only | – | NP.12 0.32 :271 |  |
 | NW.1a | both | 0.86 [FU] :2690 | NW.1a_LV 0.86 :37; NW.1a_MV 0.86 :44 | NW1a_w080: Magic FU, KLayout harness |
 | NW.1b | both | 2 [FU] :2694 | NW.1b_LV 2 :53; NW.1b_MV 2 :61 |  |
-| NW.2a | in the deck, did not fire on its case: KLayout reported nothing on NW2a_s050 | 0.6 [FU] :2691; 0.74 [U] :2697 | NW.2a_LV 0.6 :72; NW.2a_MV 0.74 :81 | NW2a_s050: Magic FU, KLayout no |
+| NW.2a | both | 0.6 [FU] :2691; 0.74 [U] :2697 | NW.2a_LV 0.6 :72; NW.2a_MV 0.74 :81 | NW2a_s050: Magic FU, KLayout harness |
 | NW.2b | both | 1.4 [FU] :2693 | NW.2b_LV 1.4 :89; NW.2b_MV 1.7 :96 |  |
 | NW.3 | both | 3.1 [FUR] :2733 | NW.3 3.1 :102 |  |
 | NW.4 | KLayout only | – | NW.4 0 :108 |  |
@@ -531,8 +516,7 @@ Cases: 69 in the `gaps` set.
 | PL.4 | both | 0.22 [FUR] :2851 | PL.4_LV 0.22 :100; PL.4_MV 0.22 :106 | PL4_e015: Magic FUR, KLayout harness |
 | PL.5a | both | 0.1 [FUR] :2835; 0.3 [FUR] :2838 | PL.5a_LV 0.1 :112; PL.5a_MV 0.3 :119 | PL5a_s008: Magic FUR, KLayout harness |
 | PL.5b | KLayout only | – | PL.5b_LV 0.1 :126; PL.5b_MV 0.3 :132 |  |
-| PL.6 | Magic only | – [FUR] :2854 | – |  |
-| PL.6 [gf180mcu.drc] | same name for another check: no 90° bends of poly on COMP; Magic's PL.6 allows only 45° on transistors (GAPS-gf180mcuD 1, 'related, different checks') | – | PL.6 90 :142 |  |
+| PL.6 | both | – [FUR] :2854 | PL.6 90 :142 |  |
 | PL.7 | both | 0.3 [FUR] :3095; 0.3 [FUR] :3096; 0.7 [FUR] :3105; 0.7 [FUR] :3106 | PL.7_LV 0.3 :151; PL.7_MV 0.7 :163 |  |
 | PL.9 | KLayout only | – | PL.9 – :173 | DG_partial: Magic no, KLayout harness |
 | PL.11 | KLayout only | – | PL.11 – :184 |  |
@@ -573,22 +557,15 @@ Cases: 69 in the `gaps` set.
 | PRES.9a | KLayout only | – | PRES.9a – :94 |  |
 | PRES.9b | KLayout only | – | PRES.9b 20 :107 |  |
 | S.CO.3 | KLayout only | – | S.CO.3_LV 0.04 :65 |  |
-| S.CO.3_LV | Magic only | 0.035 [FUR] :2927; 0.035 [FUR] :2929 | – |  |
-| S.CO.4 | KLayout only | – | S.CO.4_LV 0.03 :76; S.CO.4_MV 0.04 :105 |  |
-| S.CO.4_MV | Magic only | 0.035 [FUR] :2923; 0.035 [FUR] :2925 | – |  |
+| S.CO.4 | both, values differ: Magic grows each contact by 0.005 µm per side when it reads it (GAPS-gf180mcuD 1), so its two SRAM checks of COMP overlap of contact, 0.035 µm (tech:2923-2930), are 0.04 µm from the cut: equal to KLayout's S.CO.4_MV, and 0.01 µm more than its S.CO.4_LV 0.03 µm for the 3.3 V SRAM, which Magic prints as S.CO.3_LV | as S.CO.4_MV 0.035 [FUR] :2923; as S.CO.4_MV 0.035 [FUR] :2925; as S.CO.3_LV 0.035 [FUR] :2927; as S.CO.3_LV 0.035 [FUR] :2929 | S.CO.4_LV 0.03 :76; S.CO.4_MV 0.04 :105 |  |
 | S.CO.6_ii | KLayout only | – | S.CO.6_ii_LV 0.04 :92 |  |
-| S.DF.4c | KLayout only | – | S.DF.4c_LV 0.4 :44; S.DF.4c_MV 0.45 :45 |  |
-| S.DF.4c_LV | Magic only | 0.4 [FUR] :2785 | – |  |
+| S.DF.4c | both | as S.DF.7_MV 0.45 [FUR] :2783; as S.DF.4c_LV 0.4 [FUR] :2785 | S.DF.4c_LV 0.4 :44; S.DF.4c_MV 0.45 :45 |  |
 | S.DF.6 | KLayout only | – | S.DF.6_MV 0.32 :54 |  |
 | S.DF.7 | KLayout only | – | S.DF.7_MV 0.45 :61 |  |
-| S.DF.7_MV | Magic only | 0.45 [FUR] :2783 | – |  |
 | S.DF.8 | KLayout only | – | S.DF.8_MV 0.45 :69 |  |
-| S.DF.8_MV | Magic only | 0.45 [FUR] :2765 | – |  |
-| S.DF.16 | KLayout only | – | S.DF.16_LV 0.4 :54; S.DF.16_MV 0.45 :79 |  |
-| S.DF.16_LV | Magic only | 0.4 [FUR] :2767 | – |  |
+| S.DF.16 | both | as S.DF.8_MV 0.45 [FUR] :2765; as S.DF.16_LV 0.4 [FUR] :2767 | S.DF.16_LV 0.4 :54; S.DF.16_MV 0.45 :79 |  |
 | S.M1.1 | KLayout only | – | S.M1.1_LV 0.22 :106 |  |
-| S.PL.5a | KLayout only | – | S.PL.5a_MV 0.12 :89 |  |
-| S.PL.5a_MV | Magic only | 0.12 [FUR] :2841 | – |  |
+| S.PL.5a | both | as S.PL.5a_MV 0.12 [FUR] :2841 | S.PL.5a_MV 0.12 :89 |  |
 | S.PL.5b | KLayout only | – | S.PL.5b_MV 0.12 :96 |  |
 | SB.1 | KLayout only | – | SB.1 0.42 :39 |  |
 | SB.2 | KLayout only | – | SB.2 0.42 :45 |  |
@@ -612,9 +589,9 @@ Cases: 69 in the `gaps` set.
 | V1.1 | both | 0.26 [FUR] :2969 | V1.1 0.26 :27 | V1_1_b032: Magic no, KLayout harness; V1_1_s024: Magic FUR, KLayout harness |
 | V1.2a | in the deck, did not fire on its case: Magic reported nothing on V1_2a_s022 | 0.26 [FUR] :2970 | V1.2a 0.26 :35 | V1_2a_s022: Magic no, KLayout harness |
 | V1.2b | KLayout only | – | V1.2b 0.36 :49 | V1_2b_4x4_s026: Magic no, KLayout no; V1_2b_4x4_s030: Magic no, KLayout harness |
-| V1.3 | in the deck, did not fire on its case: Magic and KLayout reported nothing on V1_3_m1ov0, V1_3_m1ov002 | 0.06 [FUR] :2971 | V1.3a 0 :73; V1.3c 0.06 :104; V1.3d 0.06 :127 | V1_3_m1ov0: Magic no, KLayout no; V1_3_m1ov002: Magic no, KLayout no |
-| V1.4 | both | 0.01 [FUR] :2973 | V1.4a 0.01 :148; V1.4b 0.06 :165; V1.4c 0.06 :186 | V1_4_m2ov0: Magic FUR, KLayout harness |
-| V1.4i | Magic only | 0.06 [FUR] :2975 | – |  |
+| V1.3 | both | 0.06 [FUR] :2971 | V1.3a 0 :73; V1.3c 0.06 :104; V1.3d 0.06 :127 | V1_3_m1ov0: Magic FUR, KLayout harness; V1_3_m1ov002: Magic FUR, KLayout harness |
+| V1.4 | both | 0.01 [FUR] :2973 | V1.4a 0.01 :148; V1.4b 0.06 :165 | V1_4_m2ov0: Magic FUR, KLayout harness |
+| V1.4c | both | as V1.4i 0.06 [FUR] :2975 | V1.4c 0.06 :186 |  |
 | Y.DF.6 | KLayout only | – | Y.DF.6_MV 0.15 :64 |  |
 | Y.DF.16 | KLayout only | – | Y.DF.16_LV 0.27 :72; Y.DF.16_MV 0.23 :81 |  |
 | Y.NW.2b | KLayout only | – | Y.NW.2b_LV 1 :42; Y.NW.2b_MV 1 :50 |  |
@@ -640,7 +617,6 @@ Each line gives a rule and the cases, controls left out, on which one engine rep
 - `DF.4c`: NP_missing, NWmiss_pfet
 - `DF.6`: NP_missing
 - `DF.9`: NPPP_both, NP_missing, NWmiss_pfet
-- `NW.2a`: NW2a_s050
 - `P-diffusion and N-ohmic must be over N-well or deep N-well`: NWmiss_pfet
 - `P-Ohmic overhang of Varactor < %d (FIXME)`: NPPP_both, NWmiss_pfet
 - `PL.1`: CO10_cont_on_gate
@@ -656,7 +632,7 @@ Each line gives a rule and the cases, controls left out, on which one engine rep
 - `CO.9`: BUTT_straddle
 - `CO.10`: CO10_cont_on_gate
 - `CO.11`: CO11_cont_field
-- `DF.3b`: NP3_s006, NPPP_both
+- `DF.3b`: NPPP_both
 - `DF.6`: DF6_lv_0235, DF6_mv_030
 - `DF.12`: DF12_noimp, NP_missing
 - `DF.13`: DF13_nwnotap
@@ -664,19 +640,19 @@ Each line gives a rule and the cases, controls left out, on which one engine rep
 - `DV.6`: DG_partial, DG_small
 - `DV.7`: DG_partial
 - `DV.8`: DG_partial, DG_small
-- `NP.3d`: NP3_s006, NPPP_both
-- `NP.3e`: NP3_s006, NPPP_both
+- `NP.3ci`: NP3_s006
+- `NP.3d`: NPPP_both
+- `NP.3e`: NPPP_both
 - `NP.5a`: NP5a_ov010, NP_flush
-- `NP.5b`: NP3_s006, NP5a_ov010, NP_flush
-- `NW.2b`: NW2a_s050
+- `NP.5b`: NP5a_ov010, NP_flush
 - `OFFGRID (per layer)`: GRID_m1_2p5nm
 - `PL.1`: PL1_mv_w019
 - `PL.5b`: CO8_pc2c014, PL5a_s008
 - `PL.9`: DG_partial
 - `PP.1`: PP1_w034
 - `PP.2`: NPPP_both, PP2_s028
-- `PP.3d`: NP3_s006, NPPP_both
-- `PP.3e`: NP3_s006, NPPP_both
+- `PP.3d`: NPPP_both
+- `PP.3e`: NPPP_both
 - `PP.5di`: PP5_ov0
 - `PP.12`: NPPP_both
 - `V1.1`: V1_1_b032

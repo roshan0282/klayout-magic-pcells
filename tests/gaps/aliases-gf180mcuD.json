@@ -1,6 +1,6 @@
 {
  "pdk": "gf180mcuD",
- "about": "Hand-made mappings for the gf180mcuD gap table (GAPS-gf180mcuD 1). Keys are the KLayout deck's rule IDs without the _LV/_MV suffix; Magic's older numbers are mapped onto them line by line.",
+ "about": "Hand-made mappings for the gf180mcuD gap table (GAPS-gf180mcuD 1). Keys are the KLayout deck's rule IDs without the _LV/_MV suffix; Magic's older numbers are mapped onto them by ID (ids) or line by line (lines).",
  "magic": {
   "split": {
    "PRES/LRES.2": [
@@ -18,8 +18,35 @@
    "PRES/LRES/HRES.7": [
     "PRES.7",
     "LRES.7",
-    "HRES.7"
+    "HRES.8"
    ]
+  },
+  "ids": {
+   "V2.3": "V2.3b",
+   "V3.3": "V3.3b",
+   "V4.3": "V4.3b",
+   "V2.3i": "V2.3d",
+   "V3.3i": "V3.3d",
+   "V4.3i": "V4.3d",
+   "V2.4": "V2.4a",
+   "V3.4": "V3.4a",
+   "V4.4": "V4.4a",
+   "V1.4i": "V1.4c",
+   "V2.4i": "V2.4c",
+   "V3.4i": "V3.4c",
+   "V4.4i": "V4.4c",
+   "VT.1": "V4.1",
+   "VT.3": "V4.3b",
+   "VT.4": "V4.4a",
+   "HRES.2": "HRES.3",
+   "HRES.3": "HRES.2",
+   "S.CO.3_LV": "S.CO.4",
+   "S.CO.4_MV": "S.CO.4",
+   "S.DF.4c_LV": "S.DF.4c",
+   "S.DF.7_MV": "S.DF.4c",
+   "S.DF.8_MV": "S.DF.16",
+   "S.DF.16_LV": "S.DF.16",
+   "S.PL.5a_MV": "S.PL.5a"
   },
   "lines": {
    "gf180mcuD.tech:2761": [
@@ -75,9 +102,6 @@
     "V1.4b": [
      "V1.4"
     ],
-    "V1.4c": [
-     "V1.4"
-    ],
     "CO.6a": [
      "CO.6"
     ],
@@ -98,10 +122,7 @@
      "^(.+)_(LV|MV)$",
      "\\1"
     ]
-   ],
-   "other_check": {
-    "PL.6": "no 90° bends of poly on COMP; Magic's PL.6 allows only 45° on transistors (GAPS-gf180mcuD 1, 'related, different checks')"
-   }
+   ]
   }
  },
  "status": {
@@ -124,6 +145,14 @@
   "CO.6": {
    "status": "both",
    "note": "Magic's directional overlap (tech:2885, 2906) is 0.055 µm from its contact area, 0.06 µm from the cut, as KLayout's CO.6a; both decks agreed on the two CO.6 cases (GAPS-gf180mcuD 1)"
+  },
+  "MIMTM.5": {
+   "status": "both, values differ",
+   "note": "Magic 0.39, KLayout 0.4; Magic measures to its via4 area, and if that area is the cut plus 0.01 µm per side, as tech:3053's V4.1 + 2 * V4.4 implies, its 0.39 µm is 0.4 µm from the cut (not measured)"
+  },
+  "S.CO.4": {
+   "status": "both, values differ",
+   "note": "Magic grows each contact by 0.005 µm per side when it reads it (GAPS-gf180mcuD 1), so its two SRAM checks of COMP overlap of contact, 0.035 µm (tech:2923-2930), are 0.04 µm from the cut: equal to KLayout's S.CO.4_MV, and 0.01 µm more than its S.CO.4_LV 0.03 µm for the 3.3 V SRAM, which Magic prints as S.CO.3_LV"
   }
  },
  "parts": [

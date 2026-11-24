@@ -454,7 +454,8 @@ _gaps_memo = {}
 
 
 def load_gaps(pdk, path=None):
-    """pkg/data/gaps-<pdk>.json's "rules", or {} when the file is missing."""
+    """pkg/data/gaps-<pdk>.json's "rules" (one entry per row of the gap
+    table, tools/build_gaps.py pkg_json), or {} when the file is missing."""
     path = path or os.path.join(GAPS_DIR, "gaps-%s.json" % pdk)
     if path in _gaps_memo:
         return _gaps_memo[path]
@@ -465,6 +466,38 @@ def load_gaps(pdk, path=None):
         rules = {}
     _gaps_memo[path] = rules
     return rules
+
+
+def gap_rows(gaps, why, statements=()):
+    """The gap table's rows for a why-text: the entries whose "lines" hold
+    one of its statements' tech-file lines ("file:line"), in the
+    statements' order. One printed ID can have statements in several rows
+    (IHP's AFil.i), and one statement can check two rules (a split ID), so
+    the line, not the ID, finds the row. Where no entry holds a line (no
+    statements, or a file whose entries are keyed by printed ID, before
+    0.6.1), the entries named by the rule ID, the why-text, or the
+    statements' IDs and why-texts."""
+    g = gaps or {}
+    by_line = {}
+    for row in g.values():
+        if isinstance(row, dict):
+            for fl in row.get("lines") or []:
+                by_line.setdefault(str(fl), []).append(row)
+    out = []
+    for r in statements:
+        for row in by_line.get("%s:%s" % (r.get("file", ""), r.get("line")), []):
+            if all(row is not x for x in out):
+                out.append(row)
+    if out:
+        return out
+    keys = [rule_id(why), why]
+    for r in statements:
+        keys += list(r.get("ids", [])) + [r.get("why", "")]
+    for k in keys:
+        row = g.get(k)
+        if row is not None and row not in out:
+            out.append(row)
+    return out
 
 
 _TYPE_SPLIT = re.compile(r"[,()]")
@@ -522,15 +555,7 @@ class RuleInfo:
             for s in r.get("styles", []):
                 if s not in self.styles:
                     self.styles.append(s)
-        self.gaps = []
-        g = gaps or {}
-        keys = [self.rule, why]
-        for r in self.statements:
-            keys += list(r.get("ids", [])) + [r.get("why", "")]
-        for k in keys:
-            row = g.get(k)
-            if row is not None and row not in self.gaps:
-                self.gaps.append(row)
+        self.gaps = gap_rows(gaps, why, self.statements)
 
     def layer_text(self):
         parts = []
@@ -568,14 +593,19 @@ class RuleInfo:
             lines.append("Magic types: %s" % ", ".join(self.types))
         if self.layers:
             lines.append("GDS layers: %s" % self.layer_text())
+        named = {self.rule, self.why} | {r.get("why", "") for r in self.statements}
         for row in self.gaps:
             kl = []
             for k in row.get("klayout", []) or []:
                 v = k.get("value")
                 kl.append("%s: %s%s" % (k.get("deck", "?"), k.get("name", "?"),
                                         "" if v in (None, "") else " (%s)" % v))
-            lines.append("Gap table: %s%s" % (row.get("status", "?"),
-                                              "; KLayout: " + "; ".join(kl) if kl else ""))
+            # The row's key where it is not the ID Magic prints (a statement
+            # joined to another rule, or one of two rules a statement checks).
+            key = row.get("key")
+            lines.append("Gap table: %s%s%s" % (row.get("status", "?"),
+                                                " (row %s)" % key if key and key not in named else "",
+                                                "; KLayout: " + "; ".join(kl) if kl else ""))
         return "\n".join(lines)
 
 

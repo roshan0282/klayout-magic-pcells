@@ -178,6 +178,11 @@ class CaseSuiteTest(unittest.TestCase):
             top = ly.cell("SHEET")
             subs = sorted(ly.cell(i.cell_index).name for i in top.each_inst())
             self.assertEqual(subs, sorted("D" + g for g in gaps), pdk)
+            # Each cell moves by a multiple of 5 nm, also after a case whose box is off the grid
+            # (sky130A s_m1_offgrid), so KLayout's grid checks see the cells' own shapes.
+            for i in top.each_inst():
+                d = i.trans.disp
+                self.assertEqual((d.x % 5, d.y % 5), (0, 0), (pdk, ly.cell(i.cell_index).name))
             with open(os.path.join(self.tmp, pdk, c["file"]) + ".json", encoding="utf-8") as f:
                 placed = json.load(f)["placed"]
             rows = {}

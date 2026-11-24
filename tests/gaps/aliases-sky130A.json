@@ -1,7 +1,30 @@
 {
  "pdk": "sky130A",
  "about": "Hand-made mappings for the sky130A gap table (GAPS-sky130A 1.1 and its map_rules.py). Keys are the rule IDs of Magic's why-texts (the SkyWater periphery names). Every other part of the table is generated.",
- "magic": {},
+ "magic": {
+  "ids": {
+   "var.1": "varac.1",
+   "var.2": "varac.2",
+   "var.4": "varac.4"
+  },
+  "split": {
+   "denmos/depmos.2": [
+    "denmos.7",
+    "depmos.7"
+   ]
+  },
+  "lines": {
+   "sky130A.tech:4264": [
+    "hvi.5"
+   ],
+   "sky130A.tech:4266": [
+    "hvi.2a"
+   ],
+   "sky130A.tech:4471": [
+    "licon.9"
+   ]
+  }
+ },
  "klayout": {
   "*": {
    "patterns": [
@@ -97,6 +120,13 @@
     ],
     "via.4a_a": [
      "via.4a"
+    ],
+    "licon.13_a": [
+     "licon.13"
+    ],
+    "capm.2b_a": [
+     "capm.2b",
+     "capm.11"
     ]
    },
    "patterns": [
@@ -110,8 +140,8 @@
     ]
    ],
    "other_check": {
-    "difftap.2": "core diffusion width 0.14 µm inside areaid:ce; Magic's diff/tap.2 is the transistor width 0.42 µm (GAPS-sky130A ranked gap 7)",
-    "poly.3": "core poly spacing 0.16 µm; Magic's poly.3 is the poly resistor width 0.33 µm (GAPS-sky130A ranked gap 7)"
+    "difftap.2": "the foundry's core rule difftap.c1, diffusion width 0.14 µm inside areaid:ce; Magic's diff/tap.2 is the transistor width 0.42 µm (GAPS-sky130A ranked gap 7)",
+    "poly.3": "the foundry's core rule poly.c2, poly spacing 0.16 µm; Magic's poly.3 is the poly resistor width 0.33 µm (GAPS-sky130A ranked gap 7)"
    }
   },
   "sky130A.lydrc": {
@@ -170,6 +200,12 @@
     ],
     "hvnwell.8": [
      "nwell.8"
+    ],
+    "via1.5a": [
+     "via.5a"
+    ],
+    "hvi.2": [
+     "hvi.2a"
     ]
    },
    "patterns": [
@@ -177,13 +213,28 @@
      "^(?:hv)?difftap\\.(\\w+)$",
      "diff/tap.\\1"
     ]
-   ]
+   ],
+   "other_check": {
+    "varac.4": "licon on tap to Var_channel 0.25 µm, the manual's varac.4 and the same check as licon.10; Magic's varac.4 (printed var.4) is the n-tap's extension past the varactor"
+   }
   }
  },
  "status": {
   "met3.4": {
    "status": "both",
    "note": "Magic measures from its via2 contact area, 0.04 µm past the cut (via2.4), so its 0.025 µm is 0.065 µm from the cut"
+  },
+  "capm.11": {
+   "status": "both",
+   "note": "sky130A_mr.drc's capm.2b_a keeps met3 that does not touch the capm's bottom plate (capm and met3, grown by 0.14 µm) 1.2 µm from it, which is Magic's 1.34 µm from the capm; its capm.11 is a second check at 0.5 µm"
+  },
+  "nsd.10b": {
+   "status": "Magic only",
+   "note": "Magic checks the n-tap's area, 0.07011 µm², the area of a square tap whose 0.125 µm implant reaches 0.265 µm²; the manual's rule is the drawn nsdm's area (n/psd.10a, 0.265 µm²), which sky130A.lydrc checks as n/psdm.10a"
+  },
+  "psd.10b": {
+   "status": "Magic only",
+   "note": "Magic checks the p-tap's area at 0.07011 µm², the same value as its n-tap check; the manual's rule is the drawn psdm's area (n/psd.10b, 0.255 µm²), which sky130A.lydrc checks as n/psdm.10b at 0.265 µm²"
   }
  },
  "parts": [
