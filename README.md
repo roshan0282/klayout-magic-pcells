@@ -33,8 +33,9 @@ using them, with screenshots of that GUI, including the warning icons that
 the parameter form shows when Magic corrects a value.
 
 This fork adds `python/klayout_power_pcells`, power-device generators built
-on these libraries. Milestone 1 is a sky130A hybrid-waffle nfet; see
-[docs/hybrid_waffle.md](docs/hybrid_waffle.md).
+on these libraries: a sky130A hybrid-waffle power MOSFET (nfets and pfets,
+1.8 V to 5 V) as a generator and as the `HW_FET` PCell of the
+`sky130_power` library; see [docs/hybrid_waffle.md](docs/hybrid_waffle.md).
 
 The design is in [docs/design.md](docs/design.md). It was written for
 sky130A alone. Where this README and the design disagree, the README

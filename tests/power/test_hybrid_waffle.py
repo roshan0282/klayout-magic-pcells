@@ -7,9 +7,9 @@ root:
     KMP_PDKS=sky130A python3 -m unittest discover -s tests/power -t .
 
 Each case must be DRC clean in Magic's drc(full) and must extract as
-blocks x nf devices of sky130_fd_pr__nfet_01v8, each with Magic's checked W
-and L, summing to the generator's total W, with every gate on G and every
-source/drain on S and D.
+blocks x nf devices of its MOSFET, each with Magic's checked W and L, summing
+to the generator's total W, with every gate on G, every source/drain on S
+and D, and every body on B (tap ring) or S (taps in the source tiles).
 """
 
 import os
@@ -40,19 +40,28 @@ CASES = [
     ("wide_4x3_nf4", dict(l=0.25, w=3.0, nf=4, nx=4, ny=3, strap_w=4.0)),
     ("set_pitch_2x3", dict(l=0.5, w=1.2, nf=5, nx=2, ny=3, strap_w=3.0, pitch=9.0)),
     ("one_row_4x1_staggered", dict(l=0.18, w=3.5, nf=1, nx=4, ny=1, strap_w=2.75)),
+    # milestone 2: other devices, and taps in the source tiles (body = S)
+    ("pfet_ring_3x3", dict(device="sky130_fd_pr__pfet_01v8", l=0.15, w=2.0, nf=2, nx=3, ny=3)),
+    ("pfet_source_5x5", dict(device="sky130_fd_pr__pfet_01v8", bulk="source", l=0.5, w=2.0, nf=3,
+                             nx=5, ny=5)),
+    ("nfet_source_6x6", dict(bulk="source", l=0.5, w=2.0, nf=3, nx=6, ny=6)),
+    ("nfet5v_source_4x3", dict(device="sky130_fd_pr__nfet_g5v0d10v5", bulk="source", l=1.5, w=5.0,
+                               nf=6, nx=3, ny=4, strap_w=4.0)),
+    ("pfet5v_ring_2x2", dict(device="sky130_fd_pr__pfet_g5v0d10v5", l=0.5, w=1.5, nf=2, nx=2, ny=2)),
+    ("nfet3v3_nvt_source_2x3", dict(device="sky130_fd_pr__nfet_03v3_nvt", bulk="source", l=0.5, w=1.0, nf=1,
+                         nx=2, ny=3)),
+    ("pfet_hvt_source_1row", dict(device="sky130_fd_pr__pfet_01v8_hvt", bulk="source", l=0.15,
+                                  w=1.0, nf=4, nx=4, ny=1)),
 ]
 
-DEVICE = "sky130_fd_pr__nfet_01v8"
-
-
-def spice_terminals(path):
+def spice_terminals(path, device):
     """(d, g, s, b) of every device line of an ext2spice netlist."""
     out = []
     with open(path, errors="replace") as f:
         text = f.read().replace("\n+", " ")
     for line in text.splitlines():
         toks = line.split()
-        if toks and toks[0][0] in "Xx" and DEVICE in toks:
+        if toks and toks[0][0] in "Xx" and device in toks:
             plain = [t for t in toks if "=" not in t]
             out.append(tuple(plain[1:5]))
     return out
@@ -109,24 +118,28 @@ class HybridWaffleTest(unittest.TestCase):
                 self.assertEqual(res.nf, kw["nf"])
                 blocks = (kw["nx"] - 1) * kw["ny"] + kw["nx"] * (kw["ny"] - 1)
                 self.assertEqual(res.blocks, blocks)
-                self.assertEqual({d[0] for d in devs}, {DEVICE})
+                device = kw.get("device", "sky130_fd_pr__nfet_01v8")
+                self.assertEqual({d[0] for d in devs}, {device})
                 for model, w, l in devs:
                     self.assertAlmostEqual(w, res.w, delta=0.0051)
                     self.assertAlmostEqual(l, res.l, delta=0.0051)
                 self.assertEqual(len(devs), blocks * kw["nf"])
                 self.assertAlmostEqual(sum(d[1] for d in devs), res.total_w, delta=0.001)
                 self.assertAlmostEqual(res.total_w, blocks * kw["nf"] * kw["w"], delta=1e-6)
-                terms = spice_terminals(os.path.join(out, res.cell_name + ".spice"))
+                terms = spice_terminals(os.path.join(out, res.cell_name + ".spice"), device)
+                body = "B" if kw.get("bulk", "ring") == "ring" else "S"
                 self.assertEqual(len(terms), len(devs))
                 for d, g, s, b in terms:
                     self.assertEqual(g, "G")
                     self.assertEqual({d, s}, {"S", "D"})
-                    self.assertEqual(b, "B")
+                    self.assertEqual(b, body)
 
     def test_too_narrow_or_too_large_refused(self):
         from klayout_power_pcells import HWParams, write_gds
         path = os.path.join(self.tmp, "refused.gds")
-        for kw in (dict(w=0.6), dict(strap_w=1.5), dict(strap_w=2.3), dict(nx=6, ny=6), dict(nx=1, ny=1)):
+        for kw in (dict(w=0.6), dict(strap_w=1.5), dict(strap_w=2.3), dict(nx=6, ny=6), dict(nx=1, ny=1),
+                   dict(device="sky130_fd_pr__nfet_g5v0d16v0"), dict(bulk="well"),
+                   dict(l=0.1), dict(pitch=5.0)):
             with self.subTest(params=kw):
                 with self.assertRaises(ValueError):
                     write_gds(HWParams(**kw), path)

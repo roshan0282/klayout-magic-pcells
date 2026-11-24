@@ -1,4 +1,4 @@
-"""Hybrid-waffle (HW) power nfet for sky130A, after Yoo, Chang, Trescases and
+"""Hybrid-waffle (HW) power MOSFET for sky130A, after Yoo, Chang, Trescases and
 Ng, "High Performance Low-Voltage Power MOSFETs with Hybrid Waffle Layout
 Structure in a 0.25 um Standard CMOS Process" (ISPSD 2008).
 
@@ -7,9 +7,9 @@ Geometry (all coordinates in um, tile pitch P):
 * Tiles form an N x M checkerboard. Tile (i, j), centred at
   ((i + 1/2) P, (j + 1/2) P), is a source tile when i + j is even and a
   drain tile otherwise, so every internal tile edge separates S from D.
-* Every internal edge carries one *block*: Magic's own
-  ``sky130_fd_pr__nfet_01v8`` (``w`` = finger W, ``l`` = L, ``nf`` = fingers
-  per cell, no guard ring), generated through the ``sky130_magic`` library.
+* Every internal edge carries one *block*: Magic's own MOSFET (one of
+  ``DEVICES``; ``w`` = finger W, ``l`` = L, ``nf`` = fingers per cell, no
+  guard ring), generated through the ``sky130_magic`` library.
   Vertical edges get it as drawn (fingers parallel to the edge), horizontal
   edges rotated by 90 degrees, so each tile is ringed by the same block in
   four orientations.
@@ -23,10 +23,18 @@ Geometry (all coordinates in um, tile pitch P):
   every tile of a diagonal; S and D straps alternate. S straps run up and
   right into an L-shaped S bus (top and right), D straps down and left into
   the D bus (left and bottom).
-* At each grid crossing a met1 cross joins the gate contacts of the blocks
-  that end there; the poly of each finger joins its two ends, so the gate is
-  one net. A substrate tap ring (Magic's ``subconn_guard``) surrounds the
-  tile array.
+* The gate is met1: a bar over each row of gate-contact pads, a spine to
+  the grid crossing, a rail beside each block joining its two crossings, and
+  a ring on the outer grid lines.
+* Body: ``bulk="ring"`` puts Magic's ``subconn_guard`` (p-tap) or ``nwell``
+  (n-well with n-tap ring) around the array, labelled B; Magic's LU rules
+  then limit the array size. ``bulk="source"`` puts a tap (Magic's
+  ``subconn``; for a pfet the same with nsdm for psdm) under every source
+  tile, tied to S through Magic's ``mcon`` and ``via1``, so any size is
+  latch-up clean and the body is S.
+* Well and threshold layers that Magic draws per device (nwell, hvi, lvtn,
+  hvtp, ...) are drawn once over the whole array instead, so neighbouring
+  blocks' copies never leave gaps narrower than their spacing rules.
 
 Every polygon vertex is on the 5 nm grid: P, the strap half-widths and the
 cut positions are multiples of 10 nm, so the 45 degree edges meet the
@@ -41,6 +49,22 @@ PDK = "sky130A"
 LIBRARY = "sky130_magic"
 DEVICE = "sky130_fd_pr__nfet_01v8"
 
+# Magic's sky130A MOSFETs whose source and drain are interchangeable, which
+# the waffle needs: kind ("n" or "p") and whether they are 5 V (hvi) devices.
+# Left out: the g5v0d16v0 drain-extended FETs (asymmetric) and the SONOS cell.
+DEVICES = {
+    "sky130_fd_pr__nfet_01v8": ("n", False),
+    "sky130_fd_pr__nfet_01v8_lvt": ("n", False),
+    "sky130_fd_pr__nfet_03v3_nvt": ("n", True),
+    "sky130_fd_pr__nfet_05v0_nvt": ("n", True),
+    "sky130_fd_pr__nfet_g5v0d10v5": ("n", True),
+    "sky130_fd_pr__pfet_01v8": ("p", False),
+    "sky130_fd_pr__pfet_01v8_lvt": ("p", False),
+    "sky130_fd_pr__pfet_01v8_hvt": ("p", False),
+    "sky130_fd_pr__pfet_g5v0d10v5": ("p", True),
+}
+BULK_MODES = ("ring", "source")
+
 DBU = 0.001
 
 L_MET1 = (68, 20)
@@ -49,6 +73,12 @@ L_MET3 = (70, 20)
 L_MET4 = (71, 20)
 L_MET5 = (72, 20)
 L_DIFF = (65, 20)
+L_NSDM = (93, 44)
+L_PSDM = (94, 20)
+L_HVI = (75, 20)
+# Layers kept per block; every other layer of the unit cell is drawn once
+# over the array (wells, hvi, threshold implants, id layers).
+PER_BLOCK = {(65, 20), (66, 20), (66, 44), (67, 20), (67, 44), (68, 20), L_NSDM, L_PSDM, (95, 20)}
 T_LI = (67, 5)
 T_MET1 = (68, 5)
 T_MET5 = (72, 5)
@@ -76,7 +106,10 @@ BUS_GAP = 3000          # array edge to the S/D buses (fillets stay 1.6 um from 
 FILLET = 1700           # fills the 45 degree notch where a strap meets a bus, down to
                         # where the notch is as wide as the met5 spacing
 RING_OFFSET = 500       # tap ring centre line outside the tile array
-LU_MAX = 14500          # Magic's LU.2: n-diff within 15 um of a p-tap
+RING_MCON_W = 2000      # met1 contact on the ring (nwell.4 wants metal-connected taps)
+TAP = 1000              # mcon and via1 box side on an interior tap
+TAP_GAP = 500           # interior tap box to a block's bounding box
+LU_MAX = 14500          # Magic's LU.2 / LU.3: diff within 15 um of a tap
 
 
 def _ceil10(v):
@@ -99,17 +132,23 @@ class HWParams:
     nx, ny    tiles per row and per column (N x M)
     strap_w   width of the diagonal met3-met5 straps, perpendicular (um)
     pitch     tile pitch (um); None picks the smallest that fits
+    device    one of DEVICES
+    bulk      "ring" (tap ring around the array, body pin B) or "source"
+              (a tap in every source tile, body tied to S)
     """
 
-    def __init__(self, l=0.5, w=2.0, nf=3, nx=3, ny=3, strap_w=3.0, pitch=None):
+    def __init__(self, l=0.5, w=2.0, nf=3, nx=3, ny=3, strap_w=3.0, pitch=None,
+                 device=DEVICE, bulk="ring"):
         self.l, self.w, self.nf = float(l), float(w), int(nf)
         self.nx, self.ny = int(nx), int(ny)
         self.strap_w = float(strap_w)
         self.pitch = None if pitch is None else float(pitch)
+        self.device = device
+        self.bulk = bulk
 
     def as_dict(self):
         return dict(l=self.l, w=self.w, nf=self.nf, nx=self.nx, ny=self.ny,
-                    strap_w=self.strap_w, pitch=self.pitch)
+                    strap_w=self.strap_w, pitch=self.pitch, device=self.device, bulk=self.bulk)
 
 
 class HWResult:
@@ -130,10 +169,11 @@ class HWResult:
         self.total_w = self.devices * self.w
 
     def summary(self):
-        return ("HW %dx%d, pitch %.3f um, %d blocks x nf %d = %d fingers of W %.3f L %.3f, "
-                "total W %.3f um, strap %.3f um"
-                % (self.params.nx, self.params.ny, self.pitch, self.blocks, self.nf,
-                   self.devices, self.w, self.l, self.total_w, self.strap_w))
+        return ("HW %s %dx%d, pitch %.3f um, %d blocks x nf %d = %d fingers of W %.3f L %.3f, "
+                "total W %.3f um, strap %.3f um, bulk %s"
+                % (self.params.device, self.params.nx, self.params.ny, self.pitch, self.blocks,
+                   self.nf, self.devices, self.w, self.l, self.total_w, self.strap_w,
+                   self.params.bulk))
 
 
 # -- Magic's cells -------------------------------------------------------------
@@ -173,11 +213,11 @@ def _magic_cell(ly, name, values, plain_name):
 def _unit_values(p):
     import klayout_magic_pcells as kmp
     typed = {"w": p.w, "l": p.l, "nf": p.nf, "guard": False}
-    vals = kmp.dialog_values(DEVICE, typed, pdk=PDK)
+    vals = kmp.dialog_values(p.device, typed, pdk=PDK)
     for k in ("w", "l", "nf"):
         if abs(float(vals[k]) - float(typed[k])) > 1e-9:
             raise ValueError("Magic's dialog changes %s from %s to %s for %s"
-                             % (k, typed[k], vals[k], DEVICE))
+                             % (k, typed[k], vals[k], p.device))
     return vals
 
 
@@ -203,7 +243,7 @@ def _tri(*pts):
 
 # -- the generator -------------------------------------------------------------
 
-def generate(layout, params, name="HW_NFET"):
+def generate(layout, params, name="HW_FET"):
     """Draw the HW FET into ``layout`` (dbu 0.001) as one flat cell.
 
     Returns an HWResult. Raises ValueError for parameters the geometry
@@ -216,17 +256,31 @@ def generate(layout, params, name="HW_NFET"):
         raise ValueError("the grid needs at least two tiles")
     if p.nf < 1:
         raise ValueError("nf must be >= 1")
+    if p.device not in DEVICES:
+        raise ValueError("device %r is not one of %s" % (p.device, ", ".join(sorted(DEVICES))))
+    if p.bulk not in BULK_MODES:
+        raise ValueError("bulk must be one of %s" % ", ".join(BULK_MODES))
+    kind, hv = DEVICES[p.device]
+    DEV = p.device
     _library()
     ly = layout
     vals = _unit_values(p)
     W = _nm(float(vals["w"]))
 
     # Unit nfet, fingers vertical, centred on the origin.
-    unit = _magic_cell(ly, DEVICE, vals, name + "_UNIT")
+    unit = _magic_cell(ly, DEV, vals, name + "_UNIT")
     ub = unit.bbox()
     if ub.left != -ub.right or ub.bottom != -ub.top:
-        raise RuntimeError("Magic's %s is not centred on the origin: %s" % (DEVICE, ub))
+        raise RuntimeError("Magic's %s is not centred on the origin: %s" % (DEV, ub))
     hxb, hyb = ub.right, ub.top
+    # Well, hvi and threshold layers leave the block; they are drawn once
+    # over the whole array below.
+    covers = []
+    for li in ly.layer_indexes():
+        info = ly.get_info(li)
+        if (info.layer, info.datatype) not in PER_BLOCK and not unit.shapes(li).is_empty():
+            covers.append((info.layer, info.datatype))
+            unit.shapes(li).clear()
     m1 = ly.layer(*L_MET1)
     strips, pads = [], []
     for s in unit.shapes(m1).each():
@@ -244,7 +298,7 @@ def generate(layout, params, name="HW_NFET"):
                          min(b.left for b in row), max(b.right for b in row))
     if len(xs) != p.nf + 1 or not rows or sum(1 for b in pads if b.bottom > 0 or b.top < 0) != len(pads):
         raise RuntimeError("unexpected met1 in Magic's %s: %d strips, %d pads"
-                           % (DEVICE, len(xs), len(pads)))
+                           % (DEV, len(xs), len(pads)))
     if min(r[0] for r in rows.values()) - W // 2 < 140:
         raise RuntimeError("Magic's gate pads sit closer than 0.14 um to the S/D strips")
 
@@ -268,7 +322,8 @@ def generate(layout, params, name="HW_NFET"):
     pitch_min = max(2 * hxb + 2 * hyb + BLOCK_GAP,
                     2 * hx + MET5_SPACE * math.sqrt(2.0),
                     2 * hxb + 2 * PLATE_GAP + a + 400,
-                    2 * (hxb + hyb + 2 * GATE_SPACE + GATE_W))
+                    2 * (hxb + hyb + 2 * GATE_SPACE + GATE_W),
+                    2 * (hxb + 2 * GATE_SPACE + GATE_W + TAP // 2 + 60) if p.bulk == "source" else 0)
     P = _ceil10(pitch_min)
     if p.pitch is not None:
         if _nm(p.pitch) < P:
@@ -398,23 +453,61 @@ def generate(layout, params, name="HW_NFET"):
     for lyr in (L_MET3, L_MET4, L_MET5):
         top.shapes(ly.layer(*lyr)).insert(metal)
 
-    # Substrate tap ring around the tile array.
-    ring_w, ring_h = N * P + 2 * RING_OFFSET, M * P + 2 * RING_OFFSET
-    ring = _magic_cell(ly, "subconn_guard", {"w": ring_w / 1000.0, "h": ring_h / 1000.0}, name + "_RING")
-    top.insert(db.CellInstArray(ring.cell_index(), db.Trans(-RING_OFFSET, -RING_OFFSET)))
-    _check_latchup(ly, unit, blocks, -RING_OFFSET, -RING_OFFSET, N * P + RING_OFFSET, M * P + RING_OFFSET)
+    # Body: wells and implants over the array, then the taps.
+    # The ring's met1 (B pin) must clear the met1 gate ring on the array edge.
+    e = max(RING_OFFSET, _ceil10(GATE_W // 2 + GATE_SPACE + 115))
+    for lyr in covers:
+        top.shapes(ly.layer(*lyr)).insert(_box(-e, -e, N * P + e, M * P + e))
+    taps = []
+    if p.bulk == "ring":
+        gen = {("n", False): "subconn_guard", ("n", True): "mvsubconn_guard",
+               ("p", False): "nwell", ("p", True): "mvnwell"}[(kind, hv)]
+        ring = _magic_cell(ly, gen, {"w": (N * P + 2 * e) / 1000.0, "h": (M * P + 2 * e) / 1000.0},
+                           name + "_RING")
+        top.insert(db.CellInstArray(ring.cell_index(), db.Trans(-e, -e)))
+        # met1 on the bottom side, which carries the B pin.
+        rc = _magic_cell(ly, "mcon", {"w": RING_MCON_W / 1000.0, "h": 0.17}, name + "_RING_MCON")
+        bx = N * P // 2 - RING_MCON_W // 2
+        top.insert(db.CellInstArray(rc.cell_index(), db.Trans(bx, -e - 85)))
+        taps = [_box(-e, -e, N * P + e, -e), _box(-e, M * P + e, N * P + e, M * P + e),
+                _box(-e, -e, -e, M * P + e), _box(N * P + e, -e, N * P + e, M * P + e)]
+    else:
+        # The tap fills the tile interior, so a block's diffusion is never
+        # further from a tap than the block's own width.
+        ts = P - 2 * (hxb + TAP_GAP)
+        tap = _magic_cell(ly, "mvsubconn" if hv else "subconn",
+                          {"w": ts / 1000.0, "h": ts / 1000.0}, name + "_TAP")
+        if kind == "p":   # an n-tap: the same contact with nsdm for psdm
+            ps, ns = ly.layer(*L_PSDM), ly.layer(*L_NSDM)
+            tap.shapes(ns).insert(tap.shapes(ps))
+            tap.shapes(ps).clear()
+        tmc = _magic_cell(ly, "mcon", {"w": TAP / 1000.0, "h": TAP / 1000.0}, name + "_TAP_MCON")
+        tv1 = _magic_cell(ly, "via1", {"w": TAP / 1000.0, "h": TAP / 1000.0}, name + "_TAP_VIA1")
+        for i in range(N):
+            for j in range(M):
+                if not tile_is_source(i, j):
+                    continue
+                cx, cy = i * P + P // 2, j * P + P // 2
+                top.insert(db.CellInstArray(tap.cell_index(), db.Trans(cx - ts // 2, cy - ts // 2)))
+                for c in (tmc, tv1):
+                    top.insert(db.CellInstArray(c.cell_index(), db.Trans(cx - TAP // 2, cy - TAP // 2)))
+                taps.append(_box(cx - ts // 2, cy - ts // 2, cx + ts // 2, cy + ts // 2))
+    _check_latchup(ly, unit, blocks, taps)
 
     # Labels.
     top.shapes(ly.layer(*T_MET5)).insert(db.Text("S", db.Trans(xt_out // 2, yt_in + bw // 2)))
     top.shapes(ly.layer(*T_MET5)).insert(db.Text("D", db.Trans(N * P // 2, yb_out + bw // 2)))
     top.shapes(ly.layer(*T_MET1)).insert(db.Text("G", db.Trans(*gate_label)))
-    top.shapes(ly.layer(*T_LI)).insert(db.Text("B", db.Trans(N * P // 2, -RING_OFFSET)))
+    if p.bulk == "ring":
+        top.shapes(ly.layer(*T_MET1)).insert(db.Text("B", db.Trans(N * P // 2, -e)))
 
     top.flatten(-1, True)   # also deletes the helper cells
     return HWResult(top, p, vals, P / 1000.0, 2 * hx / math.sqrt(2.0) / 1000.0, len(blocks))
 
 
-def _check_latchup(ly, unit, blocks, x1, y1, x2, y2):
+def _check_latchup(ly, unit, blocks, taps):
+    """Magic's LU.2 / LU.3: every point of the blocks' diffusion within
+    15 um of a tap (checked on an 11 x 11 grid of points per block)."""
     diff = db.Region(unit.begin_shapes_rec(ly.layer(*L_DIFF))).bbox()
     worst = 0
     for cx, cy, vert in blocks:
@@ -424,14 +517,16 @@ def _check_latchup(ly, unit, blocks, x1, y1, x2, y2):
             for m in range(11):
                 x = b.left + (b.right - b.left) * k // 10
                 y = b.bottom + (b.top - b.bottom) * m // 10
-                worst = max(worst, min(x - x1, x2 - x, y - y1, y2 - y))
+                near = min(math.hypot(max(tb.left - x, 0, x - tb.right), max(tb.bottom - y, 0, y - tb.top))
+                           for tb in taps)
+                worst = max(worst, near)
     if worst > LU_MAX:
-        raise ValueError("n-diff lies %.2f um from the tap ring; Magic's LU.2 allows 15 um. "
-                         "Use a smaller grid (taps inside the array are not in milestone 1)"
+        raise ValueError("diffusion lies %.2f um from the nearest tap; Magic's LU rules allow 15 um. "
+                         "Use a smaller grid or bulk='source' (a tap in every source tile)"
                          % (worst / 1000.0))
 
 
-def write_gds(params, path, name="HW_NFET"):
+def write_gds(params, path, name="HW_FET"):
     """Generate into a fresh layout and write only the HW cell to ``path``."""
     ly = db.Layout()
     ly.dbu = DBU
