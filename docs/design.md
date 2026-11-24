@@ -1773,3 +1773,19 @@ Probes run for this design, all in the pinned image. Copies are in
 
 The scratch directory is temporary, so this document restates the results it
 depends on, and the probe scripts are kept in `docs/probes/`.
+
+## 16. Version 0.6 checks
+
+Version 0.6.0 runs Magic's DRC, Magic's extraction and netgen's LVS on a
+cell of a KLayout layout, from a Magic menu in KLayout and from the
+command line (`drc`, `extract`, `lvs`). It adds a generated-layer check
+(`layers`) and a port check (`ports`), and it publishes a table per PDK
+of where Magic's DRC and the PDK's KLayout decks disagree (`docs/gaps/`).
+[design-0.6.md](design-0.6.md) gives the design of these checks.
+
+The checks run Magic in processes of their own, one per job, beside the
+PCell server of section 3.3. Their job directories sit under `jobs/` in
+the cache directory of section 6, and `cache clear` and `cache prune`
+cover them too. The parity harness of section 10 has a `jobs` step for
+them (design-0.6.md 5.2). Version 0.6 leaves the PCell design in this
+document as it is.

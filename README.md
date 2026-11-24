@@ -23,19 +23,37 @@ the via, contact, substrate-contact, guard-ring and well commands of
 Magic's "Devices" menus; their PCells take the box size (see [Box-paint
 generators](#box-paint-generators)).
 
-Status: version 0.5.0. The repository is on GitHub as
-vproHacks/klayout-magic-pcells. The parity harness (see
-[Tests](#tests)) passes on every PDK; the results of the last full run are
-under [Last full run](#last-full-run). The libraries load under
-`klayout -b -rm`, from the Salt autorun under `klayout -zz`, and in the full
-KLayout GUI under Xvfb. [guide.md](guide.md) walks through installing and
-using them, with screenshots of that GUI, including the warning icons that
-the parameter form shows when Magic corrects a value.
+The package also runs Magic's own checks on any layout open in KLayout, on
+all four PDKs: Magic's DRC, Magic's extraction, and LVS against a
+schematic with netgen. Two more checks compare a layout with what Magic
+makes of it. One reports implants and markers that Magic draws differently
+from the layout, and transistors, shapes and cuts that Magic reads
+differently from KLayout; the other reports texts and pin boxes that
+Magic, or the PDK's KLayout LVS deck, doesn't read as pins. In KLayout
+each check runs from a menu named Magic and shows its results in the
+Marker Database Browser, and each also runs from the command line (see
+[Checking a layout with Magic](#checking-a-layout-with-magic)). For each
+PDK, a generated table lists the DRC rules on which Magic and the PDK's
+KLayout decks differ (see [Where KLayout and Magic
+disagree](#where-klayout-and-magic-disagree)).
+
+Status: version 0.6.0. The repository is on GitHub as
+uoftasic/klayout-magic-pcells. It moved there from vproHacks at 0.6.0, and
+GitHub redirects the old URL. The last full run of the parity harness, on
+2026-11-24, passed all 10,399 points on the four PDKs (see [Last full
+run](#last-full-run)).
+The libraries load under `klayout -b -rm`, from the Salt autorun under
+`klayout -zz`, and in the full KLayout GUI under Xvfb, where the Magic
+menu's entries have also run, on sky130A. [guide.md](guide.md) walks
+through installing and using the libraries, with screenshots of that GUI,
+including the warning icons that the parameter form shows when Magic
+corrects a value.
 
 The design is in [docs/design.md](docs/design.md). It was written for
-sky130A alone. Where this README and the design disagree, the README
-describes the code as it is; the differences are listed under
-[Changes from the design](#changes-from-the-design).
+sky130A alone. The checks, which version 0.6 added, have a design of their
+own, [docs/design-0.6.md](docs/design-0.6.md). Where this README and a design
+disagree, the README describes the code as it is; the differences are
+listed under [Changes from the design](#changes-from-the-design).
 
 ## Why Magic is the backend
 
@@ -98,6 +116,11 @@ harness keeps that as a second reference where it applies (see
   F) and sky130B are not supported.
 - Linux. Windows and macOS are out of scope.
 - For use from plain `python3`, the `klayout` pip module (0.30.11 tested).
+  The command line's checks (`drc`, `extract`, `lvs`, `layers`, `ports`)
+  read the layout with it, so they need it too; the image has it.
+- For LVS, netgen with the PDK's netgen setup file
+  (`$PDK_ROOT/<pdk>/libs.tech/netgen/<pdk>_setup.tcl`). Tested with netgen
+  1.5.323. The other checks don't use netgen.
 
 The image `hpretl/iic-osic-tools@sha256:3c371645b19c6f6564dc8c7b21e39ad1c1833d274fe5b85639afe1ba9d7987e7`
 has all of these. The IHP rcfiles in that image end with
@@ -114,7 +137,7 @@ The repository is a KLayout Salt package (it has a `grain.xml`). Clone it
 and link it into the `salt` folder of your KLayout home:
 
 ```sh
-git clone https://github.com/vproHacks/klayout-magic-pcells.git /path/to/klayout-magic-pcells
+git clone https://github.com/uoftasic/klayout-magic-pcells.git /path/to/klayout-magic-pcells
 mkdir -p ~/.klayout/salt
 ln -s /path/to/klayout-magic-pcells ~/.klayout/salt/klayout-magic-pcells
 ```
@@ -263,6 +286,844 @@ in each KLayout process, started when the library registers. `register()`
 starts the processes of all PDKs before it waits for any; with all four PDKs
 it took 0.63 s in the image, and one generation takes 15 to 20 ms. Each
 Magic process is about 72 MB (measured on sky130A in version 0.2).
+
+## Checking a layout with Magic
+
+The plugin runs Magic's own checks on a layout, from the KLayout GUI or
+from the command line. A check writes the cell to a GDS file (the
+export), has Magic read that file in a process of its own (`magic -dnull`
+with the PDK's rcfile, separate from the PCell libraries' Magic
+processes), and puts what it finds into a report database for KLayout's
+Marker Database Browser:
+
+| Check | Command | What it reports |
+|---|---|---|
+| [Magic DRC](#magic-drc) | `drc` | Magic's DRC errors, per rule |
+| [Extraction](#extraction) | `extract` | Magic's netlist of the cell |
+| [LVS with netgen](#lvs-with-netgen) | `lvs` | netgen's comparison of that netlist with a schematic, with markers on what differs |
+| [Generated layers](#generated-layers) | `layers` | implants and markers that Magic draws differently from the layout, and transistors, shapes and cuts that Magic reads differently from KLayout |
+| [Ports](#ports) | `ports` | texts and pin boxes that Magic, or the PDK's KLayout LVS deck, doesn't read as pins |
+
+**In the GUI** they are in a menu named Magic, which the autorun macro
+inserts before Help: Run Magic DRC..., Check the visible area with Magic
+DRC, Extract with Magic..., LVS with netgen..., Check generated layers,
+Check ports, Rule differences (the [gap
+table](#where-klayout-and-magic-disagree) of the layout's PDK) and
+Settings... (each setting, its value and where it comes from; read-only).
+An entry checks the current cell of the current view as it is in memory,
+unsaved edits included, on the PDK that the command line would choose (see
+the rules below). Where those rules end in a guess, the menu doesn't take
+it: a dialog asks for the PDK, with the guess preselected, and the answer
+holds for that layout until KLayout closes. While Magic runs, a progress
+dialog shows the stage and the seconds elapsed, KLayout stays usable, and
+the dialog's Cancel button stops Magic. One check runs at a time in a
+view; starting another asks whether to cancel the first. When a check
+ends, the Marker Database Browser opens on its report and a message gives
+the summary. Each check's section below says what its entry asks. There is
+no menu without a main window (`klayout -b`, plain `python3`),
+and `KMP_MENU=0` leaves it out.
+
+**On the command line**, with `PYTHONPATH` set as for `doctor`:
+
+```sh
+python3 -m klayout_magic_pcells drc     FILE [--cell C]... [--style S] [--mode hierarchical|flat] [--box L,B,R,T] [-o OUT.lyrdb] [--tsv OUT.tsv] [--no-cache]
+python3 -m klayout_magic_pcells extract FILE [--cell C] [--caps] [--flatglob] [--ports-from-labels] [-o OUT.spice] [--rdb OUT.lyrdb] [--no-cache]
+python3 -m klayout_magic_pcells lvs     FILE --schematic SCH [--schematic-cell C] [--cell C] [--flatglob] [--ports-from-labels] [-o OUT.lyrdb] [--report OUT.txt] [--json OUT.json] [--no-cache]
+python3 -m klayout_magic_pcells layers  FILE [--cell C] [-o OUT.lyrdb] [--json OUT.json] [--no-cache]
+python3 -m klayout_magic_pcells ports   FILE [--cell C] [--magic] [-o OUT.lyrdb] [--json OUT.json]
+```
+
+`--cell` defaults to the file's top cell. A file with several top cells
+needs it, and a cell the file doesn't have exits 2 before Magic starts
+(`error: cell nosuch is not in /repo/out/cases/sky130A/hier/inv_base_all_h.gds`).
+Every command takes `--pdk`. Without it, the command takes the PDK from
+the first of these that names one: the layout's technology, its PCell
+libraries (live or `<defunct>`), the names of its PCell variant cells
+(`<device>__kmp_<8 hex>`), `KMP_PDKS` when that selects one PDK, and the
+`PDK` variable. The technology counts only when the layout's shapes fit
+its PDK. For each PDK, the plugin counts the shapes on the layers that the
+PDK's data file (`python/klayout_magic_pcells/data/pdk-<pdk>.json`)
+knows, leaving out text, boundary and `*.mask` layers. When the
+technology's PDK gets less than 3/4 of the count of the PDK that fits
+best, the technology is set aside, and the best-fitting PDK takes the place
+of the `PDK` variable at the end of the list. The two IHP PDKs share their
+layer numbers, so between them the technology still decides. The last
+entry of the list, the `PDK` variable or the best-fitting PDK in its
+place, is a guess, and the command says so on stderr:
+
+```
+note: PDK sky130A, a guess from the PDK variable (PDK=sky130A): the layout names no technology and no PCell library; give --pdk to choose another
+```
+
+The [case suite](#the-case-suite) is the set of test layouts that
+`tests/cases/build.py` draws. Its files carry no technology, so its
+sky130A inverter was given the technology `sg13g2` and run through the PDK
+choice in Python. It came out as sky130A, with the reason "a guess from
+the layers: the layout's technology is sg13g2 (ihp-sg13g2), but 0% of its
+shapes are on ihp-sg13g2's layers and 89% on sky130A's". In the GUI, the
+PDK dialog then opens with that sentence and sky130A preselected. A
+script, or a course checker, should give `--pdk`.
+
+Every command exits 0 when the check finds nothing, 1 when it finds
+something, and 2 when the input or a job fails; each check's section says
+what counts. A `.lyrdb` file opens next to its layout with
+`klayout LAYOUT -m FILE.lyrdb`; with `-m` before the layout, KLayout puts
+the database in an empty view of its own. The database's rerun record (its "generator") is a KLayout Recipe
+named `klayout_magic_pcells`, and its description gives the command line
+that reproduces the run. The autorun macro registers that Recipe, and in
+the GUI the browser's Rerun button (F5) runs the same check again on the
+layout in the view and replaces the report. This was tried on a DRC report
+made from the menu; Rerun of the other checks' reports, and of a `.lyrdb`
+written on the command line and then opened in KLayout, hasn't been tried.
+
+The examples below ran in the image listed under
+[Requirements](#requirements), on the layouts of the [case
+suite](#the-case-suite), built with `python3 tests/cases/build.py --pdk
+sky130A --out out/cases/sky130A` and run in the folder of each file, with
+`KMP_CACHE_DIR` set to a folder under `out/docs2`.
+
+### The exported file and its findings
+
+The exported file has no KLayout context information and no timestamps.
+Cells whose names Magic can't load (anything but letters, digits, `_` and
+`$`) are renamed in it, and instances with a rotation that isn't a
+multiple of 90° or with a magnification are flattened, since Magic can't
+place them. Before Magic starts, the export also looks for what Magic will
+read differently from KLayout. `drc`, `extract`, `lvs` and `layers` put
+these findings into their database (`ports` reports only its own, and with
+`--magic` "Magic reads nothing in this cell"):
+
+| Category | What it holds |
+|---|---|
+| Export/Magic snaps this shape to its 5 nm grid | vertices off the PDK's 5 nm grid, which Magic moves when it reads the file |
+| Export/Magic does not read this layer | shapes on layers that Magic's GDS reader ignores, such as sky130A's npc (95/20), which Magic draws itself when it writes GDS |
+| Export/Magic reads this layer as another type | for example 16/0 on the IHP PDKs, which Magic reads as `digisub` |
+| Export/Magic reads this cell without a layer drawn in another cell | an implant or marker shape of one cell (a parent, a child or a sibling) over the diffusion or poly of another cell that doesn't draw that layer there itself, or a well shape over the other cell's diffusion. Magic decides device types inside each cell from that cell's shapes alone, so it reads the other cell without the layer (see [Magic DRC](#magic-drc)). Cuts don't count: a contact takes its type from the diffusion or poly under it in its own cell |
+| Export/instances flattened for Magic | the flattened instances |
+| Export/cells renamed for Magic | each renamed cell and its name in the file |
+| Export/error-marker cells | PCell variants that failed (the 255/0 error marker, see [If Magic is missing or fails](#if-magic-is-missing-or-fails)); every check that runs Magic refuses such a layout and exits 2, since Magic would check it without those devices |
+| Export/Magic reads nothing in this cell | a top cell of which Magic's GDS reader keeps no shape: every layer it draws is one the reader ignores, or one it uses only to decide what the diffusion or poly under it is, and there is none. The item names each layer, what the reader does with it and the tech-file line. `drc` (both modes), `extract`, `lvs`, `layers` and `ports --magic` report it after Magic has loaded the cell (below) |
+| Magic said | Magic's messages from the job |
+
+Each Magic process then checks that the cell it loaded is the one it was
+given (the name is in Magic's cell list before `load`, the loaded cell has
+that name, and its bounding box isn't empty) and fails the job otherwise,
+so a cell that Magic can't find or loads empty never gives a clean result.
+When the top cell loads empty because Magic's reader keeps none of its
+shapes, `drc`, `extract`, `lvs`, `layers` and `ports --magic` turn that
+failed job into the finding "Magic reads nothing in this cell", check
+nothing, and exit 1. `extract` then writes no netlist, and `lvs` says that
+the layout does not match, without running netgen, and writes no
+`--report`. On the case suite's sky130A `s_npc_alone`, which holds only
+npc, with a schematic `npc.spice` that holds `.subckt s_npc_alone A` and
+no device:
+
+```
+$ python3 -m klayout_magic_pcells extract s_npc_alone.gds --pdk sky130A
+extract: Magic reads nothing in s_npc_alone (sky130A), so there is no netlist.
+  Export/Magic reads nothing in this cell: Magic reads nothing in cell s_npc_alone. Its layers: 95/20 (npc.drawing): Magic's reader ignores it (and draws its own when it writes GDS) (sky130A.tech:3979)
+  Export/Magic does not read this layer: 1 item
+$ python3 -m klayout_magic_pcells lvs s_npc_alone.gds --pdk sky130A --schematic npc.spice --json npc.lvs.json
+lvs: Magic reads nothing in s_npc_alone (sky130A), so there is no netlist to compare with s_npc_alone in npc.spice. The layout does not match.
+  Export/Magic reads nothing in this cell: Magic reads nothing in cell s_npc_alone. Its layers: 95/20 (npc.drawing): Magic's reader ignores it (and draws its own when it writes GDS) (sky130A.tech:3979)
+  Export/Magic does not read this layer: 1 item
+```
+
+Both exit 1. In `npc.lvs.json` the verdict has `matched` false and the
+final result "netgen did not run: Magic reads nothing in s_npc_alone".
+
+Each check runs Magic in a job directory under the cache (see [Job
+directories](#job-directories)), and a second run of an unchanged cell with
+the same options reads the results from there: the first DRC example
+below took 1.6 s the first time, its check of the flattened layout
+included, and 0.2 s the second, while other containers ran on the same
+machine.
+
+### Magic DRC
+
+`drc` checks the cell with Magic's DRC in the style `KMP_DRC_STYLE`
+(default `drc(full)`; `--style` chooses another), each cell with a 10 µm
+margin around it as the parity harness's DRC step does. There are two
+modes:
+
+- **Hierarchical**, the default, is Magic's own reading of the file: a
+  plain `gds read`, then every cell under the top cell is loaded and checked
+  as Magic's edit cell, children first, and the top cell last. Each cell's
+  boxes go into that cell in the database, in its own coordinates, with
+  references to its placements. A box in a parent's list that is exactly a
+  box of one of its subcells, seen through the instance, is left out of the
+  parent. A box from a subcell's own check is an error when the top cell's
+  list has a box of the same rule that overlaps or touches it through some
+  placement, or else when Magic's check of the flattened layout has one
+  there, and the item then says that the check from the top cell misses
+  it. Otherwise it is information only, in the category "Magic
+  DRC/<rule>/only when <cell> is checked on its own", and doesn't count in
+  the error total, the exit status or the TSV. The check of the flattened
+  layout is one more Magic job, run only when some subcell box isn't in the
+  top cell's list.
+- **Flat** (`--mode flat`) is Magic's verdict on the flattened mask:
+  KLayout flattens a copy of the cell and Magic checks that one cell.
+
+Hierarchical is the default because Magic's GDS reader decides what each
+piece of diffusion and poly is inside each cell, from that cell's own
+implants and wells. A layout whose implants or well sit in a parent cell
+over transistors in a child reads differently to Magic than its flattened
+mask does. The case suite's `hier` set has such layouts on every PDK: a
+clean inverter (the flat original) with some layers moved into a parent
+cell and the rest in a child cell placed at the origin. Flat mode found
+nothing on any of them. Magic's own reading of the cells with moved layers
+gave other transistors and errors, except on three gf180mcuD cases:
+`C_NMOS_nw_h` and `C_PMOS_imp_h` read as drawn, and on `C_PMOS_all_h`,
+which extracts no transistor, only the child's own check lists boxes, all
+of them information. `drc` in both modes and `extract` gave, with the
+boxes that are information only after the semicolon:
+
+| PDK | Case | Layers in the parent | Hierarchical | Flat | Transistors Magic extracts |
+|---|---|---|---|---|---|
+| sky130A | `inv_base` | none (the flat original) | no errors | no errors | `nfet_01v8`, `pfet_01v8_hvt` |
+| | `inv_base_imp_h` | nsdm, psdm | 28 boxes, 7 rules; 20 | no errors | `pfet_01v8`, `pfet_01v8_hvt` |
+| | `inv_base_nw_h` | nwell | 29 boxes, 4 rules; 16 | no errors | `nfet_01v8` |
+| | `inv_base_all_h` | nsdm, psdm, nwell, hvtp, npc | 38 boxes, 7 rules; 40 | no errors | two `pfet_01v8` |
+| gf180mcuD | `C_NMOS`, `C_PMOS` | none | no errors | no errors | `nfet_03v3`; `pfet_03v3` |
+| | `C_NMOS_imp_h` | NPLUS, PPLUS | 10 boxes, 3 rules; 11 | no errors | none |
+| | `C_NMOS_all_h` | NPLUS, PPLUS, NWELL, DUALGATE | 10 boxes, 3 rules; 11 | no errors | none |
+| | `C_PMOS_nw_h` | NWELL | 77 boxes, 9 rules; 4 | no errors | none |
+| | `C_PMOS_all_h` | NPLUS, PPLUS, NWELL, DUALGATE | no errors; 11 | no errors | none |
+| | `C_NMOS_nw_h` | NWELL | no errors | no errors | `nfet_03v3` |
+| | `C_PMOS_imp_h` | NPLUS, PPLUS | no errors | no errors | `pfet_03v3` |
+| ihp-sg13g2 | `inv` | none | no errors | no errors | `sg13_lv_nmos`, `sg13_lv_pmos` |
+| | `inv_psd_h` | pSD | 17 boxes, 2 rules | no errors | `sg13_lv_nmos` |
+| | `inv_nw_h` | NWell | 26 boxes, 3 rules | no errors | `sg13_lv_nmos` |
+| | `inv_all_h` | pSD, NWell, ThickGateOx | 23 boxes, 3 rules | no errors | two `sg13_lv_nmos` |
+| ihp-sg13cmos5l | `base` | none | no errors | no errors | `sg13_lv_nmos`, `sg13_lv_pmos` |
+| | `base_psd_h` | pSD | 17 boxes, 2 rules | no errors | `sg13_lv_nmos` |
+| | `base_nw_h` | NWell | 25 boxes, 3 rules | no errors | `sg13_lv_nmos` |
+| | `base_all_h` | pSD, NWell, ThickGateOx | 21 boxes, 3 rules | no errors | two `sg13_lv_nmos` |
+
+In hierarchical mode the export also reports each place where Magic reads
+a cell without a layer drawn in another cell (8 on `inv_base_all_h`), and
+the [generated-layer check](#generated-layers) names the transistors that
+change.
+
+Hierarchical mode also lists more than Magic's check of the top cell alone,
+which is what `drc check` gives on the loaded top cell in Magic, and every
+DRC database says so in its description: "this mode checks every cell and
+then the top cell; Magic's check from the top cell alone can report fewer
+errors". On the case suite's DRC sheets (each case a subcell, 40 µm apart,
+in `drc(full)`):
+
+| PDK | Hierarchical | Subcell boxes in the top cell's list | Subcell boxes only in the flattened layout's check | The top cell's own check | Flat |
+|---|---|---|---|---|---|
+| sky130A | 348 boxes, 55 rules | 214 | 109 | 232 boxes, 51 rules | 324 boxes, 55 rules |
+| gf180mcuD | 252 boxes, 33 rules | 173 | 56 | 188 boxes, 33 rules | 277 boxes, 33 rules |
+| ihp-sg13g2 | 304 boxes, 32 rules | 218 | 0 (not run) | 239 boxes, 32 rules | 243 boxes, 32 rules |
+| ihp-sg13cmos5l | 91 boxes, 18 rules | 59 | 0 (not run) | 66 boxes, 18 rules | 66 boxes, 18 rules |
+
+The rest of each hierarchical count is the top cell's own boxes that aren't
+copies of a subcell's. On sky130A and gf180mcuD the subcells' own checks
+list boxes that the check from the top cell misses, and the check of the
+flattened layout confirms them. On the IHP sheets every subcell box
+overlaps or touches a box of its rule in the top cell's list, so that check
+didn't run there. No sheet box is information only. On every PDK the
+hierarchical and flat modes listed the same rules.
+
+```
+$ python3 -m klayout_magic_pcells drc inv_base_all_h.gds --tsv -
+note: PDK sky130A, a guess from the PDK variable (PDK=sky130A): the layout names no technology and no PCell library; give --pdk to choose another
+cell	rule	why	l	b	r	t
+inv_base_all_dev	nwell.2a	N-well spacing < 1.27um (nwell.2a)	1.17	3.32	1.68	3.4
+inv_base_all_dev	nwell.1	N-well width < 0.84um (nwell.1)	1.68	1.12	2.01	2.08
+...
+inv_base_all_h	poly.4	poly spacing to Diffusion < 0.075um (poly.4)	1.5	3.5	1.575	3.575
+Magic DRC (drc(full), hierarchical) of inv_base_all_h on sky130A: 38 error boxes, 7 rules, in 2 cells. inv_base_all_h: 38 error boxes, 5 dropped as copies of a subcell's boxes; Magic's drc list count total 5 in the top cell, 7 over the 2 cells checked; of the 47 boxes the subcells' own checks list, 7 are in the top cell's check, 0 only in the flattened layout's check, 40 only when the subcell is checked on its own (information, not counted). The export has 9 findings (category Export).
+$ python3 -m klayout_magic_pcells drc inv_base_all_h.gds --mode flat
+note: PDK sky130A, a guess from the PDK variable (PDK=sky130A): the layout names no technology and no PCell library; give --pdk to choose another
+Magic DRC (drc(full), flat) of inv_base_all_h on sky130A: no errors. inv_base_all_h: 0 error boxes; Magic's drc list count total 0 in the top cell. The export has 1 finding (category Export).
+```
+
+The first exits 1, the second 0. In the first, the 40 boxes that only the
+child cell's own check lists (`diff/tap.8` 36, `nwell.1` 2, `LU.3` 2) are
+information under "only when inv_base_all_dev is checked on its own". The
+last line goes to stderr; `-o OUT.lyrdb` writes the database and
+`--tsv OUT.tsv` the error boxes (`-` for stdout): a header row, then the
+cell, the rule ID, Magic's message and the box in µm, tab-separated,
+children first. `--cell` can be given more than
+once; each cell is checked as a top cell of its own, into one database.
+
+**Menu:** Magic > Run Magic DRC... asks for the style (the PDK's
+`drc(fast)`, `drc(full)` and `drc(routing)`), the mode and the area (the
+whole cell, the area the view shows, or the bounding box of the
+selection), and keeps the choices for the next run; until it has been used,
+`KMP_DRC_STYLE` and `KMP_DRC_MODE` give them. Magic > Check the visible
+area with Magic DRC checks the area the view shows with the last style and
+mode, without asking. The message at the end lists, per subcell, the boxes
+that are information only, by rule. During the check of the flattened
+layout the progress dialog reads `flattened <cell>:` and Magic's stage.
+
+**Area checks.** `--box L,B,R,T` (µm, in the top cell's coordinates) keeps
+the errors of a whole-cell check that touch the area. Magic still checks
+the whole cell, and since the job directory doesn't depend on the area,
+the next area check of an unchanged cell doesn't start Magic. Checking only
+the area would give wrong results for rules about a whole shape. sky130A's
+`nwell.4` requires a tap somewhere in each n-well; the case suite's
+100 × 3 µm n-well has one tap, at its left end, and an area check at its
+right end reports no error:
+
+```
+$ python3 -m klayout_magic_pcells drc nwtap.gds --pdk sky130A --box 85,0,100,3
+Magic DRC (drc(full), hierarchical) of nwtap on sky130A in the area 85,0,100,3 um: no errors. nwtap: 0 error boxes; Magic's drc list count total 0 in the top cell.
+```
+
+**Categories.** "Magic DRC", then the rule ID, then Magic's message (its
+"why-text"). The rule ID is the text in the message's last parentheses
+(`diff/tap.8`, `licon.9 + psdm.5a`, `Grid Rules`); a message with no ID,
+such as `Can't overlap those layers`, is a category of its own under
+"Magic DRC". A rule's description names its styles, each tech-file
+statement (file, line, keyword, types and value), the Magic types and GDS
+layers it checks, and its status and KLayout names in the [gap
+table](#where-klayout-and-magic-disagree):
+
+```
+Magic: All nwells must contain metal-connected N+ taps (nwell.4)
+In the styles: drc(full) (drc(full) only)
+Tech file sky130A.tech:4199: cifmaxwidth nwell_missing_tap 0 um
+Magic types: nwell_missing_tap
+Gap table: Magic only
+```
+
+Magic's error list has no layer, so an item's text names the types and
+layers instead. The layers are those the tech file's GDS output style
+writes for the rule's types, found through the type names and synonyms
+of the tech file's `types` and `aliases` sections: `nwell.2a` checks
+`allnwell`, which gives 64/20 (nwell.drawing) and 82/44 (pnp.drawing). The
+boxes that are information only sit under "Magic DRC/<rule>/only when
+<cell> is checked on its own". A job that fails puts its reason under
+"Magic DRC did not run". "Magic said" holds Magic's messages; those of the
+check of the flattened layout start with "on the flattened layout:". The
+database's description names the PDK, the Magic, tech and PDK versions,
+the style and the mode, and for each cell checked the boxes kept and
+dropped, how the subcells' boxes were sorted, Magic's
+`drc list count total`, the cells Magic read as empty, and where the
+exported file and the flattened check's files are, with "(removed when
+the check ends; KMP_JOB_KEEP=1 keeps it)" after a path in a `tmp-*`
+directory.
+
+**Exit status.** 0 when no error box is left after the copies, the
+information boxes and the area are taken out, 1 when some are or when
+Magic reads nothing in the top cell, 2 for a failed input or job: a missing
+`--cell`, a style the PDK doesn't have (`sky130A has no DRC style drc(nope)
+(it has drc(fast), drc(full), drc(routing))`), error-marker cells, a job
+that fails or is cancelled. The export's findings don't change it.
+
+**Limits.**
+
+- Magic lists one violation as one or more boxes, and the two modes cut
+  them differently, so compare rules rather than box counts.
+- A subcell checked alone can list boxes that its placement removes: in
+  the case suite's sky130A inverter built from this package's PCells
+  (`inverters/inv_pcell.gds`), the two transistor cells checked alone have
+  6 `met1.6` (metal1 minimum area) boxes, which neither the top cell's
+  check nor the flattened layout's has. They are information, and `drc`
+  exits 0 on that file.
+- A parent's box is left out only when it is exactly a subcell's box; on the
+  sky130A sheet above, 25 of the top cell's 232 boxes stay beside the
+  subcells' own. Whether some of them are a subcell's errors cut
+  differently is UNVERIFIED.
+- A subcell that Magic reads as empty isn't checked, and the description
+  lists it, as it lists a cell of the export that Magic's reading of the
+  file has no cell for. On the ihp-sg13g2 sheet, the 22 cases that Magic
+  reads nothing in are listed that way, four of them (`TGO_e`, `TGO_f` and
+  their controls) because Magic's reading has no cell for them.
+- One Magic process checks at most 15 cells; a larger tree takes several
+  processes, one after another (9 for the sky130A sheet's 130 cases in a
+  run during version 0.6's development), and the check of the flattened
+  layout, when it runs, costs about as much as `--mode flat`. Measured
+  during version 0.6's development on a 100 µm block of sky130A standard
+  cells, that check took 8.8 s of an 18.1 s run, as long as `--mode flat`
+  alone; it ran there because a standard cell checked on its own has no
+  tap. There is no tiling: Magic checks the whole cell.
+- The Marker Database Browser shows a subcell's errors at one placement of
+  that cell (see [Known limitations](#known-limitations)).
+
+### Extraction
+
+`extract` has Magic read the export with its hierarchy (`gds read`,
+`load`), run `extract all`, and write a SPICE netlist with `ext2spice lvs`:
+devices and nets, no capacitance, resistance or length, as in the parity
+harness's extraction check. `--caps` adds parasitic capacitance (`extract
+do capacitance`, `extract do coupling`, `ext2spice cthresh 0`).
+`--flatglob` runs `gds flatglob *__kmp_*` before the read, which flattens
+the PCell variants into their parents. `--ports-from-labels` runs `port
+makeall` after the load, which makes every label a port, something Magic's
+own flow doesn't do (see [Ports](#ports)).
+
+`-o OUT.spice` names the netlist file. Without it, `extract` writes
+`<cell>.magic.spice` (`<cell>.magic.pex.spice` with `--caps`) next to the
+layout file. Every netlist file it writes starts with a header line that
+names the plugin's version, the cell, the kind of netlist, the PDK and the
+layout. At the default name, `extract` replaces a file that starts with
+that header and refuses any other file, an empty one included, with exit
+2; `-o` writes where it is told. In the case suite's `inverters` folder,
+next to the schematic `inv.spice`:
+
+```
+$ python3 -m klayout_magic_pcells extract inv.gds --pdk sky130A
+extract: Magic extracted inv (netlist only, sky130A) into /repo/out/cases/sky130A/inverters/inv.magic.spice. The report has 1 item about the export.
+netlist: /repo/out/cases/sky130A/inverters/inv.magic.spice
+  Export/Magic does not read this layer: 1 item
+$ head -3 inv.magic.spice
+* Written by klayout_magic_pcells 0.6.0: Magic's netlist of inv (netlist only, sky130A) from /repo/out/cases/sky130A/inverters/inv.gds
+* NGSPICE file created from inv.ext - technology: sky130A
+
+$ python3 -m klayout_magic_pcells extract inv.gds --pdk sky130A -o inv_extracted.spice
+extract: Magic extracted inv (netlist only, sky130A) into inv_extracted.spice. The report has 1 item about the export.
+netlist: inv_extracted.spice
+  Export/Magic does not read this layer: 1 item
+$ cat inv_extracted.spice
+* Written by klayout_magic_pcells 0.6.0: Magic's netlist of inv (netlist only, sky130A) from /repo/out/cases/sky130A/inverters/inv.gds
+* NGSPICE file created from inv.ext - technology: sky130A
+
+.subckt inv A Y VPWR VGND
+X0 Y A VGND VGND sky130_fd_pr__nfet_01v8 ad=0.715 pd=3.5 as=0.6175 ps=3.2 w=0.65 l=0.15
+X1 Y A VPWR VPWR sky130_fd_pr__pfet_01v8_hvt ad=1.1 pd=4.2 as=0.95 ps=3.9 w=1 l=0.15
+.ends
+```
+
+With a file that the plugin didn't write at the default name, here a
+one-line `inv.magic.pex.spice`, the netlist isn't written:
+
+```
+$ python3 -m klayout_magic_pcells extract inv.gds --pdk sky130A --caps
+extract: Magic extracted inv (with parasitic capacitance, sky130A). The report has 1 item about the export.
+error: /repo/out/cases/sky130A/inverters/inv.magic.pex.spice exists and klayout_magic_pcells did not write it (its first line is not "* Written by klayout_magic_pcells ..."); pass -o OUT.spice to write the netlist elsewhere, or -o /repo/out/cases/sky130A/inverters/inv.magic.pex.spice to overwrite it
+```
+
+The schematic `inv.spice` kept its MD5 sum through these runs. With `--caps` the same
+cell's netlist has 5 capacitors. In the image, the first `extract` of such
+an inverter took 0.6 s, Python's start included.
+
+**Devices Magic's GDS reader doesn't keep.** Every check reads the PCells
+through Magic's GDS reader, and some devices don't survive it: Magic's own
+cell, placed from its Devices menu, extracts as the device, and the same
+cell read from GDS doesn't. Measured on every device's defaults, listed in
+`python/klayout_magic_pcells/data/readback-<pdk>.json`:
+
+| PDK | Devices | Read from GDS, Magic extracts |
+|---|---|---|
+| sky130A | the four `cap_vpp_*` | no device |
+| | `diode_pd2nw_05v5_hvt`, `diode_pd2nw_05v5_lvt` | two diodes, a standard `diode_pd2nw_05v5` and the hvt or lvt one |
+| | `npn_11v0_W1p00L1p00` | the device, with area 1.97242 instead of 1.97245 |
+| gf180mcuD | `nfet_10v0_asym`, `pfet_10v0_asym` | `nfet_05v0` and `pfet_05v0` with l = 0.44u |
+| | `rm1` to `rm5`, `nwell`, `pvaractor_3p3`, `pvaractor_6p0` | no device |
+| ihp-sg13cmos5l | `nmoscl_2`, `nmoscl_4` | no device |
+| ihp-sg13g2 | none | |
+
+gf180mcuD's `eFuse`, `npn_00p54x08p00` and `npn_00p54x10p00` aren't
+measured: Magic writes no netlist for its own cell of them. Each placement
+of a listed variant gets an item in the category "Extraction/Magic's GDS
+reader does not keep this device". `KMP_PDK=P KMP_PDKS=P
+KMP_READBACK_WRITE=1 python3 -m unittest
+tests.backend.test_lvs_backend.ReadbackTest` measures it again and
+rewrites the file.
+
+**Menu:** Magic > Extract with Magic... asks for a netlist only or one with
+parasitic capacitance; `--flatglob` and `--ports-from-labels` are on the
+command line only. It writes the netlist where `extract` without `-o`
+does, under the same rule, and shows it in a window. When that file isn't
+the plugin's, or the layout has never been saved, the message says "Not
+written: ..." and a save dialog opens, in the first case at the first free
+name, such as `inv.magic-2.spice`.
+
+**Categories:** "Extraction/Magic's GDS reader does not keep this device",
+"Extraction/every label made a port" (with `--ports-from-labels`),
+"Job/failed", and the export's. On the command line `extract` prints these
+findings on stderr, and `--rdb OUT.lyrdb` saves the database, also when the
+job fails.
+
+**Exit status.** 0 when the netlist is written, 1 when a placed PCell
+variant holds a device from the table above or when Magic reads nothing
+in the cell (no netlist is written then), 2 when the input or Magic
+fails or the netlist file is refused. The export's findings don't change
+it (each sky130A layout here has npc, which Magic doesn't read).
+
+**Limits.** No resistance extraction. The capacitances of `--caps` aren't
+compared with anything. Positions in the `.ext` files are read with the
+unit Magic prints for `[cif scale out]` in the same process (0.005 µm on
+all four PDKs), not the `.ext` file's `scale` line, which says 500000 on
+sky130A and 0.5 on the others.
+
+### LVS with netgen
+
+`lvs` extracts the cell as `extract` does, then runs netgen with the PDK's
+setup file:
+
+```
+netgen -batch lvs "<netlist> <cell>" "<schematic> <subcircuit>" <setup file> <report> -json
+```
+
+`--schematic` is the SPICE netlist to compare against, and the subcircuit
+is the one named like the layout cell unless `--schematic-cell` names
+another. The result is netgen's: a match is netgen's final result
+"Circuits match uniquely." or "Circuits match with N symmetries." with no
+property, port, pin or subcell failure after it. In particular, "Circuits
+match uniquely." followed by "Property errors were found." is not a match.
+
+netgen's findings are put on the layout through Magic's `.ext` files. A
+layout net that netgen couldn't pair, or that it paired with a net whose
+devices differ, is marked by its shape at the point the `.ext` file gives
+for it (a piece of diffusion is cut at the gates), or by a 0.02 µm box
+there when no shape is found. A device with a property error is marked at
+the device, and a layout pin with no partner at its port box. Nets of
+subcells that netgen flattened are followed into the subcell through the
+placements, so they get markers too. A subcircuit that netgen compared on
+its own gets its markers in that subcell, in its own coordinates.
+
+```
+$ python3 -m klayout_magic_pcells lvs inv.gds --pdk sky130A --schematic inv.spice
+lvs: inv against inv in inv.spice (sky130A): netgen: Circuits match uniquely. The layout matches.
+  Export/Magic does not read this layer: 1 item
+$ python3 -m klayout_magic_pcells lvs inv_open_drain.gds --pdk sky130A --schematic inv_open_drain.spice -o od.lyrdb --report od.txt --json od.json
+lvs: inv_open_drain against inv_open_drain in inv_open_drain.spice (sky130A): netgen: Netlists do not match. The layout does not match. 2 markers in the report.
+  netgen/net only in the layout: a_300_260#, Magic type ndif at (1.500, 1.300): layout sky130_fd_pr__nfet_01v8 pin 1|3 x1; netgen found no schematic net to pair it with
+  netgen/nets that differ: Y, Magic type li at (2.250, 2.600): layout sky130_fd_pr__pfet_01v8_hvt pin 1|3 x1; schematic sky130_fd_pr__nfet_01v8 pin 1|3 x1, sky130_fd_pr__pfet_01v8_hvt pin 1|3 x1
+  Export/Magic does not read this layer: 1 item
+$ python3 -m klayout_magic_pcells lvs inv_w036.gds --pdk sky130A --schematic inv_w036.spice
+lvs: inv_w036 against inv_w036 in inv_w036.spice (sky130A): netgen: Circuits match uniquely. netgen: Property errors were found. The layout does not match. 1 marker in the report.
+  netgen/property mismatch: sky130_fd_pr__nfet_01v8:0 against sky130_fd_pr__nfet_01v8:M1: w: layout 0.36, schematic 0.65
+  Export/Magic does not read this layer: 1 item
+```
+
+The first exits 0, the other two 1. In the open drain, the marker on
+`a_300_260#` is the NMOS drain's diffusion, to the right of the gate;
+`klayout inv_open_drain.gds -m od.lyrdb` shows it. `--report`
+copies netgen's text report and `--json` writes the verdict, netgen's
+reasons, the findings with their boxes in µm, and the paths of the files;
+`-o` saves the report also when the job fails. The job directory keeps the
+export, the `.ext` files and `netlist.spice`, and netgen's `lvs.out`,
+`lvs.json` and `netgen.log` in a directory of their own: in a cached
+extraction's directory each LVS run gets a new `lvs-<random>/`, so two
+runs on one extraction never write over each other's report, and in a
+`tmp-*` run (see [Job directories](#job-directories)) they go in `lvs/`.
+Either way that directory is removed when the command ends, unless
+`KMP_JOB_KEEP=1`, so the paths that `--json` gives for netgen's files
+point at nothing afterwards; `--report` keeps a copy of netgen's report.
+On a layout with no texts, the pins item says so: "the layout cell
+inv_no_text has no pins: the layout has no texts".
+
+**Menu:** Magic > LVS with netgen... asks for a SPICE or CDL schematic (its
+path, or Browse...) and one of its `.subckt` names, with the one named like
+the cell preselected, and keeps the choice per layout file and cell.
+netgen's report opens in a window beside the browser.
+
+**Categories:** "netgen/result" (netgen's final result and its reasons),
+"netgen/net only in the layout", "netgen/net only in the schematic",
+"netgen/nets that differ", "netgen/device mismatch", "netgen/property
+mismatch", "netgen/pins", "Extraction/Magic's GDS reader does not keep
+this device", "Extraction/nets without a position", "Extraction/every label
+made a port", "Job/failed", and the export's.
+
+**Exit status.** 0 for a match as above, 1 for anything else netgen
+reports and for a cell Magic reads nothing in, 2 when the input, Magic
+or netgen fails (no schematic, no such subcircuit, a missing netgen
+setup file).
+
+**Limits.**
+
+- The result is netgen's report and the markers; there is no view in
+  KLayout's Netlist Database Browser.
+- A text that isn't a Magic port doesn't make a pin, so netgen fails pin
+  matching ("Top level cell failed pin matching.") on a layout whose pins
+  are texts alone; the [port check](#ports) says which texts.
+  `--ports-from-labels` makes every label a port, which Magic's own flow
+  doesn't do, and the report says so.
+- netgen splits its arguments at spaces: a schematic path with a space is
+  copied into the job directory first, and a cache directory whose path has
+  a space fails.
+
+### Generated layers
+
+Magic reads implants and marker layers only to decide what each piece of
+diffusion and poly is, and draws its own implants when it writes GDS. In a
+hand-drawn layout these layers can be wrong without any Magic DRC error, and
+the GDS that Magic writes back is then not the layout that was drawn.
+`layers` has one Magic process read the export with its hierarchy, write it
+back as GDS, and extract a copy that Magic flattened itself. KLayout then
+compares the user's layout with what Magic wrote and extracted. The
+findings, under the labels that the output and the categories use:
+
+- **F1, stops short.** An implant or marker encloses a device shape (a
+  diffusion, a gate, a poly contact) by less than the distance by which
+  Magic's GDS output grows that layer from the shape. The distance comes
+  from the PDK's Magic tech file, and the finding cites the line and names
+  the foundry rule where the data file has one. Magic's own shape is used
+  only in the finding's advice on what to draw. Gaps that Magic fills between two implant
+  shapes aren't findings.
+- **F2, read as another device.** A gate the user drew that Magic's
+  extraction makes into another device, two devices or none, such as an
+  NMOS without nsdm on sky130A, which Magic reads as a pfet.
+- **F3, dropped.** Conductor, poly or diffusion that Magic doesn't write
+  back, and cuts with no Magic cut over them, such as a licon with no li
+  over it.
+- **F4, added.** Conductor that Magic writes where none was drawn.
+- **F5, redrawn** (information). Cuts that Magic replaced with its own; the
+  user's file keeps the drawn cuts, and those are what KLayout's DRC
+  checks.
+- **The export's findings**, as for every check.
+- Every device that Magic extracted, with its model, W and L (information).
+
+F1 measures these layers:
+
+| PDK | Layer and the shape it grows from, with the distance |
+|---|---|
+| sky130A | nsdm and psdm: diffusion and tap 0.125 µm; hvtp and lvtn: the hvt or lvt gate 0.18 µm; npc: the poly contact cut 0.10 µm |
+| gf180mcuD | NPLUS and PPLUS: diffusion 0.16 µm, tap 0.02 µm, gate 0.23 µm; DUALGATE: 5 V and 6 V diffusion 0.24 µm |
+| ihp-sg13g2, ihp-sg13cmos5l | pSD: p-diffusion 0.18 µm, PMOS gate 0.30 µm, p-tap 0.03 µm; ThickGateOx: HV diffusion 0.27 µm |
+
+```
+$ python3 -m klayout_magic_pcells layers a_nsdm_flush.gds --pdk sky130A -o a_nsdm_flush.lyrdb
+layers on sky130A, cell a_nsdm_flush: F1 1, F2 0, F3 0, F4 0; F5 0 (information); 2 devices in Magic's extraction; export: 0 off grid, 1 on unread layers, 0 read as another type, 0 cross-cell
+F1 nsdm: nsdm around the n-diffusion at (0.400, 1.300)-(2.600, 1.950) stops short. Magic draws nsdm over (0.275, 1.175)-(2.725, 2.075) here, 0.125 um past the n-diffusion; your nsdm leaves 0.7750 um2 of that uncovered. The rule is n/psdm.5a (sky130A.tech:846)
+$ python3 -m klayout_magic_pcells layers a_no_nsdm.gds --pdk sky130A
+layers on sky130A, cell a_no_nsdm: F1 0, F2 1, F3 2, F4 0; F5 0 (information); 2 devices in Magic's extraction; export: 0 off grid, 1 on unread layers, 0 read as another type, 0 cross-cell
+F2 gate: The gate at (1.350, 1.300): it is outside nwell, but Magic reads it as sky130_fd_pr__pfet_01v8 W 0.650 L 0.150. The gate has no nsdm over its diffusion, and Magic reads every such gate as a pfet, whatever the well (sky130A.tech:2597). To fix it, draw nsdm (93/44) over the n-diffusion, 0.125 um past it.
+...
+```
+
+Both exit 1. `drc` finds no error on `a_nsdm_flush`, and on `a_no_nsdm` 25
+boxes of 5 rules (`nwell.2a`, `diff/tap.8`, `nwell.1`, `nwell.4`, `LU.3`),
+none of which names nsdm.
+
+On correct layouts the check finds nothing. The backend tests assert, on
+all four PDKs, that it reports no F1 to F4 finding on the foundry standard
+cells that the case suite copies (seven per PDK, such as sky130A's
+`sky130_fd_sc_hd__inv_1`, `__dfxtp_1` and `__mux2_1`), on a row of them
+placed by KLayout, on the same row placed and written by Magic itself, and
+on each PDK's clean hand-drawn inverter. A run of `layers` for this README
+on each PDK's seven cells and the row that KLayout placed gave no F1 to F4
+finding on any of them. On
+gf180mcuD, the `filltie` cell and both rows get one F5 item, where Magic
+moves two contact cuts.
+
+**Menu:** Magic > Check generated layers, with no dialog.
+
+**Categories:** "F1 implant or marker stops short/<layer>", "F1 Magic draws
+more of this layer here (information)/<layer>" (for a PDK where F1 can only
+be information; on all four it is a check), "F2 transistor Magic reads as
+another device or none", "F3 shape Magic drops/<layer>", "F4 conductor
+Magic adds/<layer>", "F5 cuts Magic redrew (information)/<layer>",
+"Devices Magic extracted (information)", "Job/failed", and the export's.
+`--json` writes the same findings.
+
+**Exit status.** 1 when there is an F1 to F4 finding, an export finding
+that is off the grid, read as another type or a layer drawn in another
+cell, or when Magic reads nothing in the cell; else 0. F5, layers Magic
+doesn't read and the device list don't count. 2 when the input or the job
+fails; the report then gives the reason under "Job/failed", with the
+export's findings, and `-o` and `--json` are written as on any other run.
+
+**Limits.**
+
+- F1 checks enclosure only, along the edges of a shape: it doesn't measure
+  corners, and implants that aren't rectangles haven't been tried.
+- F2 uses the copy that Magic flattens from its hierarchical reading. On
+  gf180mcuD's `C_PMOS_all_h` that copy has one `pfet_03v3`, where Magic's
+  hierarchical extraction has none, so F2 doesn't fire there; the export's
+  "reads this cell without a layer drawn in another cell" does. Why the two
+  differ is UNVERIFIED.
+- Wells aren't compared, and the GDS that Magic writes back isn't checked
+  with KLayout's DRC.
+
+### Ports
+
+Magic and the PDK's KLayout LVS deck read pins from different layers.
+`ports` checks every cell's texts and pin boxes against the PDK's
+conventions: which text layers name a net in Magic, which make a Magic port
+alone or over a pin box, which the KLayout LVS deck reads, and the forms
+that both accept:
+
+| PDK | The form both accept |
+|---|---|
+| sky130A | a text on a `*/5` label layer over a `*/16` pin box, such as `li1.label` (67/5) over `li1.pin` (67/16) |
+| gf180mcuD | a text on the `*/10` label layer of 34, 36, 42, 46 or 81 (Metal1 to Metal5), with no pin box |
+| ihp-sg13g2 | a text on `*/25` over a box on `*/2`, on 8, 10, 30, 50, 67, 126 or 134 |
+| ihp-sg13cmos5l | the same, on 8, 10, 30, 50 or 126 |
+
+The check reads the user's layout in KLayout and, without `--magic`,
+doesn't start Magic. Its findings:
+
+- **P1:** a text that neither Magic nor the KLayout LVS deck reads;
+- **P2:** a text that names a net in Magic but makes no port, so netgen
+  fails pin matching;
+- **P3:** a Magic port that the KLayout LVS deck can't name;
+- **P4:** a pin box with no text over it;
+- **P5:** a pin box with no drawing under it, or reaching past it, which
+  Magic turns into conductor and KLayout doesn't;
+- **P6:** a text over no shape of its layer, looking down the hierarchy;
+- **P7:** texts inside device PCells on a layer the KLayout LVS deck reads,
+  whose flat LVS then joins every net with that name;
+- **P8** (`--magic`): a top-level text in a pin form that is missing from
+  the ports of the subcircuit Magic extracts.
+
+```
+$ python3 -m klayout_magic_pcells ports port_txt.gds --pdk ihp-sg13cmos5l --magic
+ports on ihp-sg13cmos5l, cell port_txt: P1 0, P2 4, P3 0, P4 0, P5 0, P6 0, P7 0, P8 0; Magic's ports: none
+P2 port_txt: text 'A' at (0.000, 1.200) on 8/25 (Metal1.text) names a net in Magic but makes no port, so netgen fails pin matching. The form both accept is a text on 8/25 over a box on 8/2.
+...
+```
+
+That case's file is in the ihp-sg13cmos5l case suite's `gaps` folder. It
+and its variants there, and four sky130A inverters, gave:
+
+| Case | Its texts | Findings |
+|---|---|---|
+| ihp-sg13cmos5l `port_txt_pin` | on 8/25 over 8/2 boxes | none |
+| ihp-sg13cmos5l `port_txt` | on 8/25 | P2 4 |
+| ihp-sg13cmos5l `port_m1` | on Metal1 (8/0) | P2 4 |
+| ihp-sg13cmos5l `port_pin`, `port_pin_box` | on 8/2 | P3 4 |
+| ihp-sg13cmos5l `port_lbl` | on Metal1.label (8/1) | P1 4 |
+| sky130A `inv` | on `*/5` over `*/16` boxes | none |
+| sky130A `inv_no_text` | none, the pin boxes stay | P4 4 |
+| sky130A `inv_pin_only_li` | the A pin box with no li under it | P5 1 |
+| sky130A `inv_text_on_pin` | A's text on li1.pin (67/16) instead of li1.label | P3 1 |
+
+On the sky130A inverter built from this package's PCells, P7 reports the
+D, G, S and B texts on 67/5 inside the two transistor cells (8 items), and
+its message says to turn the PCell's `doports` off. gf180mcuD's standard
+cells get P3 for their VNW and VPW labels on 21/10 and 204/10, which Magic
+makes ports and the KLayout LVS deck doesn't read.
+
+**Menu:** Magic > Check ports runs P1 to P7, with no dialog and without
+starting Magic; P8 needs `ports --magic` on the command line.
+
+**Categories:** "P1 text neither Magic nor KLayout's LVS reads", "P2 text
+names a net in Magic but makes no port", "P3 Magic port KLayout's LVS
+can't name", "P4 pin box with no text", "P5 pin box with no drawing under
+it", "P6 text over no shape of its layer", "P7 texts inside device cells",
+"P8 pin missing from Magic's subcircuit ports", "Job/failed" (with
+`--magic`).
+
+**Exit status.** 1 when there is any finding, 0 when there is none, 2 when
+the input or, with `--magic`, the job fails. With `--magic`, a cell Magic
+reads nothing in gives P1 to P7 and the export's "Magic reads nothing in
+this cell", and no P8.
+
+**Limits.** P1 is reported only for texts on layer numbers that the PDK's
+data file knows; texts on other layer numbers are skipped. P8 needs Magic.
+
+## Where KLayout and Magic disagree
+
+`docs/gaps/` has a table per PDK of where Magic's DRC and the PDK's KLayout
+DRC decks disagree, one row per rule: [sky130A](docs/gaps/sky130A.md),
+[gf180mcuD](docs/gaps/gf180mcuD.md), [ihp-sg13g2](docs/gaps/ihp-sg13g2.md)
+and [ihp-sg13cmos5l](docs/gaps/ihp-sg13cmos5l.md), each also as a `.json`
+file. A row is a rule ID as Magic's message names it (or the KLayout name
+where Magic has none). It holds Magic's statements, with value, styles and
+tech-file line; each KLayout deck's outputs, with name, value, the switch
+that enables it and the deck line; and what both tools reported on the case
+suite's cases that target the rule. Magic's rules come from the PDK's data
+file (`python/klayout_magic_pcells/data/pdk-<pdk>.json`). The KLayout side
+comes from running each deck on a one-box layout, whose report lists every
+rule the deck runs under its switches, and from a scan of the deck for each
+output's line and switch; no deck text is stored. The two are joined on the
+rule ID, with the hand-made mappings in `tests/gaps/aliases-<pdk>.json`,
+the only part typed by hand. Magic checks each case cell alone in all
+three styles, and KLayout checks them on one sheet; a case's result is what
+was reported on it and not on its control case.
+
+The status compares Magic with `sky130A_mr.drc` on sky130A (with the parity
+harness's switches; the page has columns for the switches of Efabless
+sky130 > Run DRC (Full) and for `sky130A.lydrc`), with `gf180mcu.drc` on
+gf180mcuD, and with `run_drc.py`'s main and maximal decks on the IHP PDKs:
+
+| Status | Meaning |
+|---|---|
+| both | both tools check the rule |
+| both, values differ | both check it, with different values (both in the row) |
+| folded | Magic checks the ID only inside a composite rule, such as `V1.a + 2 * M2.c` |
+| measured on other shapes | both check it, on different shapes |
+| same name for another check | the name means a different rule on each side |
+| in the deck, did not fire on its case | a tool has the rule but reported nothing on the cases that break it; the row names the tool |
+| Magic only | that deck doesn't have the rule; the row says when another deck does |
+| KLayout only | Magic has no such rule |
+
+The counts, from `docs/gaps/README.md`:
+
+| PDK | both | both, values differ | folded | measured on other shapes | same name for another check | in the deck, did not fire on its case | Magic only | KLayout only | rules | cases |
+|---|---|---|---|---|---|---|---|---|---|---|
+| sky130A | 72 | 2 | 5 | 0 | 2 | 11 | 93 | 213 | 398 | 130 |
+| gf180mcuD | 89 | 9 | 2 | 2 | 1 | 6 | 38 | 421 | 568 | 69 |
+| ihp-sg13g2 | 199 | 0 | 12 | 0 | 0 | 4 | 17 | 151 | 383 | 151 |
+| ihp-sg13cmos5l | 143 | 0 | 10 | 0 | 0 | 3 | 12 | 129 | 297 | 49 |
+
+`scripts/gaps.sh` rebuilds all four in the image, one container per PDK
+(about 4.5 minutes in a run during version 0.6's development), and writes
+`docs/gaps/` and `python/klayout_magic_pcells/data/gaps-<pdk>.json`, which
+the DRC check reads for its category descriptions. `--pdk P` rebuilds one.
+`--check` rebuilds the tables without writing them, and exits 1 with
+`GAPS DIFFER <file>` and a diff when one would change, for example after a
+PDK or Magic update. The run below shared the machine with four other
+containers:
+
+```
+$ scripts/gaps.sh --pdk sky130A --check
+sky130A: 398 rules (both 72, both, values differ 2, folded 5, same name for another check 2, in the deck, did not fire on its case 11, Magic only 93, KLayout only 213), 130 cases, 146 s
+GAPS OK sky130A
+```
+
+The rule list is what the decks run under the switches used; rules that
+are switched off are absent. A KLayout value comes from the rule's
+description in the deck's report, and a rule whose description has no
+number has none.
+
+Magic > Rule differences shows the page of the current layout's PDK
+(`docs/gaps/<pdk>.md`) in a KLayout window, or with no layout open the page
+of `KMP_PDK`'s PDK. When the `docs` folder isn't installed with the plugin,
+it says where it looked.
+
+Some of the rows that matter for a cell drawn by hand in KLayout and
+checked by Magic:
+
+- **sky130A** ([front end](docs/gaps/sky130A.md#front-end-li-mcon-met1-via1)):
+  - `nwell.4`, `LU.2` and `LU.3`, a missing tap, are Magic only and in
+    `drc(full)` alone: Magic reported them on the cases without a tap and
+    KLayout didn't. Magic starts in `drc(fast)`, which doesn't have them.
+  - `poly.8` (gate endcap) and `psd.10b` (tap area) are Magic only;
+    `sky130A.lydrc` has `poly.8` with FEOL on.
+  - `x.2`: Magic reported the 45° diffusion corners of `d_diff_45` and
+    `d_diff_45b`, and KLayout's angle checks reported nothing.
+  - `licon.1` and `via.1a`: KLayout flags a 0.20 µm licon and a 0.16 µm
+    via1 that Magic accepts, since Magic draws its own cuts.
+  - `difftap.2` and `poly.3` are the same names for other checks in
+    `sky130A_mr.drc` (core diffusion width and core poly spacing; Magic's
+    are the transistor width and the poly resistor width).
+- **gf180mcuD** ([wells to via1](docs/gaps/gf180mcuD.md#wells-to-via1)):
+  - `DF.6`, the source and drain length past the gate: Magic 0.23 µm for
+    every device, KLayout 0.24 µm for 3.3 V and 0.40 µm for 5 V and 6 V
+    devices, so `DF6_mv_030` and `DF6_lv_0235` pass Magic and fail KLayout.
+  - `NP.5a` is KLayout only: Magic reports nothing on `NP_flush` and
+    `NP5a_ov010`, where [the generated-layer check](#generated-layers)
+    reports NPLUS that stops short.
+  - `CO.2a` and `V1.2a`: Magic reported nothing on contacts or vias that
+    are too close (`CO2a_s022`, `CO2b_4x4_s010`, `V1_2a_s022`); `CO.10` (a
+    contact on a gate) and `CO.11` (a contact on field oxide) are KLayout
+    only.
+  - `DF.13` and `DF.14`, tap distance, are KLayout only.
+- **ihp-sg13g2** ([front end](docs/gaps/ihp-sg13g2.md#front-end-metal1-via1-grid-pins)):
+  - pSD: `pSD.c` is folded into a resistor rule on Magic's side and
+    `pSD.k` is KLayout only; Magic reported nothing on `pSD_c`, `pSD_i_psd`
+    or `pSD_k`.
+  - `V1.a` and `V1.b`: Magic reported nothing on `V1_a`, `V1_big` and
+    `V1_b`, and `V1.b1`, `Cnt.g` and `Cnt.h` are KLayout only.
+  - `LU.b` is in both, but in Magic only in `drc(full)`.
+  - `Pin.e`, a pin box past its metal, is KLayout only.
+- **ihp-sg13cmos5l** ([front end](docs/gaps/ihp-sg13cmos5l.md#front-end-metal1-via1-grid-pins)):
+  - `pSD.i` and `pSD.j`: Magic reported nothing on `u_pSD.i` and
+    `u_pSD.j`, and `pSD.c` is folded; the generated-layer check reports
+    the pSD of `u_pSD.c` and `u_pSD.i` as stopping short.
+  - `V1.a`: Magic reported nothing on `m_V1.a`; `V1.b1` and `Cnt.b1` are
+    KLayout only.
+  - `TGO.f` and `NW.b1` are KLayout only.
+  - `LU.b` is in Magic only in `drc(full)`.
 
 ## Parameters
 
@@ -516,7 +1377,7 @@ other values:
   over the four PDKs, two points then drew another width, both on sky130A:
   `res_high_po_5p73` random:1 (`w 1.87`, where the PCell draws `5.730`)
   and `res_xhigh_po_5p73` random:5 (`w 5.325` against `5.730`). Both were
-  reproduced for this version with the review's driver.
+  reproduced on version 0.5.0 with the review's driver.
 - A Magic user can type the values in any order.
 - In KLayout's form each confirmed field is one edit, so two fields changed
   one after the other are Create and then Apply, where a Magic user may type
@@ -731,25 +1592,40 @@ A value comes from the environment if set, then from
 `~/.config/klayout-magic-pcells/config.ini`, section `[kmp]`, keys in lower
 case without the `KMP_` prefix, for example `magic = /opt/magic/bin/magic`),
 then from the default. The settings of one PDK go in a section `[kmp:<pdk>]`
-(for example `[kmp:ihp-sg13g2]` with `magicrc = /opt/ihp/ihp-sg13g2.magicrc`),
-or in the environment as `KMP_MAGICRC_<PDK>` and `KMP_MANIFEST_<PDK>`, with
-the PDK name in upper case and `-` written as `_` (`KMP_MAGICRC_IHP_SG13G2`).
+(for example `[kmp:ihp-sg13g2]` with `magicrc = /opt/ihp/ihp-sg13g2.magicrc`;
+the keys are `magicrc`, `manifest` and `netgen_setup`), or in the
+environment as `KMP_MAGICRC_<PDK>`, `KMP_MANIFEST_<PDK>` and
+`KMP_NETGEN_SETUP_<PDK>`, with the PDK name in upper case and `-` written
+as `_` (`KMP_MAGICRC_IHP_SG13G2`).
 `klayoutrc` isn't used because KLayout doesn't save it under `-b`.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `KMP_PDKS` | `auto`: every supported PDK whose rcfile exists under `PDK_ROOT` (or whose `KMP_MAGICRC_<PDK>` is set) | the PDKs to register, separated by commas or spaces, or `all` |
-| `KMP_PDK` | `sky130A` | the PDK that the unqualified `KMP_MAGICRC` and `KMP_MANIFEST` apply to, and the default PDK of `tools/build_manifest.py` and `run_sweep.py`; when `KMP_PDKS` is unset and `KMP_PDK` is set, only that PDK registers, as in version 0.2 |
+| `KMP_PDK` | `sky130A` | the PDK that the unqualified `KMP_MAGICRC`, `KMP_MANIFEST` and `KMP_NETGEN_SETUP` apply to, and the default PDK of `tools/build_manifest.py` and `run_sweep.py`; when `KMP_PDKS` is unset and `KMP_PDK` is set, only that PDK registers, as in version 0.2 |
 | `KMP_MAGIC` | `magic` on `PATH`, then `/foss/tools/bin/magic` | Magic executable |
 | `PDK_ROOT` | `/foss/pdks` | directory that holds the PDKs; the rcfiles read it too |
 | `KMP_MAGICRC_<PDK>` | `$PDK_ROOT/<pdk>/libs.tech/magic/<pdk>.magicrc` | that PDK's Magic rcfile |
 | `KMP_MANIFEST_<PDK>` | the shipped `manifest-<pdk>.json` | path to a rebuilt manifest |
 | `KMP_CACHE_DIR` | `$XDG_CACHE_HOME/klayout-magic-pcells`, else `~/.cache/klayout-magic-pcells` | cache root, shared by all PDKs |
-| `KMP_CACHE` | `1` | `0` keeps nothing on disk between sessions |
+| `KMP_CACHE` | `1` | `0` keeps nothing on disk between sessions; the checks then run in `tmp-*` job directories, which are removed once their results have been read (see [Job directories](#job-directories)) |
 | `KMP_BACKEND` | `server` | `server`, or `oneshot` (one Magic process per request, for debugging) |
 | `KMP_TIMEOUT` | `30` | seconds per request |
 | `KMP_LAZY` | `0` with `server`, `1` with `oneshot` | when 1, the GUI form shows an Update button instead of regenerating on every edit; a device's form still asks Magic on every edit, because the values it shows come from Create |
 | `KMP_LOG` | unset | file that receives every request and reply line |
+| `KMP_DRC_STYLE` | `drc(full)` | Magic's DRC style for the DRC check: `drc(fast)`, `drc(full)` or `drc(routing)`, the styles all four PDKs have; another name is refused. Magic itself starts in `drc(fast)` |
+| `KMP_DRC_MODE` | `hierarchical` | `hierarchical` or `flat` (see [Magic DRC](#magic-drc)); any other value is an error |
+| `KMP_JOB_TIMEOUT` | `1800` | seconds for each Magic process of a check, and for each netgen run |
+| `KMP_NETGEN` | `netgen` on `PATH` | netgen executable, for LVS |
+| `KMP_NETGEN_SETUP_<PDK>` | `$PDK_ROOT/<pdk>/libs.tech/netgen/<pdk>_setup.tcl` | that PDK's netgen setup file |
+| `KMP_MENU` | `1` | `0` leaves the Magic menu out of the GUI; the libraries still register |
+| `KMP_JOB_KEEP` | unset | `1` keeps the checks' `tmp-*` job directories and the `lvs-*` folders of LVS runs (see [Job directories](#job-directories)); read from the environment only, not from `config.ini` |
+
+`doctor` and the Magic menu's Settings... entry list the settings that
+`config.ini` can hold, each with its value and where that comes from, and
+`doctor` names a missing netgen or netgen setup file in a `PROBLEM:` line;
+the PCell libraries register without them. The menu's dialogs keep their
+last choices in `state.json`, beside `config.ini`.
 
 A PDK named in `KMP_PDKS` that isn't installed, or that this version doesn't
 support, gets one logged error that names the variable to set, and no
@@ -758,8 +1634,10 @@ isn't installed is skipped without a message. Every registered PDK costs a
 Magic process for the whole KLayout session, so a user of one PDK can set
 `KMP_PDKS` to it.
 
-The plugin reads `KMP_PDK` and `KMP_PDKS` and ignores `PDK`, because the
-iic-osic-tools image sets `PDK=ihp-sg13g2` by default. A GUI started from a
+The PCell libraries read `KMP_PDK` and `KMP_PDKS` and ignore `PDK`, because
+the iic-osic-tools image sets `PDK=ihp-sg13g2` by default. The checks use
+`PDK` only as the last guess of their PDK choice (see [Checking a layout
+with Magic](#checking-a-layout-with-magic)), and say so when they do. A GUI started from a
 desktop launcher may not get the login shell's `PATH`; set `magic` in
 `config.ini` then.
 
@@ -781,8 +1659,8 @@ read anyway, produce logs a warning, drops the entry and asks Magic once.
 `KMP_CACHE=0` keeps the session's entries in a temporary directory that is
 deleted when the process exits. If the cache directory can't be written, the
 library registers without the disk cache and logs a warning that names
-`KMP_CACHE_DIR`. Each Magic process runs in its own empty directory under
-`<cache>/run` (or the system temp directory without a usable cache), which
+`KMP_CACHE_DIR`. Each Magic process of the PCell libraries runs in its own
+empty directory under `<cache>/run` (or the system temp directory without a usable cache), which
 is deleted when Magic stops; Magic looks for cells in its working directory
 first, so a stray `.mag` file there can't stand in for a vendor cell. Magic
 writes into `<cache>/tmp`, and each versions directory names its PDK in a
@@ -835,6 +1713,75 @@ entries; `KMP_PDKS=all` prunes every
 installed PDK. Both commands leave Magic's files in `<cache>/tmp` unless they
 are more than a day old.
 
+### Job directories
+
+The checks of [Checking a layout with Magic](#checking-a-layout-with-magic)
+run each Magic process in a directory of its own under
+`<cache>/jobs/<pdk>/<kind>/`, where `<kind>` is `drc`, `extract`
+(extraction and LVS) or `rw` (the generated-layer check and `ports
+--magic`). The directory keeps the exported GDS (`in.gds`), what Magic
+wrote (error lists, `.ext` files, the netlist, netgen's report) and
+`job.json`, which records the job's PDK, its state (running, done or
+failed), the process that started it and a fingerprint of the versions it
+ran with.
+
+With the cache on, a job's directory ends up as `<key>/`. The key is a
+SHA-256 over the exported file's SHA-256, the kind, the check's options,
+the PDK, a digest of the PDK and Magic (the SHA-256 of the Magic executable
+and of the rcfile, every file in the rcfile's directory, and the PDK's
+commit), a digest of the jobs' Tcl scripts, and the plugin version. A
+second check of an unchanged cell with the same options finds a finished
+directory and reads it without starting Magic. For DRC the options are the
+style, the mode and the cells of each Magic process, not the area, so an
+area check reuses the whole-cell job (see [Magic DRC](#magic-drc)).
+
+Magic doesn't run in a key's directory. A job runs in a new
+`tmp-<random>/` beside it, and when Magic has ended, that directory is
+renamed to `<key>/` in one step. When two runs with the same key overlap (the GUI and the
+command line on one layout, or two cells that export to the same file),
+the first to end fills the cache, and the other reads its own results from
+its `tmp-*` directory, which is then removed as described below. The next
+run with the same key replaces a key's directory that holds a failed or
+unfinished job. It also replaces one whose job is done but that lacks a
+file the check reads, once the process that ran that job has ended.
+
+`--no-cache` and `KMP_CACHE=0` mean the same for every check: the job runs
+in a new `tmp-<random>/` directory and neither reads nor fills the cache. A
+`tmp-*` directory is removed once its results have been read (on the
+command line when the command ends, in the GUI once the result is shown),
+and at the latest when the process exits, and so is the `lvs-<random>/`
+folder that an LVS run makes in a cached extraction's directory;
+`KMP_JOB_KEEP=1` keeps them. The checks need a writable cache directory
+even with `KMP_CACHE=0`; without one a job fails, exit 2, with a message
+that names `KMP_CACHE_DIR`.
+
+The cache commands cover these directories too. `cache clear` deletes every
+job directory except that of a job that is still running, so it also takes
+a live session's finished `tmp-*` directories. `cache prune` deletes, for
+the PDKs it works on, the job directories whose fingerprint isn't the
+current one and the `tmp-*` directories whose process has ended, and any
+job directory without a readable `job.json` that is more than a day old.
+In the key directories it keeps, it deletes the `lvs-*` folders whose LVS
+process has ended (each folder's `kmp_owner.json` names it), and those
+more than a day old that have no such file. `cache stats` prints their
+number and total size as `jobs` and `jobs_bytes`, over every PDK, or with
+`--pdk P` over P's alone. In the case suite's `inverters` folder:
+
+```
+$ env KMP_JOB_KEEP=1 python3 -m klayout_magic_pcells lvs inv.gds --pdk sky130A --schematic inv.spice --no-cache
+lvs: inv against inv in inv.spice (sky130A): netgen: Circuits match uniquely. The layout matches.
+  Export/Magic does not read this layer: 1 item
+$ find /repo/out/docs2/cache-ex/jobs -maxdepth 3 -name 'tmp-*'
+/repo/out/docs2/cache-ex/jobs/sky130A/extract/tmp-2n7hg3t5
+$ python3 -m klayout_magic_pcells cache prune --pdk sky130A
+removed /repo/out/docs2/cache-ex/jobs/sky130A/extract/tmp-2n7hg3t5
+...
+```
+
+The kept directory held `in.gds`, `inv.ext`, `job.json`, `kmp_result.json`,
+`lvs/` and `netlist.spice`. Without `KMP_JOB_KEEP` the same command left
+no `tmp-*` directory.
+
 ## Stamps and audit
 
 Every variant carries two stamps of the form
@@ -859,12 +1806,13 @@ when the version strings are the same.
   with.
 
 Version 0.3's digest covers more inputs than 0.2's, so a file made with
-version 0.2 logs that warning once when it is reopened. Versions 0.4 and 0.5
+version 0.2 logs that warning once when it is reopened. Versions 0.4 to 0.6
 have the same digest as 0.3, so they reopen 0.3's files without the warning
-(for what 0.5 draws for an older file, see [Values as Magic's dialog shows
-them](#values-as-magics-dialog-shows-them)). Version 0.5's cache format is
-4, so its versions directory (`3341d4166cfc` for sky130A in the image) is
-not 0.3's and 0.4's (`24feca9ae925`), and it doesn't read their cache;
+(for what 0.5 and later draw for an older file, see [Values as Magic's
+dialog shows them](#values-as-magics-dialog-shows-them)). Since version 0.5
+the cache format is 4, so the versions directory (`3341d4166cfc` for
+sky130A in the image, with 0.5 and 0.6 alike) is not 0.3's and 0.4's
+(`24feca9ae925`), and these versions don't read the older cache;
 `cache prune` deletes the old directories. Stamps written by version 0.1.0
 have no digest; they are compared on Magic, tech and PDK alone.
 
@@ -1045,10 +1993,10 @@ mounts the repository at `/repo` and uses a login shell (the image puts Magic
 and KLayout on `PATH` only there).
 
 ```sh
-scripts/test.sh                                       # unit tests, then the backend tests once per PDK
+scripts/test.sh                                       # unit tests and the gap table's, then the backend tests once per PDK
 scripts/parity.sh                                     # every PDK in turn, full sweep
 scripts/parity.sh --pdk gf180mcuD                     # one PDK
-scripts/parity.sh --pdk all --quick                   # each generator's defaults, every PDK
+scripts/parity.sh --pdk all --quick                   # each generator's defaults and the jobs step's quick set, every PDK
 scripts/parity.sh --pdk sky130A --devices 'sky130_fd_pr__res_*' --keep
 scripts/parity.sh --pdk ihp-sg13g2 --update-baseline  # rewrite that PDK's baselines
 ```
@@ -1058,10 +2006,13 @@ it, and writes `out/parity/<pdk>/report.json` and `report.md`; without
 `--pdk` (or with `--pdk all`) the four run one after another and
 `out/parity/summary.json` and `summary.md` collect them. The script exits 0
 when every check of every PDK passes, 1 when any check fails, and 2 when the
-harness itself fails. For each PDK it runs, in one container:
+harness itself fails. For each PDK it runs the steps below in one
+container. This list numbers them 1 to 12; `run_sweep.py` and its log
+number the same steps from 0 and join some of them, so the extraction
+check (item 11) is its step 8 and the jobs step (item 12) its step 9:
 
-1. the unit tests (`tests/unit`, 96 tests) and the backend tests for that
-   PDK (`tests/backend`, 42 tests, each run with the PDK's own devices).
+1. the unit tests (`tests/unit`, 378 tests) and the backend tests for that
+   PDK (`tests/backend`, 95 tests, each run with the PDK's own devices).
    The unit tests cover:
    - configuration, including the PDK selection and per-PDK settings;
    - the wire format;
@@ -1088,7 +2039,38 @@ harness itself fails. For each PDK it runs, in one container:
      with the form and no other widget that isn't a parameter, refused and
      damaged states never sent, every device's dialog order in the
      manifests, and the dialog cache key over the whole request and the
-     server's code.
+     server's code;
+   - the checks of [Checking a layout with
+     Magic](#checking-a-layout-with-magic), without Magic (the number of
+     tests in brackets): the job runner against a fake Magic that finishes,
+     fails, never prints its done line, hangs past the timeout or is
+     cancelled, with no process left, the job cache key, where jobs run
+     (`tmp-*` directories, their removal and `KMP_JOB_KEEP`, two jobs on
+     one key at once), the cache commands on job directories, `extract`'s
+     netlist file and its refusal, `extract` and `lvs` on a cell Magic
+     reads nothing in (the finding, status 1 and no netlist), an export
+     that KLayout can't write (status 2), and a cancelled LVS task
+     (`test_jobs.py`, 49); the export's renamed cells, flattened instances,
+     off-grid vertices, unread layers and layers drawn in another cell
+     (`test_export.py`, 19); the report database (`test_markers.py`, 7);
+     the choice of PDK, also with a technology that the layers contradict
+     (`test_pdk_choice.py`, 11); the reader of the PDKs' Magic tech files
+     behind the data files (`test_pdk_data.py`, 42); DRC's rule IDs,
+     units, area filter, dropped copies, the sorting of subcell boxes and
+     the layer names from the tech file's type synonyms (`test_drcjob.py`,
+     32); the `.ext` reader, its unit and the instance transforms in all
+     eight orientations and in arrays (`test_extfile.py`, 12); netgen's
+     verdicts and JSON, from saved reports (`test_netgen.py`, 25, two of
+     which read a folder of saved netgen reports outside the repository
+     and are skipped unless `KMP_NETGEN_EVIDENCE` names that folder); F1
+     to F5 on small layouts, and failed exports (`test_layercheck.py`,
+     28); P1 to P8 (`test_portcheck.py`, 15); the
+     case suite's builder (`test_cases.py`, 15); and the Magic menu against
+     a stand-in for KLayout: no menu with `KMP_MENU=0` or without a main
+     window, one menu after two installs, `state.json`, the options a Rerun
+     gets, the progress text, the PDK dialog's sentence, job directories
+     released once a result is shown, and Extract never replacing a file
+     the plugin didn't write (`test_gui.py`, 21).
 
    The backend tests cover:
    - every generator generated twice in one Magic session with no restart;
@@ -1124,16 +2106,44 @@ harness itself fails. For each PDK it runs, in one container:
    - the form callback's icons, the CLI's exit codes and temporary
      directories, a manifest whose names collide, no Magic left running
      after the client exits normally or is killed, and registration from
-     plain Python.
+     plain Python;
+   - the checks of [Checking a layout with
+     Magic](#checking-a-layout-with-magic), with Magic and netgen: the
+     unit Magic prints for `[cif scale out]`, cell names that Magic
+     mishandles refused, every such name loaded once the export has
+     renamed it, a timeout and a cancel that leave no Magic, a Tcl error
+     in the job's script that fails the job instead of hanging it, and
+     two jobs on one key at once
+     (`test_jobs_backend.py`, 7); DRC on a clean cell and one-change cases
+     against Magic's counts per rule, the case suite's `hier` cases in both
+     modes, the export against the harness's `mdrc.tcl` on the same file,
+     the long n-well's area check, the cell names, the error-marker
+     refusal, batches of 15 cells, the cache, poll and cancel, the command
+     line with its report database read back against its TSV, the PCell
+     inverter's information boxes, cells Magic reads nothing in, and the
+     GDS layers named for three rules per PDK (`test_drc_backend.py`, 17);
+     the hand inverter against its schematic, the open-drain, texts-only
+     and swapped-texts variants and on sky130A the W 0.36 variant with
+     their markers, every `.ext` port box holding its GDS text, `--caps`,
+     the cache, two LVS runs on one extraction, a property error inside a
+     PCell variant, and every device's defaults read back from GDS against
+     `readback-<pdk>.json` (`test_lvs_backend.py`, 15); and the
+     generated-layer check on the negative controls, its positive cases,
+     the `hier` set and cells Magic reads nothing in, and the port check on
+     the port variants (`test_layers_backend.py`, 14).
 
    Only these backend tests are PDK-specific: a device without `_check` or
    with one that raises (ihp-sg13g2, gf180mcuD), `audit` after an edit of
    sky130A's vendor GDS, Magic behaviour that the dialog model leaves out
    on sky130A (the snake resistor's `w` flipping on every `_check`, and
    `res_generic_po` at `l 0` drawing nothing with one `_check` and drawing
-   with the dialog's), and, in the sky130A pass, all four libraries
-   registered under `klayout -b -rm` and from the Salt autorun under
-   `klayout -zz`;
+   with the dialog's), in the sky130A pass, all four libraries registered
+   under `klayout -b -rm` and from the Salt autorun under `klayout -zz`,
+   and, of the checks' tests, the W 0.36 inverter and the PCell inverter's
+   information boxes (sky130A), P8 on a text that Magic makes no port of
+   (ihp-sg13cmos5l), a
+   layer Magic reads as another type (the IHP PDKs) and the case suite's
+   cells Magic reads nothing in (sky130A and ihp-sg13g2);
 2. `tools/build_manifest.py --pdk <pdk> --check`;
 3. the sweep (`tests/parity/gen_sweep.py`): for each device the defaults,
    the minimum and maximum of each number, a value below each minimum that
@@ -1279,59 +2289,194 @@ harness itself fails. For each PDK it runs, in one container:
     `baseline/<pdk>/extract-known.json` (see [Known
     differences](#known-differences)).
 
+12. the jobs step (`tests/jobs/run_jobs.py`; `--no-jobs` skips it): the
+    checks of [Checking a layout with Magic](#checking-a-layout-with-magic)
+    on the [case suite](#the-case-suite), built for the run, against
+    references that use none of the plugin's code, and its outputs against
+    each other:
+    - DRC in every style and both modes against `tests/parity/mdrc.tcl`
+      run on the plugin's own export, as multisets of boxes
+      (`drc_plumbing`), and against Magic reading the original file with
+      every cell checked as its own top, as merged error regions per cell
+      and rule whose XOR must be empty at 1 nm (`drc_fidelity`). Also: the
+      plugin checked every cell of the export but those Magic reads as
+      empty (`drc_cells`), the report database's error boxes are the TSV's
+      (`drc_markers`), every case has a result in every style and mode
+      (`drc_coverage`), the `hier` cases' top-cell lists and extracted
+      devices are the case suite's expected ones (`drc_hier`), and each
+      `names` case gives its one error under its KLayout name
+      (`drc_names`);
+    - LVS on the inverters against netgen run by the step itself on the
+      same netlist and schematic, with its own reading of netgen's report
+      (`lvs`); every net netgen couldn't match is named by a marker
+      (`lvs_badnets`), and each such marker holds the net's point from the
+      `.ext` file (`lvs_markers`);
+    - the generated-layer and port checks against
+      `tests/jobs/expected-<pdk>.json` (`layers`, `ports`), which
+      `--update-baseline` rewrites. Four results are asserted in the code,
+      so that a rewritten baseline can't hide a wrong one of them: no F1
+      to F4 finding on the negative controls (`controls`), an F1 item on
+      each F1 positive case (`f1_positives`), the "Magic reads nothing" finding on the cells
+      that should give it (`reads_nothing`), and P3 on sky130A's
+      `inv_text_on_pin` (`ports_expect`);
+    - every device default extracted from Magic's database and again after
+      a GDS write and read, against `readback-<pdk>.json` (`readback`);
+    - `tools/build_gaps.py --check` (`gaps`; see [Where KLayout and Magic
+      disagree](#where-klayout-and-magic-disagree)).
+
+    The step also records, without checking it, what a Magic user gets
+    (`tests/jobs/magic_native.tcl`: the top cell checked from the top only,
+    in `drc(fast)` and then `drc(full)`), with the rules per case where that
+    differs from hierarchical mode, and the time of every job.
+    [tests/jobs/README.md](tests/jobs/README.md) lists every check and why
+    it is there. With `--quick` the step runs the inverters set, the PCell
+    inverter included, and per PDK a negative control, a case with an F3
+    finding and, on sky130A and ihp-sg13g2, a cell Magic reads nothing in;
+    it skips the read-back and gap-table checks. The step runs alone too:
+    `scripts/in_image.sh 'python3 tests/jobs/run_jobs.py --pdk sky130A
+    --out out/jobs/sky130A [--quick]'`, with `KMP_IMAGE_PDK` set to the
+    PDK (`scripts/in_image.sh` sets the image's `PDK` variable from it).
+    In the last full run the full step took 454.6 s on sky130A,
+    306.2 s on gf180mcuD, 249.8 s on ihp-sg13g2 and 172.1 s on
+    ihp-sg13cmos5l, on 2 workers each, with the four PDKs running at the
+    same time (see [Last full run](#last-full-run)).
+
 Every generator of every PDK is in the sweep; the excluded helpers are listed
 in each report with the reason.
 
+A run of `scripts/test.sh` on the release's code, on 2026-11-24 in the
+image, passed the 378 unit tests, with the two of `test_netgen.py` that
+need `KMP_NETGEN_EVIDENCE` skipped, and the gap table builder's 17 tests.
+The 95 backend tests passed on each PDK, with the tests written for
+another PDK skipped: 3 on sky130A, 11 on gf180mcuD, 8 on ihp-sg13g2 and 10
+on ihp-sg13cmos5l. The harness's first step runs the unit
+and backend tests but not the gap table builder's;
+`scripts/in_image.sh 'python3 -m unittest tests.gaps.test_build_gaps'`
+runs those alone.
+
+### The case suite
+
+`tests/cases/build.py --pdk P --out DIR [--set S]...` draws the layouts that
+the checks of [Checking a layout with Magic](#checking-a-layout-with-magic)
+are tested on, with `klayout.db` at run time (the
+repository holds no layout files), and writes them with a `cases.json`
+that says what each one targets and what Magic and KLayout reported on it
+when it was measured. [tests/cases/README.md](tests/cases/README.md)
+describes the sets and the file. Per PDK:
+
+| Set | What it holds | sky130A | gf180mcuD | ihp-sg13g2 | ihp-sg13cmos5l |
+|---|---|---|---|---|---|
+| `gaps` | a clean control and one-change cases, each with the rule it breaks | 130 | 69 | 151 | 49 |
+| `hier` | the flat original and copies with some layers moved into a parent cell (see [Magic DRC](#magic-drc)) | 4 | 8 | 4 | 4 |
+| `whole_shape` | a 100 µm well for a rule about a whole shape: with its tap at one end (sky130A, IHP), or with a 3.3 V and a 6 V pfet at its two ends (gf180mcuD) | 1 | 1 | 1 | 1 |
+| `names` | twelve cells with awkward names (`a b`, `x/y`, `br[0]`, `café`, ...) under one top cell, each holding one error, and as a 13th case a name the file doesn't have | 13 | 13 | 13 | 13 |
+| `inverters` | the hand-drawn inverter, broken variants and the inverter built from the PCells, each with a schematic | 8 | 5 | 5 | 5 |
+| `controls` | seven of the PDK's standard cells, a row of them, the same row written by Magic, and the hand inverter | 10 | 10 | 10 | 10 |
+| `sheet` | the `gaps` cases as subcells 40 µm apart | 1 | 1 | 1 | 1 |
+
+The PCell inverter needs Magic (`--no-pcell` leaves it out), the controls
+need the PDK's `libs.ref`, and `--magic-row` has Magic write the row. The
+builds for this README printed, for example,
+`CASES sky130A controls=10 gaps=130 hier=4 inverters=8 names=13 sheet=1 whole_shape=1`.
+
 ### Last full run
 
-2026-11-23, Magic 8.3.681, KLayout 0.30.11, in the image listed under
-[Requirements](#requirements): `scripts/parity.sh`, all four PDKs one
-after another, on version 0.5.0's code as it stood then, with this README
-and `docs/design.md` the only files not yet final. Since that run, only
-the documentation, the scripts that take guide.md's screenshots and one
-message of the round-trip check have changed. The summary printed `PARITY
-PASS over 4 PDKs` and the script exited 0: 10,399 points in 79 minutes of
-harness time on 6 CPUs. Each PDK's run included its unit and backend tests
-and its manifest check, and checked DRC and the GDS census against the
-committed baselines, which this version doesn't change. The sweeps are
-version 0.4's plus the edit points (2,873 over the four PDKs).
+The last full run was on 2026-11-24, on version 0.6.0's code before the
+changes listed below, with Magic 8.3.681 and KLayout 0.30.11 in the image
+listed under [Requirements](#requirements). Each PDK ran in its own
+container as
+`scripts/parity.sh --pdk <pdk> --jobs 2`, and the four containers ran at
+the same time on a machine with 6 CPUs, started within one minute of each
+other; `run_sweep.py --summary` then wrote the summary. It printed
+`PARITY PASS over 4 PDKs`: 10,399 of 10,399 points passed, the jobs step
+passed on every PDK, and every PDK's run exited 0. The whole run took 66
+minutes of wall time. The time given for each PDK below is that PDK's own
+run, measured while the other three ran beside it, so it can't be
+compared with version 0.5.0's full run, which ran the four PDKs one after
+another and took 79 minutes. Each PDK's run included the unit and backend
+tests, the manifest check and the jobs step, and checked DRC and the GDS
+census against the committed baselines.
 
-Two earlier full runs during this version's development found problems
-that 0.5.0 fixes. The first, before review 3, found the IHP RF FETs'
-`topc` and `botc` widgets, gf180mcuD's stub devices whose dialog doesn't
-reopen, and Magic's DRC crashing on a 1.8 m long `rm7`. The second, after
-review 3, failed 10 sky130A and 9 gf180mcuD points (`res_generic_l1`, `m1`
-to `m4`, and `rm1` to `rm5` with `l 0`), where the dialog shows `170.0n`
-or `99.999n`: the harness read the `n` suffix and Magic doesn't (see
-[Values as Magic's dialog shows
-them](#values-as-magics-dialog-shows-them)). That run was stopped after
-gf180mcuD, and the check now uses the number Magic reads.
+After that run, the code changed in these ways:
 
-Path D, the real dialog under Xvfb, ran for 12.4, 7.2, 6.6 and 4.6 minutes
-on the four PDKs, alongside paths A and B, and didn't have to start Magic
-again after an X error. Path D agreed with the PCells on every device
-point. Path A (`magic::gencell` with the typed values) applies to 4,991 of
-the 6,537 device points that aren't edit points, the ones where it gets the
-same checked values as the dialog's Create, and on all of them the PCells
+- `extract` and `lvs` on a cell Magic reads nothing in give the finding
+  "Magic reads nothing in this cell" with status 1, and `drc`'s summary
+  says that nothing was checked in such cells;
+- every sentence of a `drc` summary ends with a period, and the summary of
+  a refused `extract` names no path;
+- in the [job directories](#job-directories), an LVS run's `lvs-*` folder
+  is removed when the check ends, a key's directory that holds a done job
+  but lacks a file the check reads is replaced once the process that ran
+  the job has ended, `cache prune` removes leftover `lvs-*` folders, and
+  the DRC report's description and the GUI's LVS message say which
+  directories are removed;
+- `drc --box` takes a box whose first number is negative;
+- a KLayout error while the export is written fails the check;
+- the jobs step's check `drc_b1` was renamed `drc_hier`, and code comments
+  cite [docs/design-0.6.md](docs/design-0.6.md) in place of notes outside
+  the repository.
+
+Their tests changed with them, and so did the documentation, including
+the text that `tools/build_gaps.py` writes into the gap pages. None of
+these changes is on the path that the sweep's points measure. Of the
+modules that the PCell libraries load, only `cache.py` changed in its
+code, and only in the job cache's prune; `config.py` changed in its
+docstring alone. In the command line (`__main__.py`), only the handling
+of `--box` changed.
+
+On the release's code, which has these changes, these ran on 2026-11-24
+and passed:
+
+- `scripts/test.sh`: 378 unit tests (2 skipped), which are the 372 that
+  each PDK's results below give and six added with the changes above;
+  the gap table builder's 17 tests; and the 95 backend tests on each PDK;
+- `scripts/parity.sh --pdk all --quick`: 73 points on sky130A, 59 on
+  gf180mcuD, 53 on ihp-sg13g2 and 41 on ihp-sg13cmos5l, and the jobs
+  step's quick set on each, with the summary `PARITY PASS over 4 PDKs`;
+- the full jobs step on each PDK, one PDK at a time on 6 workers
+  (`tests/jobs/run_jobs.py --pdk <pdk>`): 1,816 checks passed on sky130A,
+  1,279 on gf180mcuD, 1,944 on ihp-sg13g2 and 1,006 on ihp-sg13cmos5l,
+  none failed, the same numbers as in the full run.
+
+Version 0.5.0's full run, on 2026-11-23, passed the same 10,399 points.
+It had neither the jobs step nor the checks it tests. The sweep's counts
+below (path A, the edit points, the round trips and the notes) are the
+same as in that run.
+
+Path D, the real dialog under Xvfb, ran for 1,215.1 s on sky130A, 648.7 s
+on gf180mcuD, 603.0 s on ihp-sg13g2 and 445.5 s on ihp-sg13cmos5l,
+alongside paths A and B, and didn't have to start Magic again after an X
+error. Path D agreed with the PCells on every device point. Path A
+(`magic::gencell` with the typed values) applies to 4,991 of the 6,537
+device points that aren't edit points, the ones where it gets the same
+checked values as the dialog's Create, and on all of them the PCells
 matched it. On the other 1,546, the dialog's corrections, its order of
 edits or its extra widgets give `_draw` other values; 1,492 of them still
 draw the same shapes as `magic::gencell`, and the 54 that don't are listed
-below per PDK. A file
-that version 0.4 saved with the values of one of those 54 points comes
-back with other shapes; with the values of one of the 1,492, it comes back
-with the same shapes and other checked values. Every edit point passed,
-the ones where Magic's Apply kept the instance among them. The round trips
-covered 1,764 sky130A, 1,305 gf180mcuD, 1,123 ihp-sg13g2 and 904
-ihp-sg13cmos5l points, all regenerated by Magic (no variant came from
-disk), none with Magic's dialog run again on reopen, and every one
-unchanged by the library refresh; the request each reopened variant was
-drawn from, read back through its stamp, was the one path B sent, except
-on 15 points of gf180mcuD's three stub devices (45 file reads: the GDS,
-the OASIS and the file saved again without the library), which Magic draws
-empty. There the cell has no stamp
-and the generator got no request while the file was read, so none was
-read back (why was not looked into).
-Every point's fonts were the same in both files.
+below per PDK. A file that version 0.4 saved with the values of one of
+those 54 points comes back with other shapes; with the values of one of
+the 1,492, it comes back with the same shapes and other checked values.
+All 2,873 edit points passed, the ones where Magic's Apply kept the
+instance among them. The round trips covered 1,764 sky130A, 1,305
+gf180mcuD, 1,123 ihp-sg13g2 and 904 ihp-sg13cmos5l points, all
+regenerated by Magic (no variant came from disk), none with Magic's
+dialog run again on reopen, and every one unchanged by the library
+refresh. The request each reopened variant was drawn from, read back
+through its stamp, was the one path B sent, except on 15 points of
+gf180mcuD's three stub devices (45 file reads: the GDS, the OASIS and the
+file saved again without the library). Magic draws those devices empty,
+so their cells have no stamp, and the report gives the reason as "the
+generator handed produce nothing while the file was read, so no request
+was read back". Every point's fonts were the same in both files.
+
+The jobs step's line under each PDK gives the checks that passed, the
+step's time on its 2 workers and the jobs' own times summed (the log's
+"s of jobs"; the figure in `report.md` also counts the case suite's build,
+about 1 s more). Its GDS
+read-back check extracts every device default from Magic's database and
+again after a GDS write and read, and passes when the two differ only on
+the devices that `readback-<pdk>.json` lists; its gap-table check is
+`tools/build_gaps.py --check`.
 
 The notes under each table are points that pass but are listed in the
 report. "Typed with no Return" counts the points with one typed value on
@@ -1339,7 +2484,9 @@ devices whose dialog has no widget beyond their parameters, where path A is
 also Magic's dialog with the value typed and Create pressed without
 Return.
 
-**sky130A** (`sky130_magic`): `PARITY PASS 3718/3718` in 24 min; 96 unit and 41 backend tests passing (1 skipped as not for this PDK); manifest check passing; KLayout DRC: sky130A_mr.drc with beol=true, feol=true, floating_met=false, offgrid=true, seal=false, thr=1. 2,771 points as in version 0.4 and 947 edit points.
+**sky130A** (`sky130_magic`): `PARITY PASS 3718/3718` in 3,607 s; 372 unit tests (2 skipped) and 95 backend tests (3 skipped as not for this PDK) passing; manifest check passing; KLayout DRC: sky130A_mr.drc with beol=true, feol=true, floating_met=false, offgrid=true, seal=false, thr=1. 2,771 points that aren't edit points and 947 edit points.
+
+Jobs step: PASS, 1,816 checks passed and none failed, in 454.6 s on 2 workers, 902.9 s summed. GDS read-back: 60 device defaults measured, and the 7 that differ (the four `sky130_fd_pr__cap_vpp_*` devices, `sky130_fd_pr__diode_pd2nw_05v5_hvt` and `_lvt`, and `sky130_fd_pr__npn_11v0_W1p00L1p00`) are the ones the file lists. Gap table: `GAPS OK sky130A`, 398 rules and 130 cases.
 
 | Family | Points | Pass | Fail |
 |---|---|---|---|
@@ -1363,7 +2510,9 @@ Return.
 - typed with no Return: 1857 points; other checked values than with Return on 286, other shapes on 7
 - 115 points where Create's own `_check` changes the dialog's form (40 of them not edit points)
 
-**gf180mcuD** (`gf180mcu_magic`): `PARITY PASS 2590/2590` in 14 min; 96 unit and 37 backend tests passing (5 skipped as not for this PDK); manifest check passing; KLayout DRC: gf180mcu.drc with decks=all,-density, run_mode=deep, threads=1, variant=D. 1,753 points as in version 0.4 and 837 edit points.
+**gf180mcuD** (`gf180mcu_magic`): `PARITY PASS 2590/2590` in 2,199 s; 372 unit tests (2 skipped) and 95 backend tests (11 skipped as not for this PDK) passing; manifest check passing; KLayout DRC: gf180mcu.drc with decks=all,-density, run_mode=deep, threads=1, variant=D. 1,753 points that aren't edit points and 837 edit points.
+
+Jobs step: PASS, 1,279 checks passed and none failed, in 306.2 s on 2 workers, 608.1 s summed. GDS read-back: 50 device defaults measured, and the 10 that differ (`nfet_10v0_asym`, `pfet_10v0_asym`, `nwell`, `pvaractor_3p3`, `pvaractor_6p0`, and `rm1` to `rm5`) are the ones the file lists. Gap table: `GAPS OK gf180mcuD`, 568 rules and 69 cases.
 
 | Family | Points | Pass | Fail |
 |---|---|---|---|
@@ -1386,7 +2535,9 @@ Return.
 - typed with no Return: 1064 points; other checked values than with Return on 210, other shapes on 5
 - 89 points where Create's own `_check` changes the dialog's form (23 of them not edit points)
 
-**ihp-sg13g2** (`sg13g2_magic`): `PARITY PASS 2249/2249` in 24 min; 96 unit and 37 backend tests passing (5 skipped as not for this PDK); manifest check passing; KLayout DRC: run_drc.py --no_density --mp=1 --density_thr=1. 1,643 points as in version 0.4 and 606 edit points.
+**ihp-sg13g2** (`sg13g2_magic`): `PARITY PASS 2249/2249` in 3,930 s; 372 unit tests (2 skipped) and 95 backend tests (8 skipped as not for this PDK) passing; manifest check passing; KLayout DRC: run_drc.py --no_density --mp=1 --density_thr=1. 1,643 points that aren't edit points and 606 edit points.
+
+Jobs step: PASS, 1,944 checks passed and none failed, in 249.8 s on 2 workers, 496.4 s summed. GDS read-back: 39 device defaults measured, none differ. Gap table: `GAPS OK ihp-sg13g2`, 383 rules and 151 cases.
 
 | Family | Points | Pass | Fail |
 |---|---|---|---|
@@ -1414,7 +2565,9 @@ Return.
 - 2 points with no DRC because their cell is longer than 10 mm on a side (`rm6` and `rm7` at the maximum `val`)
 - 45 points where Create's own `_check` changes the dialog's form (17 of them not edit points)
 
-**ihp-sg13cmos5l** (`sg13cmos5l_magic`): `PARITY PASS 1842/1842` in 17 min; 96 unit and 36 backend tests passing (6 skipped as not for this PDK); manifest check passing; KLayout DRC: run_drc.py --no_density --mp=1 --density_thr=1. 1,359 points as in version 0.4 and 483 edit points.
+**ihp-sg13cmos5l** (`sg13cmos5l_magic`): `PARITY PASS 1842/1842` in 2,630 s; 372 unit tests (2 skipped) and 95 backend tests (10 skipped as not for this PDK) passing; manifest check passing; KLayout DRC: run_drc.py --no_density --mp=1 --density_thr=1. 1,359 points that aren't edit points and 483 edit points.
+
+Jobs step: PASS, 1,006 checks passed and none failed, in 172.1 s on 2 workers, 340.5 s summed. GDS read-back: 31 device defaults measured, and the 2 that differ (`nmoscl_2`, `nmoscl_4`) are the ones the file lists. Gap table: `GAPS OK ihp-sg13cmos5l`, 297 rules and 49 cases.
 
 | Family | Points | Pass | Fail |
 |---|---|---|---|
@@ -1440,12 +2593,47 @@ Return.
 - typed with no Return: 629 points; other checked values than with Return on 116, other shapes on 3
 - 39 points where Create's own `_check` changes the dialog's form (15 of them not edit points)
 
-
 ### Mutations the harness catches
 
-Each line is a copy of the package with one change, run with
-`run_sweep.py --pdk <pdk> --no-unit --no-drc --no-extract --devices ...` on
-2026-11-22, on version 0.4. The control is the same run on the unchanged
+The jobs step (item 12 under [Tests](#tests), step 9 in `run_sweep.py`'s
+log) was run on copies of the package with one change each, with
+`tests/jobs/run_jobs.py --pdk <pdk>` on the quick set
+(`--quick`) or on the full one. Thirteen of the fourteen changes ran on the
+step as it was before seven of its checks were added (`drc_cells`,
+`drc_markers`, `drc_coverage`, `lvs_markers`, `reads_nothing`,
+`f1_positives` and `ports_expect`), and nine ran on the step with them.
+Before those checks, the unchanged package passed the quick set on sky130A
+and on gf180mcuD, and the full set on sky130A; after, `scripts/parity.sh
+--pdk all --quick` and the full step on all four PDKs passed.
+
+| Change to the package | PDK and set | Before the seven checks | After |
+|---|---|---|---|
+| every DRC box Magic lists read 5 nm (one grid step) to the right | sky130A quick | FAIL: drc_plumbing 7, drc_fidelity 5 (`inv_pcell`, `inv_w036`) | not rerun |
+| only the report database's DRC markers moved right by 5 nm | sky130A quick | missed (PASS) | FAIL: drc_markers |
+| hierarchical mode checks the top cell alone | sky130A quick; gf180mcuD quick | FAIL: drc_plumbing 3, drc_fidelity 3, all on `inv_pcell` | FAIL: drc_cells, drc_plumbing, drc_fidelity |
+| the export flattens in hierarchical mode too | sky130A quick; full | quick FAIL: drc_fidelity 3, ports 1. Full FAIL: drc_fidelity 180, drc_b1 6 (the check since renamed `drc_hier`), layers 3, ports 3; drc_plumbing passed with 162 results where the baseline has 552 | full FAIL: drc_coverage 130, drc_fidelity 180, drc_b1 |
+| `kmp_job_load` only loads the cell, with none of its checks | sky130A quick; full | quick missed. Full FAIL on 8 layers cases, by the reason text alone: both runs gave status 2 | quick FAIL: reads_nothing 7, layers |
+| netgen's report read from its final result line alone | sky130A quick | FAIL: lvs 1, `inv_w036` read as a match despite its property error; through `scripts/parity.sh`, `PARITY FAIL 0/1 (jobs step: 1 failed)` | not rerun |
+| `extfile.py` takes its unit from the `.ext` file's `scale` line | gf180mcuD quick | missed: both net markers of `inv_open_drain` at the origin, as 0.02 µm boxes | FAIL: lvs_markers |
+| the generated-layer check without its Magic-minus-user direction (no F4) | sky130A quick | FAIL: layers 1 (`inv_pin_only_li`) | not rerun |
+| the generated-layer check without its user-minus-Magic direction (no F3) | sky130A quick; full | quick missed. Full FAIL: layers 7 | quick FAIL: layers (`c_licon_gate`) |
+| F1 as Magic's layer minus the user's, not an enclosure check | sky130A quick; full | quick missed. Full FAIL: controls 4, layers 18 | quick FAIL: controls, layers (`sky130_fd_sc_hd__mux2_1`) |
+| the port check takes sky130A's `*/16` pin boxes as `*/5` layers | sky130A quick | FAIL: ports 2 | not rerun |
+| the port check reads texts on `*/16` as texts on `*/5` | sky130A | not run: no case had such a text | quick FAIL: ports_expect, ports (on `inv_text_on_pin`, a case added for it) |
+| F1 as a subtraction, run with `--update-baseline` | sky130A full | FAIL, exit 1: controls 4; the baseline wrote those four controls as "not written" | not rerun |
+| no F1 at all, run with `--update-baseline` | sky130A full | PASS, exit 0: the rewritten baseline had lost the F1 entries of all 9 cases that had them | FAIL, exit 1: f1_positives 3 |
+
+The plumbing check compares the plugin with `mdrc.tcl` on the plugin's own
+export, so it can't see an export that flattens: `mdrc.tcl` reads the same
+flat file. The fidelity check, on the user's file, and the coverage check
+catch it. Backend tests catch three of the changes too: `test_jobs_backend`
+fails on `kmp_job_load` without its checks, `test_lvs_backend` on the unit
+from the `scale` line, and `test_drc_backend`, which compares the report
+database's boxes with the TSV, on the moved markers.
+
+The mutations of the PCell sweep follow. Each line is a copy of the
+package with one change, run with `run_sweep.py --pdk <pdk> --no-unit
+--no-drc --no-extract --devices ...` on 2026-11-22, on version 0.4. The control is the same run on the unchanged
 package. Version 0.5's mutations of the dialog code follow the table.
 
 | Change to the package | PDK and devices | Result |
@@ -1570,16 +2758,28 @@ the drawn values:
   `drc(full)` on Magic's own output reports "This layer can't abut or
   partially overlap between subcells", and on the PCell, or on Magic's
   output flattened, it reports nothing.
-- Extraction patterns of Magic's own output, which both paths share and the
-  harness records in `baseline/<pdk>/extract-known.json`: on sky130A, the
-  `g5v0d16v0` FETs with `nf` of 2 or more extract every second finger as the
-  `g5v0d10v5` model with a different length; on gf180mcuD, `nfet_10v0_asym`
-  and `pfet_10v0_asym` extract as `nfet_05v0` and `pfet_05v0` with l = 0.44u;
-  on the IHP PDKs, the four RF FETs extract as the FET model of the same
-  voltage (`sg13_lv_rfnmos` as `sg13_lv_nmos`). gf180mcuD's MOS capacitors
-  and varactors are not in the extraction check (they extract as
-  `cap_nmos_03v3` and the like, and `pvaractor_6p0` extracts nothing, in
-  research for version 0.3).
+- Extraction patterns that the harness records in
+  `baseline/<pdk>/extract-known.json`. Its extraction check (item 11 under
+  [Tests](#tests), step 8 in `run_sweep.py`'s log) has Magic read both
+  sides from GDS, Magic's file and the PCell's, so both sides show them:
+  - on gf180mcuD, `nfet_10v0_asym` and `pfet_10v0_asym` extract as
+    `nfet_05v0` and `pfet_05v0` with l = 0.44u. This comes from Magic's GDS
+    reader: Magic's own cell, extracted from Magic's database, is the
+    asymmetric device with its drawn l (0.6u at the defaults), and the same
+    cell written to GDS and read back is the 5 V FET
+    (`readback-gf180mcuD.json`; see [Extraction](#extraction));
+  - on the IHP PDKs, the four RF FETs extract as the FET model of the same
+    voltage (`sg13_lv_rfnmos` as `sg13_lv_nmos`). The IHP read-back files
+    list none of the RF FETs, so at the defaults their database extraction
+    and their GDS read-back agree;
+  - on sky130A, the `g5v0d16v0` FETs with `nf` of 2 or more extract every
+    second finger as the `g5v0d10v5` model with a different length.
+    Whether this one also comes from the GDS reader is UNVERIFIED: the
+    read-back measurement uses each device's defaults, where `nf` is 1.
+
+  gf180mcuD's MOS capacitors and varactors are not in the extraction check
+  (they extract as `cap_nmos_03v3` and the like, and `pvaractor_6p0`
+  extracts nothing, in research for version 0.3).
 
 ## Known limitations
 
@@ -1595,8 +2795,13 @@ the drawn values:
   `KMP_PDKS` limits the PDKs.
 - Opening a large design runs Magic once per variant that isn't cached, about
   20 ms each.
-- KLayout LVS of circuits built from these devices hasn't been tried. sky130A
-  and gf180mcuD devices have no pin shapes, because Magic writes labels only.
+- KLayout's own LVS of circuits built from these PCells: on the IHP PDKs,
+  in research for version 0.6, the PDK's KLayout LVS in its default flat
+  mode failed an inverter built from the PCells, because the D, S and G
+  texts inside each device cell join the top-level nets of those names;
+  deep mode matched, and so did netgen. The port check reports these texts
+  (P7). sky130A and gf180mcuD devices have no pin shapes, because Magic
+  writes labels only.
 - A design saved as OASIS without the library keeps the labels' strings and
   positions but not their size or justification, and keeps one of two
   identical labels at one position (the vendor texts of gf180mcuD's npn
@@ -1623,12 +2828,76 @@ the drawn values:
   sends them as the dialog opens them, empty, and can't set them. Review 3
   set them in 16 combinations with `w` and `ng` per RF FET on ihp-sg13g2
   and saw only Magic's cell name change, because `mos_device` turns both on
-  for devices that keep `gate_ring 1`, as the RF FETs do (not rerun for
-  this version). A unit test fails if another widget that isn't a
+  for devices that keep `gate_ring 1`, as the RF FETs do (not rerun
+  since). A unit test fails if another widget that isn't a
   parameter appears in a manifest.
 - Not tried: installing through the Salt manager (guide.md shows it
   listing the linked package), KLayout's `.mag` reader, `ext2spice merge`,
-  the PDKs' own LVS decks, and KLayout DRC with the density decks.
+  and KLayout DRC with the density decks.
+
+The checks of [Checking a layout with Magic](#checking-a-layout-with-magic):
+
+- The Marker Database Browser shows the items of a subcell (DRC errors in
+  hierarchical mode, port findings, and LVS markers of a subcircuit that
+  netgen compared on its own) at one placement of that cell: the first
+  placement the database refers to, or without such a reference the cell's
+  first instance in the layout. This was seen with the browser's default
+  context mode on a test layout of two cells; the other context modes
+  weren't tried.
+- No tiling: a cell is checked whole, in Magic processes of at most 15
+  cells each, one after another. Memory on a large block hasn't been
+  measured, and time only on the 100 µm block under [Magic
+  DRC](#magic-drc)'s limits.
+- An edit means the whole cell is checked again; there is no reuse of the
+  results of unchanged subcells, only of a whole check of an unchanged
+  cell.
+- No view in KLayout's Netlist Database Browser: LVS gives netgen's report
+  and the markers. KLayout's `NetlistComparer.same_nets` could impose
+  netgen's pairing on a KLayout comparison; it isn't built.
+- No KLayout deck for the rules that only Magic checks. On sky130A the candidates
+  would be the tap and latch-up rules (`nwell.4`, `LU.2`, `LU.3`), the tap
+  area `psd.10b` and `x.2` on diffusion, which no KLayout deck reported on
+  their cases in the gap table; on the other PDKs KLayout's decks check
+  more of the front end than Magic does (see [Where KLayout and Magic
+  disagree](#where-klayout-and-magic-disagree)). The Magic menu doesn't run
+  `sky130A.lydrc` with FEOL on either, which in research for version 0.6
+  caught 16 of the 26 front-end rules that sky130A's Run DRC (Full) missed
+  on the one-change inverter cases.
+- No resistance extraction and no parasitic extraction with kpex. In
+  research for version 0.6, kpex's Magic engine gave Magic's numbers on
+  seven of eight net pairs on sky130A and its 2.5D engine other numbers,
+  and on ihp-sg13cmos5l kpex stopped on a missing include.
+- No DRC with ihp-sg13g2's GDS tech file (`ihp-sg13g2-GDS.tech`), which
+  checks TGO.e, TGO.f, pSD.a and pSD.b on the drawn layers; whether
+  ihp-sg13cmos5l has one wasn't checked.
+- PCell variants whose device Magic's GDS reader doesn't keep (see
+  [Extraction](#extraction)) are marked, not fixed: replacing them with
+  Magic's own cells before the extraction isn't built.
+- netgen: a `badelements` entry in its JSON report hasn't been seen in a
+  run; the parser assumes the shape of `badnets` and lists a device it
+  can't place without a marker. How netgen names an array element inside a
+  flattened path hasn't been seen either. When two devices of a cell have
+  the same model and the same nets, the n-th of netgen's is taken as the
+  n-th of Magic's.
+- gf180mcuD's `DV.9` (3.3 V and 5 V or 6 V PMOS in one n-well): Magic's
+  `drc(full)` reports it when the two devices are 3 µm apart and not at
+  the two ends of a 100 µm n-well (the case suite's `dv9_long`); why is
+  UNVERIFIED.
+- The Magic menu has run in the KLayout GUI under Xvfb on sky130A only,
+  driven by the screenshot rig (`KMP_SHOT_SESSIONS=magic
+  tools/screenshots/take.sh`, which writes the `magic-*.png` files in
+  `docs/img/guide/`). The rig triggers every entry through the menu's
+  actions: DRC from its dialog and on the visible area, Rerun of the DRC
+  report, LVS, extraction with capacitance (also beside a netlist file the
+  plugin didn't write, which stayed unchanged), the generated-layer and
+  port checks, Rule differences, Settings..., the PDK dialog, and Cancel of
+  a long flat DRC, after which Magic's process was gone. Not tried: the
+  other PDKs; answering Yes when a second check asks to cancel the first;
+  Rerun of the other checks' reports; the "Selection box" area; a check on
+  a cell entered with Descend; LVS's Browse... button (the rig typed the
+  path); whether a subcell's items show at their placements; the blocking
+  progress bar of a KLayout without Qt; and how long the export holds up
+  KLayout's main thread on a large layout.
 
 ## Changes from the design
 
@@ -1682,11 +2951,62 @@ the drawn values:
   shows after Create, with its dependency callbacks run, draw what its
   Create makes, and treat a later edit as one in the Edit device dialog
   followed by Apply; the design stored the typed values and followed
-  `magic::gencell`. The design's section 4.5, added for this version,
+  `magic::gencell`. The design's section 4.5, added for version 0.5,
   describes it. The harness's reference for devices is Magic's real dialog
   under Xvfb (path D), and `magic::gencell` (path A), which the design made
   the reference, is the second one.
 - The project is licensed under Apache-2.0, which the design left open.
+
+The checks of version 0.6 against their design,
+[docs/design-0.6.md](docs/design-0.6.md):
+
+- **The default DRC mode is hierarchical**, Magic's own reading of the file.
+  The design made flat mode the default and offered a "per-cell" mode
+  beside it. On all four PDKs, a layout with its implants or well in a
+  parent cell was clean in flat mode while Magic's own reading found errors
+  and other transistors (see [Magic DRC](#magic-drc)). Extraction and the
+  generated-layer check use the same reading. `KMP_DRC_MODE=per-cell` is
+  refused with a message that says "per-cell is now called hierarchical".
+- **The implant check (F1) is an enclosure check.** The design reported
+  Magic's implant minus the user's. That gave findings on correct layouts:
+  sky130A's `sky130_fd_sc_hd__dfxtp_1` and `__mux2_1` left part of Magic's
+  npc uncovered, and so did a layout that Magic had written itself. F1 now
+  measures the user's enclosure of each device shape against the distance
+  Magic's GDS output grows the layer, read from the tech file, and the
+  foundry cells and a row of them written by Magic give no finding.
+- **No tiling and no halo.** The design split a large cell into tiles
+  checked in parallel (`KMP_JOBS`, `KMP_TILE_UM`) and checked an area grown
+  by the largest distance a rule looks across. Neither works for a rule
+  about a whole shape: sky130A's `nwell.4` gave a false error on the far end
+  of a long n-well whose tap was at the other end. Neither setting exists.
+- **The area check filters a whole-cell check.** Magic checks the whole
+  cell and the database keeps the errors that touch the area. The job
+  directory doesn't depend on the area, so the next area check reuses it.
+- **The rerun record is a KLayout Recipe.** The design put the command line
+  into the report database's generator. The Marker Database Browser's
+  Rerun button needs a Recipe there, and with a command line it showed an
+  error box. The command line is in the description instead.
+- **The `.ext` unit comes from Magic's `[cif scale out]`**, printed by the
+  same Magic process. The design read it from the `.ext` file's `scale`
+  line, which says 500000 on sky130A and 0.5 on the other PDKs, so markers
+  would have landed in the wrong place on three PDKs.
+- **Nets in subcells get markers.** The design listed them without one
+  until the transform of an `.ext` `use` line was known. It is now: `use
+  <cell> <id> a b c d e f` puts a child point (x, y) at (a·x + b·y + c,
+  d·x + e·y + f) in the parent, and an array element adds its offset first;
+  this was checked on all four PDKs in all eight orientations and on a
+  rotated array.
+- **Cell names are checked.** The design passed cell names to Magic as
+  they were, and a name Magic renames or can't find gave a clean result.
+  The export now renames every cell whose name isn't letters, digits, `_`
+  and `$`, every Magic job checks that it loaded the cell it was given and
+  that the cell isn't empty, and the command line checks `--cell` against
+  the file before Magic starts.
+- **`extract` writes `<cell>.magic.spice`.** The design wrote
+  `<cell>.spice` beside the layout, and in the case suite that replaced the
+  inverter's schematic, `inv.spice`. The netlist now gets its own name and
+  a header line, and `extract` replaces only a file that starts with that
+  header (see [Extraction](#extraction)).
 
 ## Licence and credits
 
@@ -1710,14 +3030,29 @@ installed files say about their licence, in the image listed under
 | ihp-sg13g2 | `ihp-sg13g2.tcl` and the `ihp-sg13g2-*.tcl` files it sources | Apache-2.0: every Tcl file but `read_sram_gds.tcl` carries the header "Copyright 2025 IHP PDK Authors, Licensed under the Apache License, Version 2.0"; the install has no top-level licence file |
 | ihp-sg13cmos5l | `ihp-sg13cmos5l.tcl` and its `ihp-sg13cmos5l-*.tcl` files | Apache-2.0: the same header with "Copyright 2026 IHP PDK Authors" (again not on `read_sram_gds.tcl`), and the Apache-2.0 text as `LICENSE` at the top of the install |
 
-open_pdks' own licence and those of the sky130 and gf180mcu source
-repositories are not in the image and weren't checked. Whether data read
-out of a file that states no licence may ship under Apache-2.0 is a
-question for the project lead.
+The same folder holds four more data files per PDK, added in version 0.6
+and made from the same PDK installs:
 
-The harness runs the PDKs' KLayout DRC decks from the PDK install and
-doesn't copy them (`sky130A_mr.drc` says GPLv3 in its header, the IHP deck
-Apache-2.0; gf180mcu's wasn't checked).
+| File | What it holds | How it is made |
+|---|---|---|
+| `pdk-<pdk>.json` | Magic's DRC rules, the layers Magic reads and writes, the implants it grows and by how much, and the label and pin layers | `tools/build_pdk_data.py` reads the PDK's Magic tech files, the layer names of its KLayout layer properties file (`.lyp`), and the layer pairs that the PDK's KLayout LVS deck reads labels from |
+| `devices-<pdk>.json` | how Magic's GDS reader decides each device type, for the generated-layer check | typed from the tech file's GDS input and output styles, each row citing its lines |
+| `readback-<pdk>.json` | the devices that Magic's GDS reader doesn't keep | measured in Magic by a backend test |
+| `gaps-<pdk>.json` | the gap table's status per rule, with the KLayout deck outputs' names, values, switches and line numbers | `tools/build_gaps.py`, from the data file, runs of the decks and Magic in the image, and the alias files |
+
+These ship under Apache-2.0, as the manifests do. The project lead decided
+this for data read out of the PDKs' Magic files, as other tools under that
+licence do with data extracted the same way. open_pdks' own licence and
+those of the sky130 and gf180mcu source repositories are not in the image
+and weren't checked.
+
+The harness and the gap-table builder run the PDKs' KLayout DRC decks from
+the PDK install and don't copy them (`sky130A_mr.drc` and `sky130A.lydrc`
+say GPLv3 in their headers, gf180mcu's and the IHP decks Apache-2.0). The
+gap tables store each deck output's name, value and line, and as its
+switch the text of the condition around it in the deck, cut to 60
+characters (such as `TABLES.include?('via1') || BEOL`), but none of the
+rules' code.
 
 The devices themselves are Magic's: the generators in the PDKs' Tcl files
 and Magic's `toolkit.tcl`, from open_pdks, the IHP PDKs and Magic.

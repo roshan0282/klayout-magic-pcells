@@ -5,9 +5,16 @@
 ``[kmp]`` section, in lower case and without the ``KMP_`` prefix, for
 example ``magic = /opt/magic/bin/magic`` or ``pdks = sky130A, gf180mcuD``.
 Settings for one PDK go in a section of their own, ``[kmp:<pdk>]``, with the
-keys ``magicrc`` and ``manifest``; in the environment they are
-``KMP_MAGICRC_<PDK>`` and ``KMP_MANIFEST_<PDK>``, with the PDK name in upper
-case and ``-`` written as ``_`` (``KMP_MAGICRC_IHP_SG13G2``).
+keys ``magicrc``, ``manifest`` and ``netgen_setup``; in the environment they
+are ``KMP_MAGICRC_<PDK>``, ``KMP_MANIFEST_<PDK>`` and
+``KMP_NETGEN_SETUP_<PDK>``, with the PDK name in upper case and ``-``
+written as ``_`` (``KMP_MAGICRC_IHP_SG13G2``).
+
+The checks that run Magic as a job (DRC, extraction, netgen LVS, the
+generated-layer check) read ``KMP_DRC_STYLE`` (default ``drc(full)``),
+``KMP_DRC_MODE`` (``hierarchical``, the default, or ``flat``),
+``KMP_JOB_TIMEOUT`` (seconds per job, default 1800), ``KMP_NETGEN`` (default:
+``netgen`` on ``PATH``) and ``KMP_MENU`` (``0`` leaves the Magic menu out).
 
 Which PDKs get a library comes from ``KMP_PDKS`` (a comma- or space-separated
 list, or ``auto``, the default: every supported PDK whose rcfile exists under
@@ -17,8 +24,13 @@ without a ``pdk`` argument are about; it defaults to sky130A. When
 ``KMP_PDKS`` is unset and ``KMP_PDK`` is set, only that PDK is registered,
 as in version 0.2.
 
-The plugin ignores ``PDK``: the iic-osic-tools image sets ``PDK=ihp-sg13g2``
-by default.
+No setting here comes from ``PDK``, which the iic-osic-tools image sets to
+``ihp-sg13g2`` by default: which PDKs get a library, and the PDK that
+``KMP_PDK`` defaults to, don't depend on it. The checks' choice of PDK
+(``pdkchoice.choose_pdk``) reads it in its last rule, a guess: ``PDK`` is
+the guess when the layers give none, and it decides between two PDKs whose
+layers fit a layout alike. The Magic server gets ``PDK`` set to its own
+PDK (``backend``).
 """
 
 import configparser
@@ -67,7 +79,17 @@ _KEYS = [
     ("KMP_LAZY", "lazy"),
     ("KMP_MANIFEST", "manifest"),
     ("KMP_LOG", "log"),
+    ("KMP_DRC_STYLE", "drc_style"),
+    ("KMP_DRC_MODE", "drc_mode"),
+    ("KMP_JOB_TIMEOUT", "job_timeout"),
+    ("KMP_NETGEN", "netgen"),
+    ("KMP_NETGEN_SETUP", "netgen_setup"),
+    ("KMP_MENU", "menu"),
 ]
+
+DRC_MODES = ("hierarchical", "flat")
+DEFAULT_DRC_STYLE = "drc(full)"
+DEFAULT_JOB_TIMEOUT = 1800.0
 
 
 class ConfigError(Exception):
@@ -108,6 +130,10 @@ def default_magicrc(pdk_root, pdk):
     return os.path.join(pdk_root, pdk, "libs.tech", "magic", pdk + ".magicrc")
 
 
+def default_netgen_setup(pdk_root, pdk):
+    return os.path.join(pdk_root, pdk, "libs.tech", "netgen", pdk + "_setup.tcl")
+
+
 class Config:
     """Resolved settings for one PDK (``pdk``), plus the shared ones.
 
@@ -131,6 +157,12 @@ class Config:
         self.lazy = False
         self.manifest = SHIPPED_MANIFEST
         self.log = None
+        self.drc_style = DEFAULT_DRC_STYLE
+        self.drc_mode = "hierarchical"
+        self.job_timeout = DEFAULT_JOB_TIMEOUT
+        self.netgen = None
+        self.netgen_setup = None
+        self.menu = True
         self.config_file = None
         self.sources = {}
         self._env = {}
@@ -241,13 +273,42 @@ class Config:
         v, s = raw["log"]
         setv("log", os.path.expanduser(v) if v else None, s or "default (off)")
 
+        v, s = raw["drc_style"]
+        setv("drc_style", v.strip() if v is not None else DEFAULT_DRC_STYLE, s or "default")
+
+        v, s = raw["drc_mode"]
+        mode = (v or "hierarchical").strip().lower()
+        if mode not in DRC_MODES:
+            hint = " (per-cell is now called hierarchical)" if mode in ("per-cell", "per_cell") else ""
+            raise ConfigError("KMP_DRC_MODE must be 'hierarchical' or 'flat', not %r%s" % (v, hint))
+        setv("drc_mode", mode, s or "default")
+
+        v, s = raw["job_timeout"]
+        try:
+            t = float(v) if v is not None else DEFAULT_JOB_TIMEOUT
+        except ValueError:
+            raise ConfigError("KMP_JOB_TIMEOUT must be a number of seconds, not %r" % v)
+        if not t > 0:
+            raise ConfigError("KMP_JOB_TIMEOUT must be positive")
+        setv("job_timeout", t, s or "default")
+
+        v, s = raw["netgen"]
+        if v is None:
+            v = shutil.which("netgen", path=env.get("PATH")) or "netgen"
+            s = "default (netgen on PATH)"
+        setv("netgen", os.path.expanduser(v), s)
+
+        v, s = raw["menu"]
+        setv("menu", _truthy(v, "KMP_MENU") if v is not None else True, s or "default")
+
         cfg._set_pdk(pdk or primary, pdk_source="argument" if pdk else cfg._primary_source)
         return cfg
 
     # -- per-PDK settings -------------------------------------------------------
 
     def _pdk_value(self, pdk, key):
-        """(value, source) of a per-PDK key (magicrc, manifest) for ``pdk``:
+        """(value, source) of a per-PDK key (magicrc, manifest, netgen_setup)
+        for ``pdk``:
         KMP_<KEY>_<PDK>, then [kmp:<pdk>], then the unqualified KMP_<KEY> or
         [kmp] <key> when ``pdk`` is the one KMP_PDK names."""
         var = "KMP_%s_%s" % (key.upper(), pdk_env_suffix(pdk))
@@ -275,6 +336,12 @@ class Config:
         v, s = self._pdk_value(pdk, "manifest")
         self.manifest = os.path.expanduser(v) if v else shipped_manifest(pdk)
         self.sources["manifest"] = s or "default (shipped)"
+        v, s = self._pdk_value(pdk, "netgen_setup")
+        if v is None:
+            v = default_netgen_setup(self.pdk_root, pdk)
+            s = "default ($PDK_ROOT/<pdk>/libs.tech/netgen/<pdk>_setup.tcl)"
+        self.netgen_setup = os.path.expanduser(v)
+        self.sources["netgen_setup"] = s
 
     def for_pdk(self, pdk):
         """A copy of these settings for another PDK."""
@@ -309,10 +376,26 @@ class Config:
                        % (self.pdk, self.manifest, pdk_env_suffix(self.pdk)))
         return out
 
+    def job_problems(self):
+        """What the jobs need beyond the PCells: netgen and the PDK's netgen
+        setup file (LVS only). Kept out of problems(), which decides whether
+        a PDK's library registers."""
+        out = []
+        exe = self.netgen if os.sep in self.netgen else shutil.which(
+            self.netgen, path=self._env.get("PATH"))
+        if not (exe and os.path.isfile(exe) and os.access(exe, os.X_OK)):
+            out.append("netgen not found at %s (set KMP_NETGEN, or put netgen on PATH); "
+                       "LVS needs it" % self.netgen)
+        if not os.path.isfile(self.netgen_setup):
+            out.append("netgen setup file for %s not found at %s (set KMP_NETGEN_SETUP_%s); "
+                       "LVS needs it" % (self.pdk, self.netgen_setup, pdk_env_suffix(self.pdk)))
+        return out
+
     def describe(self):
         rows = []
         for name in ("magic", "pdk_root", "pdks", "pdk", "magicrc", "cache_dir", "cache_enabled",
-                     "backend", "timeout", "lazy", "manifest", "log"):
+                     "backend", "timeout", "lazy", "manifest", "log", "drc_style", "drc_mode",
+                     "job_timeout", "netgen", "netgen_setup", "menu"):
             val = getattr(self, name)
             if name == "pdks":
                 val = ", ".join(val) or "(none)"

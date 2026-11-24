@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <klayout-macro>
- <description>klayout_magic_pcells: register the Magic-backed PCell libraries (one per installed PDK)</description>
+ <description>klayout_magic_pcells: register the Magic-backed PCell libraries (one per installed PDK) and the Magic menu</description>
  <version/>
  <category>pymacros</category>
  <prolog/>
@@ -26,5 +26,15 @@ if _py not in sys.path:
 
 import klayout_magic_pcells
 klayout_magic_pcells.register()
+
+# The Magic menu (DRC, extraction, LVS, the layer and port checks) and the
+# recipe behind the Marker Database Browser's Rerun button. The menu needs a
+# main window (none under -b); KMP_MENU=0 leaves it out.
+try:
+    from klayout_magic_pcells import gui as _kmp_gui
+    _kmp_gui.install_menu()
+    _kmp_gui.register_recipe()
+except Exception as _e:
+    klayout_magic_pcells._log_error("klayout_magic_pcells: the Magic menu failed: %s" % _e)
 </text>
 </klayout-macro>

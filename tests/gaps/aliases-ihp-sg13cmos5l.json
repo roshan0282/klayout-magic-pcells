@@ -1,0 +1,106 @@
+{
+ "pdk": "ihp-sg13cmos5l",
+ "about": "Hand-made mappings for the ihp-sg13cmos5l gap table (GAPS-ihp-sg13cmos5l section 1). Keys are the IHP rule IDs, as both sides name them.",
+ "magic": {
+  "split": {
+   "pSD.e/f": [
+    "pSD.e",
+    "pSD.f"
+   ]
+  },
+  "ids": {
+   "Cnd.d": "Cnt.d"
+  },
+  "lines": {
+   "ihp-sg13cmos5l-drc.tech:79": [
+    "PWB.b"
+   ],
+   "ihp-sg13cmos5l-drc.tech:88": [
+    "PWB.f1"
+   ]
+  },
+  "why": [
+   [
+    "angles permitted on metal\\d \\(Grid Rules\\)$",
+    "grid.Angle45"
+   ],
+   [
+    "^MiM cap must be rectangular",
+    "MIM.rect"
+   ],
+   [
+    "\\(npn13G2\\)$",
+    "npn13G2.w"
+   ],
+   [
+    "\\(npn13G2L\\)$",
+    "npn13G2L.w"
+   ],
+   [
+    "\\(npn13G2V\\)$",
+    "npn13G2V.w"
+   ]
+  ]
+ },
+ "klayout": {
+  "*": {
+   "patterns": [
+    [
+     "^.+_Offgrid$",
+     "grid.Offgrid"
+    ],
+    [
+     "^.+_Acute$",
+     "grid.Acute"
+    ],
+    [
+     "^.+_Angle45$",
+     "grid.Angle45"
+    ],
+    [
+     "^.+_Angle90$",
+     "grid.Angle90"
+    ],
+    [
+     "^forbidden\\..+$",
+     "forbidden.*"
+    ],
+    [
+     "^CMOS5L\\.FORB\\..+$",
+     "CMOS5L.FORB.*"
+    ],
+    [
+     "^M\\dFil\\.(.+)$",
+     "MFil.\\1"
+    ],
+    [
+     "^(Seal\\.[a-z][0-9]?)_.+$",
+     "\\1"
+    ],
+    [
+     "^(Pad\\.fR)_.+$",
+     "\\1"
+    ],
+    [
+     "^(Slt\\.[a-z][0-9]?)\\.(M\\d|TM\\d)$",
+     "\\1"
+    ],
+    [
+     "^([A-Za-z0-9]+\\.[a-z][0-9]?)\\.(dig|digibnd|Digi|SRAM|N_Activ|nBuLay|nSD_block|NWell|PWell_block|dfPad|Passiv)$",
+     "\\1"
+    ]
+   ]
+  }
+ },
+ "status": {},
+ "parts": [
+  {
+   "name": "Front end, Metal1, Via1, grid, pins",
+   "match": "^(NW|PWB|NBL|NBLB|nmosi|Act|TGO|Gat|pSD|nSDB|EXTB|Cnt|CntB|Sal|Rsil|Rppd|Rhi|LU|M1|V1|grid|Pin|x|forbidden|CMOS5L)\\.|^(exact_overlap|no_overlap|forbidden\\.\\*|CMOS5L\\.FORB\\.\\*)$|Grid Rules"
+  },
+  {
+   "name": "Other layers",
+   "match": ".*"
+  }
+ ]
+}

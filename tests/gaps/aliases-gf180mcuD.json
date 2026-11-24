@@ -1,0 +1,143 @@
+{
+ "pdk": "gf180mcuD",
+ "about": "Hand-made mappings for the gf180mcuD gap table (GAPS-gf180mcuD 1). Keys are the KLayout deck's rule IDs without the _LV/_MV suffix; Magic's older numbers are mapped onto them line by line.",
+ "magic": {
+  "split": {
+   "PRES/LRES.2": [
+    "PRES.2",
+    "LRES.2"
+   ],
+   "PRES/LRES.3": [
+    "PRES.3",
+    "LRES.3"
+   ],
+   "PRES/LRES.4": [
+    "PRES.4",
+    "LRES.4"
+   ],
+   "PRES/LRES/HRES.7": [
+    "PRES.7",
+    "LRES.7",
+    "HRES.7"
+   ]
+  },
+  "lines": {
+   "gf180mcuD.tech:2761": [
+    "DF.16"
+   ],
+   "gf180mcuD.tech:2763": [
+    "DF.16"
+   ],
+   "gf180mcuD.tech:2769": [
+    "DF.17"
+   ],
+   "gf180mcuD.tech:2771": [
+    "DF.17"
+   ],
+   "gf180mcuD.tech:2775": [
+    "DF.4d"
+   ],
+   "gf180mcuD.tech:2777": [
+    "DF.4d"
+   ],
+   "gf180mcuD.tech:2779": [
+    "DF.4c"
+   ],
+   "gf180mcuD.tech:2781": [
+    "DF.4c"
+   ],
+   "gf180mcuD.tech:2729": [
+    "NW.6"
+   ],
+   "gf180mcuD.tech:3086": [
+    "NAT.4"
+   ],
+   "gf180mcuD.tech:3088": [
+    "NAT.5"
+   ]
+  }
+ },
+ "klayout": {
+  "*": {
+   "names": {
+    "V1.3a": [
+     "V1.3"
+    ],
+    "V1.3c": [
+     "V1.3"
+    ],
+    "V1.3d": [
+     "V1.3"
+    ],
+    "V1.4a": [
+     "V1.4"
+    ],
+    "V1.4b": [
+     "V1.4"
+    ],
+    "V1.4c": [
+     "V1.4"
+    ],
+    "CO.6a": [
+     "CO.6"
+    ],
+    "CO.6b": [
+     "CO.6"
+    ]
+   },
+   "patterns": [
+    [
+     "^.+_OFFGRID$",
+     "OFFGRID (per layer)"
+    ],
+    [
+     "^.+_ACUTE$",
+     "ACUTE (per layer)"
+    ],
+    [
+     "^(.+)_(LV|MV)$",
+     "\\1"
+    ]
+   ],
+   "other_check": {
+    "PL.6": "no 90° bends of poly on COMP; Magic's PL.6 allows only 45° on transistors (GAPS-gf180mcuD 1, 'related, different checks')"
+   }
+  }
+ },
+ "status": {
+  "PP.8a": {
+   "status": "measured on other shapes",
+   "note": "Magic checks the PPLUS it generates (tech:1407-1420), KLayout the drawn PPLUS (GAPS-gf180mcuD 1)"
+  },
+  "NP.8a": {
+   "status": "measured on other shapes",
+   "note": "Magic checks the NPLUS it generates (tech:1407-1420), KLayout the drawn NPLUS (GAPS-gf180mcuD 1)"
+  },
+  "CO.3": {
+   "status": "both",
+   "note": "Magic grows each contact by 0.005 µm per side when it reads it (a 0.22 µm cut becomes a 0.23 µm contact area, GAPS-gf180mcuD 1), so its 0.065 µm is 0.07 µm from the cut"
+  },
+  "CO.4": {
+   "status": "both",
+   "note": "Magic grows each contact by 0.005 µm per side when it reads it (a 0.22 µm cut becomes a 0.23 µm contact area, GAPS-gf180mcuD 1), so its 0.065 µm is 0.07 µm from the cut"
+  },
+  "CO.6": {
+   "status": "both",
+   "note": "Magic's directional overlap (tech:2885, 2906) is 0.055 µm from its contact area, 0.06 µm from the cut, as KLayout's CO.6a; both decks agreed on the two CO.6 cases (GAPS-gf180mcuD 1)"
+  }
+ },
+ "parts": [
+  {
+   "name": "Grid and angle checks",
+   "match": "^(OFFGRID|ACUTE) "
+  },
+  {
+   "name": "Upper metals, vias and MIM",
+   "match": "^(M[2-5]\\.|MT\\.|V[2-4]\\.|VT\\.|MIM|DM[2-5]\\.|MSLOT[2-5]\\.)"
+  },
+  {
+   "name": "Wells to via1",
+   "match": ".*"
+  }
+ ]
+}

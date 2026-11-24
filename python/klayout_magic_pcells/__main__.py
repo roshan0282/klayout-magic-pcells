@@ -4,14 +4,32 @@
   check DEVICE [k=v ...]               run Magic's _check once and show what it changes
   generate DEVICE [k=v ...] -o out.gds place one PCell variant and write a file
   audit FILE [--regen]                 report the Magic-generated cells in a file
-  cache {stats,prune,clear}            the disk cache (prune: the selected PDKs' old entries)
+  cache {stats,prune,clear}            the disk cache and the job directories
   devices [-v]                         list the PCells and their parameters
+
+Checks that run Magic (and netgen) on a layout file:
+
+  drc FILE [--cell C]... [--style S] [--mode hierarchical|flat] [--box L,B,R,T]
+      [-o OUT.lyrdb] [--tsv OUT.tsv] [--no-cache]
+  extract FILE [--cell C] [--caps] [--flatglob] [--ports-from-labels] [-o OUT.spice]
+      [--rdb OUT.lyrdb] [--no-cache]
+  lvs FILE --schematic SCH [--schematic-cell C] [--cell C] [--flatglob] [--ports-from-labels]
+      [-o OUT.lyrdb] [--report OUT.txt] [--json OUT.json] [--no-cache]
+  layers FILE [--cell C] [-o OUT.lyrdb] [--json OUT.json] [--no-cache]
+  ports FILE [--cell C] [--magic] [-o OUT.lyrdb] [--json OUT.json]
+
+--cell defaults to the file's one top cell. The PDK comes from --pdk, else
+the layout's technology, its PCell libraries, KMP_PDKS when it selects one
+PDK, and last the PDK variable as a guess. Exit status: 0 when the check
+finds nothing, 1 when it finds something, 2 when the input or a job fails.
 
 A device is found in the manifests of the selected PDKs (KMP_PDKS); a name
 that more than one PDK has (rm1) needs --pdk.
 """
 
 import argparse
+import importlib
+import importlib.util
 import json
 import os
 import sys
@@ -85,12 +103,16 @@ def cmd_doctor(args):
         return 2
     print("configuration (config file: %s)" % (base.config_file or "none"))
     for name, val, src in base.describe():
-        if name in ("pdk", "magicrc", "manifest"):
+        if name in ("pdk", "magicrc", "manifest", "netgen_setup"):
             continue
         print("  %-14s %-60s %s" % (name, val, src))
     for p, why in base.pdk_errors.items():
         ok = False
         print("PROBLEM: %s" % why)
+    netgen_problems = [p for p in base.job_problems() if p.startswith("netgen not found")]
+    for p in netgen_problems:
+        ok = False
+        print("PROBLEM: " + p)
     try:
         import klayout.db as kdb
         print("klayout module %s" % getattr(kdb, "__version__", "?"))
@@ -103,8 +125,12 @@ def cmd_doctor(args):
     for pdk in pdks:
         cfg = base.for_pdk(pdk)
         print("\n%s -> library %s" % (pdk, cfg.library_name))
-        for name in ("magicrc", "manifest"):
+        for name in ("magicrc", "manifest", "netgen_setup"):
             print("  %-14s %-60s %s" % (name, getattr(cfg, name), cfg.sources.get(name, "")))
+        for p in cfg.job_problems():
+            if p not in netgen_problems:
+                ok = False
+                print("PROBLEM: " + p)
         probs = cfg.problems()
         for p in probs:
             ok = False
@@ -299,12 +325,13 @@ def cmd_audit(args):
 
 def cmd_cache(args):
     from .backend import MagicServer
-    from .cache import GdsCache, versions_fields
+    from .cache import GdsCache, prune_jobs, versions_fields
+    from .jobs import job_fingerprint
     from .manifest import Manifest
     base = _cfg(args.pdk)
     if args.action == "clear":
         GdsCache(base.cache_dir, {}, enabled=True).clear()
-        print("cleared %s" % base.cache_dir)
+        print("cleared %s (entries and job directories)" % base.cache_dir)
         return 0
     # The current versions directory of each PDK this command works on
     # (--pdk, else KMP_PDKS); prune keeps those and leaves other PDKs alone.
@@ -331,7 +358,10 @@ def cmd_cache(args):
         for d, pdk in sorted(other.items()):
             print("kept %s: entries of %s, which this prune doesn't work on (it works on %s; "
                   "use --pdk %s, or KMP_PDKS)" % (d, pdk, ", ".join(sorted(current)), pdk))
-    st = caches[0][1].stats()
+        for d in prune_jobs(base.cache_dir, {p: job_fingerprint(base.for_pdk(p)) for p in current}):
+            print("removed %s" % d)
+    # Job directories: those of --pdk's PDK, else of every PDK.
+    st = caches[0][1].stats(pdks=[args.pdk] if args.pdk else None)
     st.update(root=base.cache_dir, current=current)
     print(json.dumps(st, indent=1))
     return 0
@@ -355,6 +385,178 @@ def cmd_devices(args):
                 for p in d.params:
                     print("      %-10s %-7s default %-8s %s" % (p.name, p.type, p.default, p.label))
     return 0
+
+
+# -- the checks that run Magic as a job --------------------------------------
+
+# The module that implements each job command (its cli_main(args, ctx)).
+FEATURES = {"drc": "drcjob", "extract": "lvsjob", "lvs": "lvsjob", "layers": "layercheck",
+            "ports": "portcheck"}
+
+
+class JobContext:
+    """What a job command's cli_main gets besides its arguments."""
+
+    def __init__(self, cfg, pdk, pdk_reason, layout, cells, file, data):
+        self.cfg = cfg
+        self.pdk = pdk
+        self.pdk_reason = pdk_reason
+        self.layout = layout
+        self.cells = cells
+        self.file = file
+        self.data = data
+
+
+def _load_pdk_data(pdk):
+    """The PDK's data file (pdkdata.load), or None while pdkdata.py isn't
+    built."""
+    if importlib.util.find_spec("klayout_magic_pcells.pdkdata") is None:
+        return None
+    from . import pdkdata
+    return pdkdata.load(pdk)
+
+
+def _feature_main(cmd):
+    """The command's cli_main, or None while its module isn't built."""
+    name = "klayout_magic_pcells." + FEATURES[cmd]
+    if importlib.util.find_spec(name) is None:
+        return None
+    return importlib.import_module(name).cli_main
+
+
+def _fail(msg):
+    sys.stderr.write("error: %s\n" % msg)
+    return 2
+
+
+def job_context(args):
+    """Read the file, check the cells, choose the PDK and load its data.
+    Returns a JobContext, or the exit status 2 after an error message."""
+    from .config import ConfigError
+    from .export import ExportError, load_layout, resolve_cells
+    from .pdkchoice import PdkChoiceError, choose_pdk
+    # An absolute path, so the RDB's rerun record (its generator) and job
+    # descriptions name the file wherever KLayout is started from.
+    args.file = os.path.abspath(args.file)
+    try:
+        layout = load_layout(args.file)
+    except ExportError as e:
+        return _fail(str(e))
+    names = args.cell if isinstance(args.cell, list) else ([args.cell] if args.cell else [])
+    try:
+        cells = resolve_cells(layout, names)
+    except ExportError as e:
+        if e.missing:
+            return _fail("; ".join("cell %s is not in %s" % (n, args.file) for n in e.missing))
+        return _fail("%s has %d top cells (%s); choose one with --cell"
+                     % (args.file, len(e.tops), ", ".join(e.tops)) if e.tops else str(e))
+    try:
+        base = _cfg()
+        pdk, reason = choose_pdk(layout, explicit=args.pdk, cfg=base)
+        cfg = base.for_pdk(pdk)
+    except PdkChoiceError as e:
+        return _fail("%s" % e)
+    except ConfigError as e:
+        return _fail("configuration: %s" % e)
+    if reason.startswith("a guess"):
+        sys.stderr.write("note: PDK %s, %s\n" % (pdk, reason))
+    try:
+        data = _load_pdk_data(pdk)
+    except Exception as e:
+        return _fail("no PDK data for %s: %s" % (pdk, e))
+    if args.cmd == "drc":
+        args.style = args.style or cfg.drc_style
+        args.mode = args.mode or cfg.drc_mode
+    return JobContext(cfg, pdk, reason, layout, cells, args.file, data)
+
+
+def cmd_job(args):
+    ctx = job_context(args)
+    if isinstance(ctx, int):
+        return ctx
+    fn = _feature_main(args.cmd)
+    if fn is None:
+        sys.stderr.write("%s: not built yet\n" % args.cmd)
+        return 2
+    return fn(args, ctx)
+
+
+def _box(text):
+    try:
+        v = [float(x) for x in text.split(",")]
+    except ValueError:
+        v = []
+    if len(v) != 4 or not (v[0] < v[2] and v[1] < v[3]):
+        raise argparse.ArgumentTypeError("expected L,B,R,T in um with L < R and B < T, not %r" % text)
+    return tuple(v)
+
+
+def _join_box(argv):
+    """``--box -0.592,0,1.592,1.5`` as ``--box=-0.592,0,1.592,1.5``:
+    argparse takes a value that starts with "-" for an option and stops
+    with "expected one argument"."""
+    out = list(argv)
+    for i in range(len(out) - 1):
+        nxt = out[i + 1]
+        if out[i] == "--box" and nxt.startswith("-"):
+            try:
+                ok = len([float(x) for x in nxt.split(",")]) == 4
+            except ValueError:
+                ok = False
+            if ok:
+                out[i:i + 2] = ["--box=" + nxt, None]
+    return [a for a in out if a is not None]
+
+
+NO_CACHE_HELP = ("run Magic again, as with KMP_CACHE=0: in a new directory under <cache>/jobs, "
+                 "removed afterwards (KMP_JOB_KEEP=1 keeps it)")
+
+
+def _add_job_commands(add):
+    p = add("drc", cmd_job)
+    p.add_argument("file")
+    p.add_argument("--cell", action="append", help="a cell to check (repeatable; default: the top cell)")
+    p.add_argument("--style", help="Magic's DRC style (default KMP_DRC_STYLE, drc(full))")
+    p.add_argument("--mode", choices=("hierarchical", "flat"),
+                   help="hierarchical (default, KMP_DRC_MODE): every cell, then the top cell; "
+                        "flat: Magic's verdict on the flattened mask")
+    p.add_argument("--box", type=_box, help="check this area only: L,B,R,T in um")
+    p.add_argument("-o", "--output", help="write the markers to this .lyrdb file")
+    p.add_argument("--tsv", help="write the error boxes to this file")
+    p.add_argument("--no-cache", dest="no_cache", action="store_true", help=NO_CACHE_HELP)
+    p = add("extract", cmd_job)
+    p.add_argument("file")
+    p.add_argument("--cell")
+    p.add_argument("--caps", action="store_true", help="with parasitic capacitance")
+    p.add_argument("--flatglob", action="store_true", help="flatten the plugin's __kmp_ cells")
+    p.add_argument("--ports-from-labels", dest="ports_from_labels", action="store_true")
+    p.add_argument("-o", "--output", help="write the netlist to this file (default: <cell>.magic.spice, "
+                                           "or <cell>.magic.pex.spice with --caps, beside the layout)")
+    p.add_argument("--rdb", help="write the report to this .lyrdb file")
+    p.add_argument("--no-cache", dest="no_cache", action="store_true", help=NO_CACHE_HELP)
+    p = add("lvs", cmd_job)
+    p.add_argument("file")
+    p.add_argument("--schematic", required=True, help="the schematic netlist (SPICE or CDL)")
+    p.add_argument("--schematic-cell", dest="schematic_cell")
+    p.add_argument("--cell")
+    p.add_argument("--flatglob", action="store_true", help="flatten the plugin's __kmp_ cells")
+    p.add_argument("--ports-from-labels", dest="ports_from_labels", action="store_true")
+    p.add_argument("-o", "--output", help="write the markers to this .lyrdb file")
+    p.add_argument("--report", help="write netgen's report to this file")
+    p.add_argument("--json", help="write the findings to this file")
+    p.add_argument("--no-cache", dest="no_cache", action="store_true", help=NO_CACHE_HELP)
+    p = add("layers", cmd_job)
+    p.add_argument("file")
+    p.add_argument("--cell")
+    p.add_argument("-o", "--output", help="write the markers to this .lyrdb file")
+    p.add_argument("--json", help="write the findings to this file")
+    p.add_argument("--no-cache", dest="no_cache", action="store_true", help=NO_CACHE_HELP)
+    p = add("ports", cmd_job)
+    p.add_argument("file")
+    p.add_argument("--cell")
+    p.add_argument("--magic", action="store_true", help="also extract with Magic and compare its ports")
+    p.add_argument("-o", "--output", help="write the markers to this .lyrdb file")
+    p.add_argument("--json", help="write the findings to this file")
 
 
 def main(argv=None):
@@ -384,7 +586,8 @@ def main(argv=None):
     p.add_argument("action", choices=("stats", "prune", "clear"))
     p = add("devices", cmd_devices)
     p.add_argument("-v", "--verbose", action="store_true")
-    args = ap.parse_args(argv)
+    _add_job_commands(add)
+    args = ap.parse_args(_join_box(sys.argv[1:] if argv is None else argv))
     return args.fn(args)
 
 

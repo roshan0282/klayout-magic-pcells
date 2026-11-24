@@ -115,5 +115,77 @@ class ConfigPrecedence(unittest.TestCase):
         self.assertIn("PDK_ROOT", text)
 
 
+class JobSettings(unittest.TestCase):
+    """The 0.6 settings: Magic DRC style and mode, the job timeout, netgen,
+    its per-PDK setup file and the menu."""
+
+    def test_defaults(self):
+        c = Config.load(env={"PATH": "/nonexistent", "HOME": "/h"}, config_path="/nonexistent.ini")
+        self.assertEqual(c.drc_style, "drc(full)")
+        self.assertEqual(c.drc_mode, "hierarchical")
+        self.assertEqual(c.job_timeout, 1800.0)
+        self.assertEqual(c.netgen, "netgen")
+        self.assertEqual(c.sources["netgen"], "default (netgen on PATH)")
+        self.assertTrue(c.menu)
+        self.assertEqual(c.netgen_setup, "/foss/pdks/sky130A/libs.tech/netgen/sky130A_setup.tcl")
+        g = c.for_pdk("ihp-sg13g2")
+        self.assertEqual(g.netgen_setup, "/foss/pdks/ihp-sg13g2/libs.tech/netgen/ihp-sg13g2_setup.tcl")
+        names = [r[0] for r in c.describe()]
+        for n in ("drc_style", "drc_mode", "job_timeout", "netgen", "netgen_setup", "menu"):
+            self.assertIn(n, names)
+
+    def test_netgen_on_path(self):
+        d = tempfile.mkdtemp()
+        exe = os.path.join(d, "netgen")
+        with open(exe, "w") as f:
+            f.write("#!/bin/sh\n")
+        os.chmod(exe, 0o755)
+        c = Config.load(env={"PATH": d, "HOME": "/h"}, config_path="/nope")
+        self.assertEqual(c.netgen, exe)
+        self.assertFalse([p for p in c.job_problems() if p.startswith("netgen not found")])
+
+    def test_env_beats_ini(self):
+        ini = write_ini("[kmp]\ndrc_style = drc(fast)\ndrc_mode = flat\njob_timeout = 60\nmenu = 0\n"
+                        "netgen = /ini/netgen\n")
+        c = Config.load(env={"HOME": "/h", "KMP_DRC_MODE": "hierarchical", "KMP_JOB_TIMEOUT": "5.5"},
+                        config_path=ini)
+        self.assertEqual((c.drc_style, c.drc_mode, c.job_timeout, c.menu, c.netgen),
+                         ("drc(fast)", "hierarchical", 5.5, False, "/ini/netgen"))
+        self.assertEqual(c.sources["drc_mode"], "env KMP_DRC_MODE")
+        self.assertIn("[kmp] drc_style", c.sources["drc_style"])
+        c = Config.load(env={"HOME": "/h", "KMP_DRC_STYLE": "drc(routing)", "KMP_MENU": "1"}, config_path=ini)
+        self.assertEqual((c.drc_style, c.drc_mode, c.menu), ("drc(routing)", "flat", True))
+
+    def test_per_pdk_netgen_setup(self):
+        ini = write_ini("[kmp]\npdks = sky130A, gf180mcuD, ihp-sg13g2\n"
+                        "[kmp:gf180mcuD]\nnetgen_setup = /ini/gf.tcl\n")
+        c = Config.load(env={"HOME": "/h", "KMP_NETGEN_SETUP_IHP_SG13G2": "/env/ihp.tcl",
+                             "KMP_NETGEN_SETUP": "/env/generic.tcl"}, config_path=ini)
+        self.assertEqual(c.netgen_setup, "/env/generic.tcl")   # unqualified: KMP_PDK's PDK only
+        self.assertEqual(c.for_pdk("gf180mcuD").netgen_setup, "/ini/gf.tcl")
+        self.assertIn("[kmp:gf180mcuD] netgen_setup", c.for_pdk("gf180mcuD").sources["netgen_setup"])
+        i = c.for_pdk("ihp-sg13g2")
+        self.assertEqual(i.netgen_setup, "/env/ihp.tcl")
+        self.assertEqual(i.sources["netgen_setup"], "env KMP_NETGEN_SETUP_IHP_SG13G2")
+
+    def test_bad_values(self):
+        for env in ({"KMP_DRC_MODE": "per-cell"}, {"KMP_DRC_MODE": "tiled"}, {"KMP_JOB_TIMEOUT": "0"},
+                    {"KMP_JOB_TIMEOUT": "later"}, {"KMP_JOB_TIMEOUT": "nan"}, {"KMP_MENU": "maybe"}):
+            env["HOME"] = "/h"
+            with self.assertRaises(ConfigError, msg=str(env)):
+                Config.load(env=env, config_path="/nope")
+        with self.assertRaises(ConfigError) as cm:
+            Config.load(env={"HOME": "/h", "KMP_DRC_MODE": "per-cell"}, config_path="/nope")
+        self.assertIn("hierarchical", str(cm.exception))
+
+    def test_missing_netgen_is_a_job_problem_only(self):
+        c = Config.load(env={"HOME": "/h", "KMP_NETGEN": "/no/netgen", "PDK_ROOT": "/no/pdks"},
+                        config_path="/nope")
+        text = " ".join(c.job_problems())
+        self.assertIn("KMP_NETGEN", text)
+        self.assertIn("KMP_NETGEN_SETUP_SKY130A", text)
+        self.assertNotIn("netgen", " ".join(c.problems()))
+
+
 if __name__ == "__main__":
     unittest.main()

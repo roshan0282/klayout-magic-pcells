@@ -8,6 +8,17 @@ and the entry is deleted so that Magic regenerates it. Each versions
 directory holds ``versions.json``, which names its PDK (prune works per
 PDK). ``<root>/tmp`` holds the files Magic is writing.
 
+``<root>/jobs/<pdk>/<kind>/<dir>/`` holds the jobs' directories (jobs.py):
+the job's input, Magic's output files and ``job.json``, which records the
+job's PDK, its state, the process that started it and the fingerprint of
+the versions it ran with. ``<dir>`` is the job's cache key, or
+``tmp-<random>`` for a run outside the job cache (``run-<random>`` in
+earlier 0.6 builds). ``clear`` deletes them, except those of a job still
+running; ``prune`` deletes those of the PDKs it works on whose fingerprint
+is not the current one, their tmp-* directories whose process has
+ended, and the ``lvs-<random>`` folders an LVS run leaves in a key's
+directory when its process ended before removing them.
+
 Another process may delete any of these while a session runs (``cache
 clear``, ``cache prune``, or the whole directory removed by hand): the
 session makes the directories again when it next writes, and an entry it
@@ -343,12 +354,16 @@ class GdsCache:
                 pass
 
     def clear(self, tmp_age=86400):
-        """Delete every entry of every PDK. A running session's files in
-        tmp (and Magic's run directories) are left; they go with it."""
+        """Delete every entry of every PDK, and every job directory. A
+        running session's files in tmp (and Magic's run directories) and a
+        running job's directory are left; they go with it."""
         shutil.rmtree(os.path.join(self.root, "v1"), ignore_errors=True)
         self._clean_tmp(tmp_age)
+        clear_jobs(self.root)
 
-    def stats(self):
+    def stats(self, pdks=None):
+        """Entries and versions directories of every PDK; job directories of
+        the PDKs in ``pdks`` (default: every PDK)."""
         n = size = 0
         for d in self.version_dirs():
             for dirpath, _, files in os.walk(d):
@@ -356,6 +371,157 @@ class GdsCache:
                     if fn.endswith(".gds"):
                         n += 1
                     size += os.path.getsize(os.path.join(dirpath, fn))
+        jobs = job_dirs(self.root, pdks)
         return {"entries": n, "bytes": size, "versions": len(self.version_dirs()),
                 "current": self.vdigest,
-                "pdk_of": {os.path.basename(d): self.pdk_of(d) for d in self.version_dirs()}}
+                "pdk_of": {os.path.basename(d): self.pdk_of(d) for d in self.version_dirs()},
+                "jobs": len(jobs), "jobs_bytes": sum(_tree_size(d) for d in jobs)}
+
+
+# -- job directories ------------------------------------------------------------
+
+JOBS = "jobs"
+JOB_META = "job.json"  # the same name as jobs.JOB_META (jobs.py imports this module)
+
+
+def _tree_size(path):
+    size = 0
+    for dirpath, _, files in os.walk(path):
+        for fn in files:
+            try:
+                size += os.path.getsize(os.path.join(dirpath, fn))
+            except OSError:
+                pass
+    return size
+
+
+TMP_PREFIXES = ("tmp-", "run-")  # jobs.TMP_PREFIX, and the run-* of earlier 0.6 builds
+LVS_PREFIX = "lvs-"              # an LVS run's folder inside a key's directory (lvsjob)
+OWNER_FILE = "kmp_owner.json"    # {"owner_pid": N} in such a folder
+
+
+def job_dirs(root, pdks=None):
+    """Every job directory, ``<root>/jobs/<pdk>/<kind>/<dir>``; with
+    ``pdks``, only those of these PDKs."""
+    out = []
+    top = os.path.join(root, JOBS)
+    for level1 in (sorted(os.listdir(top)) if os.path.isdir(top) else []):
+        p1 = os.path.join(top, level1)
+        if not os.path.isdir(p1) or (pdks is not None and level1 not in pdks):
+            continue
+        for level2 in sorted(os.listdir(p1)):
+            p2 = os.path.join(p1, level2)
+            if not os.path.isdir(p2):
+                continue
+            out += [os.path.join(p2, d) for d in sorted(os.listdir(p2))
+                    if os.path.isdir(os.path.join(p2, d))]
+    return out
+
+
+def read_job_meta(job_dir):
+    try:
+        with open(os.path.join(job_dir, JOB_META), encoding="utf-8") as f:
+            meta = json.load(f)
+        return meta if isinstance(meta, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _pid_alive(pid):
+    try:
+        with open("/proc/%d/status" % int(pid)) as f:
+            return "State:\tZ" not in f.read()
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def job_running(job_dir):
+    """True while the process that started the job still runs it."""
+    meta = read_job_meta(job_dir)
+    return bool(meta and meta.get("state") == "running" and _pid_alive(meta.get("owner_pid")))
+
+
+def clear_jobs(root):
+    """Delete every job directory except a running job's. Returns the
+    directories removed."""
+    removed = []
+    for d in job_dirs(root):
+        if job_running(d):
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+        removed.append(d)
+    return removed
+
+
+def is_tmp_job_dir(job_dir):
+    """A job directory outside the job cache (tmp-*, or run-* of earlier
+    0.6 builds)."""
+    return os.path.basename(os.path.normpath(job_dir)).startswith(TMP_PREFIXES)
+
+
+def _old(path, age, now):
+    try:
+        return now - os.path.getmtime(path) > age
+    except OSError:
+        return False
+
+
+def lvs_leftovers(job_dir, age=86400, now=None):
+    """The ``lvs-*`` folders in a key's directory whose LVS process has
+    ended (``kmp_owner.json``), or that have no readable owner file and are
+    older than ``age`` seconds."""
+    now = time.time() if now is None else now
+    out = []
+    try:
+        names = sorted(os.listdir(job_dir))
+    except OSError:
+        return out
+    for n in names:
+        p = os.path.join(job_dir, n)
+        if not (n.startswith(LVS_PREFIX) and os.path.isdir(p)):
+            continue
+        try:
+            with open(os.path.join(p, OWNER_FILE), encoding="utf-8") as f:
+                pid = json.load(f).get("owner_pid")
+        except (OSError, ValueError, AttributeError):
+            if _old(p, age, now):
+                out.append(p)
+            continue
+        if not _pid_alive(pid):
+            out.append(p)
+    return out
+
+
+def prune_jobs(root, current, age=86400):
+    """Delete the job directories of the PDKs in ``current`` ({pdk: the
+    current fingerprint, jobs.job_fingerprint}) that ran with another
+    fingerprint, their tmp-* directories whose process has ended (one whose
+    process still runs is that session's, which removes it), and any job
+    directory without a readable job.json older than ``age`` seconds. In
+    the key directories it keeps, it deletes the LVS runs' leftover
+    ``lvs-*`` folders (``lvs_leftovers``). A running job's directory and
+    other PDKs' are left. Returns the directories removed."""
+    removed = []
+    now = time.time()
+    for d in job_dirs(root):
+        if job_running(d):
+            continue
+        meta = read_job_meta(d)
+        if meta is None:
+            if not _old(d, age, now):
+                continue
+        else:
+            pdk = meta.get("pdk")
+            if pdk not in current:
+                continue
+            if is_tmp_job_dir(d):
+                if _pid_alive(meta.get("owner_pid")):
+                    continue
+            elif meta.get("fingerprint") == current[pdk]:
+                for left in lvs_leftovers(d, age, now):
+                    shutil.rmtree(left, ignore_errors=True)
+                    removed.append(left)
+                continue
+        shutil.rmtree(d, ignore_errors=True)
+        removed.append(d)
+    return removed

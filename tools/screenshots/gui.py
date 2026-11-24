@@ -10,6 +10,9 @@
 #            layout to $KMP_SHOT_WORK/guide-demo.gds
 #   reopen   opens that file again with the libraries registered
 #   defunct  opens it with KMP_PDKS=gf180mcuD, so sky130_magic is missing
+#   magic    the Magic menu on sky130A: every entry once on the case suite's
+#            layouts (magic_inputs.py builds them in $KMP_SHOT_WORK), Rerun,
+#            the PDK question, and Cancel of a long DRC
 #
 # Raw PNGs go to $KMP_SHOT_WORK/raw/. The macro drives the GUI through
 # qtdrive.py (Qt events and screen grabs from the macro) and ends KLayout
@@ -24,8 +27,8 @@ import sys
 import pya
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from qtdrive import (Canvas, Steps, app, dock, find, find1, global_rect, grab,  # noqa: E402
-                     hover, key, mw, toplevel, type_text, union)
+from qtdrive import (Again, Canvas, Steps, app, cls_of, dock, find, find1, global_rect,  # noqa: E402
+                     grab, hover, key, mw, toplevel, type_text, union)
 
 SESSION = os.environ.get("KMP_SHOT_SESSION", "main")
 WORK = os.environ.get("KMP_SHOT_WORK", "/work")
@@ -668,5 +671,456 @@ DEFUNCT = [
     (1500, reopen_grab), (800, log_text), (800, log_text2), (800, log_text3), (500, finish),
 ]
 
-steps = Steps({"main": MAIN, "reopen": REOPEN, "defunct": DEFUNCT}[SESSION], LOG, fail)
+
+
+
+# -- session magic --------------------------------------------------------------
+# The Magic menu on sky130A. magic_inputs.py has built the layouts; each
+# step that waits for a job raises Again until the job's message is up.
+
+CASES = os.path.join(WORK, "cases", "sky130A")
+BLOCK = os.path.join(WORK, "block250.gds")
+st = {}
+
+
+def kgui():
+    from klayout_magic_pcells import gui as kmp_gui
+    return kmp_gui
+
+
+def case(name):
+    with open(os.path.join(CASES, "cases.json")) as f:
+        for c in json.load(f)["cases"]:
+            if c["name"] == name:
+                return os.path.join(CASES, c["file"]), c["top"]
+    raise RuntimeError("no case %s in cases.json" % name)
+
+
+def open_layout(path, tech="sky130A", keep_default=False):
+    """Open ``path`` with ``tech``. With ``tech=None`` the technology is
+    blanked; with ``keep_default`` it stays what File > Open gives (sg13g2
+    in this image)."""
+    def step():
+        mw().load_layout(path, tech or "", 1)
+        v = view()
+        if not tech and not keep_default and v.active_cellview().layout().technology_name:
+            # The image's KLayout applies its initial technology (sg13g2)
+            # to a file opened without one.
+            v.active_cellview().technology = ""
+        v.max_hier()
+        v.zoom_fit()
+        cv = v.active_cellview()
+        st["file"], st["cell"] = path, cv.cell_name
+        notes.setdefault("opened", []).append({"file": path, "cell": cv.cell_name,
+                                               "technology": cv.layout().technology_name})
+    step.__name__ = "open_%s" % os.path.basename(path)
+    return step
+
+
+def trigger(name):
+    def step():
+        later(lambda: mw().menu().action("kmp_magic_menu." + name).trigger())
+    step.__name__ = "trigger_%s" % name
+    return step
+
+
+def tops_of(cls, name=None):
+    return [w for w in pya.QApplication.topLevelWidgets()
+            if w.isVisible() and cls_of(w) == cls and (name is None or w.objectName == name)]
+
+
+def wanted(name):
+    """The visible top-level widget ``name``, else wait."""
+    w = toplevel(name=name)
+    if w is None:
+        raise Again()
+    return w
+
+
+def menubar():
+    return find(mw(), cls="QMenuBar")[0]
+
+
+def menu_open():
+    window()
+    notes["menubar"] = [x.text for x in menubar().actions()]
+    notes["recipe_registered"] = kgui()._recipe is not None
+    menubar().setActiveAction([x for x in menubar().actions() if x.text == "Magic"][0])
+
+
+def menu_grab():
+    menus = tops_of("QMenu")
+    if not menus:
+        raise Again()
+    notes["menu_entries"] = [e.text for e in menus[0].actions()]
+    r = global_rect(menus[0])
+    shot("magic-menu", (0, 0, max(r[0] + r[2] + 60, 720), r[1] + r[3] + 30))
+
+
+def menu_close():
+    for m in tops_of("QMenu"):
+        key(m, pya.Qt.Key_Escape)
+    for m in tops_of("QMenu"):
+        m.hide()
+
+
+def message_box():
+    boxes = tops_of("QMessageBox", "kmp_message")
+    return boxes[0] if boxes else None
+
+
+def wait_message():
+    if kgui().running() or message_box() is None:
+        raise Again()
+
+
+def close_message(label):
+    def step():
+        m = message_box()
+        if m is None:
+            raise Again()
+        notes.setdefault("messages", {})[label] = m.text
+        [b for b in find(m, cls="QPushButton", visible=True)][0].click()
+    step.__name__ = "close_message_%s" % label
+    return step
+
+
+def browser():
+    return toplevel(name="MarkerBrowserDialog")
+
+
+def tree_rows(tv, maxdepth=3):
+    out = []
+    m = tv.model
+
+    def walk(parent, depth):
+        for r in range(m.rowCount(parent)):
+            idx = m.index(r, 0, parent)
+            out.append((depth, str(m.data(idx, 0)), idx))
+            if depth < maxdepth:
+                walk(idx, depth + 1)
+    walk(pya.QModelIndex(), 0)
+    return out
+
+
+def place_browser(label, select=()):
+    """Put the browser on the right, select the first category whose text
+    holds one of ``select`` and its first marker."""
+    def step():
+        b = browser()
+        if b is None:
+            raise Again()
+        # The main window to the left of the browser, so the markers it
+        # zooms to are in sight.
+        mw().resize(900, 900)
+        b.move(900, 0)
+        b.resize(540, 880)
+        trees = {tv.objectName: tv for tv in find(b, cls="QTreeView", visible=True)}
+        d = trees.get("directory_tree")
+        rows = tree_rows(d) if d is not None else []
+        if d is not None:
+            d.setColumnWidth(0, 260)
+        for want in select:
+            hit = [(depth, idx) for depth, text, idx in rows if want in text and depth > 0]
+            if hit:
+                d.expand(hit[0][1].parent())
+                d.setCurrentIndex(hit[0][1])
+                break
+        ml = trees.get("markers_list")
+        if ml is not None and ml.model.rowCount(pya.QModelIndex()) > 0:
+            # Every marker of the category: the browser zooms to fit them all.
+            ml.selectAll()
+        v = view()
+        r = v.rdb(v.num_rdbs() - 1)
+        notes.setdefault("browsers", {})[label] = {
+            "rows": [(depth, text) for depth, text, _ in rows][:50], "rdbs": v.num_rdbs(), "name": r.name(),
+            "generator": r.generator, "items": r.num_items(), "description": r.description}
+    step.__name__ = "place_browser_%s" % label
+    return step
+
+
+def grab_full(name):
+    def step():
+        shot(name)
+    step.__name__ = "grab_%s" % name
+    return step
+
+
+def grab_window(name, widget):
+    def step():
+        shot(name, global_rect(wanted(widget), 2))
+    step.__name__ = "grab_%s" % name
+    return step
+
+
+def close_browser():
+    """With the browser's own Close button: a browser hidden from outside
+    does not come back with the next show_rdb."""
+    b = browser()
+    if b is not None:
+        close = [x for x in find(b, cls="QPushButton", visible=True) if x.text.replace("&", "") == "Close"]
+        if close:
+            close[0].click()
+        else:
+            b.hide()
+    mw().resize(1440, 900)
+
+
+def drc_set(mode):
+    def step():
+        d = wanted("kmp_drc_dialog")
+        style = find1(d, name="style")
+        styles = [style.itemText(i) for i in range(style.count)]
+        notes["drc_styles"] = styles
+        style.currentIndex = styles.index("drc(full)")
+        find1(d, name="mode_" + mode).checked = True
+        find1(d, name="area").currentIndex = 0
+    step.__name__ = "drc_set_%s" % mode
+    return step
+
+
+def ok(name):
+    def step():
+        find1(wanted(name), name="ok").click()
+    step.__name__ = "ok_%s" % name
+    return step
+
+
+def cancel_dialog(name):
+    def step():
+        find1(wanted(name), name="cancel").click()
+    step.__name__ = "cancel_%s" % name
+    return step
+
+
+def rerun_click():
+    b = browser()
+    rb = find1(b, name="rerun_button")
+    v = view()
+    r = v.rdb(0)
+    st["before"] = {"rdbs": v.num_rdbs(), "generator": r.generator, "items": r.num_items()}
+    notes["rerun_button"] = {"enabled": rb.isEnabled(), "tip": rb.toolTip}
+    rb.click()
+
+
+def rerun_check():
+    v = view()
+    r = v.rdb(0)
+    notes["rerun"] = {"before": st["before"], "after": {"rdbs": v.num_rdbs(), "generator": r.generator,
+                                                        "items": r.num_items()},
+                      "same_generator": r.generator == st["before"]["generator"]}
+    if not notes["rerun"]["same_generator"] or v.num_rdbs() != st["before"]["rdbs"]:
+        raise RuntimeError("Rerun did not replace the database with one of the same generator: %r"
+                           % notes["rerun"])
+
+
+def zoom_part():
+    b = view().active_cellview().cell.dbbox()
+    view().zoom_box(pya.DBox(b.left, b.bottom, b.left + b.width() / 3, b.bottom + b.height() / 4))
+    notes["visible_box"] = str(view().box())
+
+
+def lvs_fill():
+    d = wanted("kmp_lvs_dialog")
+    find1(d, name="schematic").text = st["schematic"]
+    sub = find1(d, name="subckt")
+    notes["lvs_subckts"] = [sub.itemText(i) for i in range(sub.count)]
+    notes["lvs_subckt_chosen"] = sub.currentText
+
+
+def lvs_remembered():
+    d = wanted("kmp_lvs_dialog")
+    notes["lvs_remembered"] = {"dialog": find1(d, name="schematic").text,
+                               "state": kgui().State().lvs(st["file"], st["cell"])}
+    find1(d, name="cancel").click()
+
+
+def hide(name):
+    def step():
+        wanted(name).hide()
+    step.__name__ = "hide_%s" % name
+    return step
+
+
+def extract_caps():
+    find1(wanted("kmp_extract_dialog"), name="kind_caps").checked = True
+
+
+def place(name, x, y, w, h):
+    def step():
+        win = wanted(name)
+        win.move(x, y)
+        win.resize(w, h)
+        notes.setdefault("windows", {})[name] = win.windowTitle
+    step.__name__ = "place_%s" % name
+    return step
+
+
+def lvs_case():
+    path, top = case("inv_open_drain")
+    st["schematic"] = os.path.splitext(path)[0] + ".spice"
+    open_layout(path)()
+
+
+def pdk_note():
+    d = wanted("kmp_pdk_dialog")
+    combo = find1(d, name="pdk")
+    labels = [w.text for w in find(d, cls="QLabel", visible=True)]
+    notes["pdk_dialog"] = {"items": [combo.itemText(i) for i in range(combo.count)], "chosen": combo.currentText,
+                           "text": labels}
+    if combo.currentText != "sky130A":
+        raise RuntimeError("the PDK dialog preselects %s for a sky130A layout" % combo.currentText)
+    if not any("technology is sg13g2" in t for t in labels):
+        raise RuntimeError("the PDK dialog does not say the technology was set aside: %r" % labels)
+
+
+def md5(path):
+    import hashlib
+    with open(path, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+
+def plant_foreign():
+    """A <cell>.magic.spice the plugin did not write, beside the layout."""
+    path, top = case("inv_open_drain")
+    target = os.path.join(os.path.dirname(path), top + ".magic.spice")
+    with open(target, "w") as f:
+        f.write("* my own netlist of %s, not the plugin's\n.subckt %s A Y VPWR VGND\n.ends\n" % (top, top))
+    st["foreign"] = target
+    notes["extract_foreign"] = {"file": target, "md5_before": md5(target), "runs": []}
+
+
+def save_dialog_cancel(label):
+    def step():
+        d = wanted("kmp_netlist_save")
+        notes["extract_foreign"]["runs"].append({"run": label, "dialog": d.windowTitle,
+                                                  "md5": md5(st["foreign"])})
+        d.reject()
+    step.__name__ = "save_dialog_cancel_%s" % label
+    return step
+
+
+def foreign_check():
+    n = notes["extract_foreign"]
+    n["md5_after"] = md5(st["foreign"])
+    n["messages"] = [notes["messages"].get(k) for k in ("extract_foreign1", "extract_foreign2")]
+    if n["md5_after"] != n["md5_before"] or any(r["md5"] != n["md5_before"] for r in n["runs"]):
+        raise RuntimeError("Extract replaced %s, which the plugin did not write" % st["foreign"])
+    if not all(m and m.count("Not written: ") == 1 for m in n["messages"]):
+        raise RuntimeError("Extract did not say it refused %s: %r" % (st["foreign"], n["messages"]))
+
+
+def progress_up():
+    p = toplevel(name="kmp_progress")
+    runs = kgui().running()
+    if p is None or not runs:
+        raise Again()
+    job = getattr(runs[0].task, "_job", None)
+    st["pid"] = getattr(job, "pid", None) or job._proc.pid
+    notes["progress_label"] = p.labelText
+
+
+def question_box():
+    boxes = [b for b in tops_of("QMessageBox") if "still running" in b.text]
+    if not boxes:
+        raise Again()
+    return boxes[0]
+
+
+def question_grab():
+    q = question_box()
+    notes["question"] = q.text
+    shot("magic-one-job", global_rect(q, 2))
+
+
+def question_no():
+    q = question_box()
+    [b for b in find(q, cls="QPushButton", visible=True) if "No" in b.text][0].click()
+
+
+def progress_cancel():
+    p = wanted("kmp_progress")
+    notes["still_running_after_no"] = bool(kgui().running())
+    notes["progress_label_at_cancel"] = p.labelText
+    [b for b in find(p, cls="QPushButton", visible=True)][0].click()
+
+
+def cancel_check():
+    pid = st["pid"]
+    notes["cancel"] = {"pid": pid, "process_gone": not os.path.exists("/proc/%d" % pid),
+                       "running": len(kgui().running()), "message": message_box().text if message_box() else None}
+    if not notes["cancel"]["process_gone"]:
+        raise RuntimeError("Magic still runs after Cancel: pid %d" % pid)
+
+
+def ports_case():
+    open_layout(os.path.join(CASES, "inverters", "inv_texts_only.gds"))()
+
+
+MAGIC = [
+    (1500, window), (500, tips),
+    (300, lambda: open_layout(case("inv_base_all_h")[0])()), (1500, tips),
+    # the menu
+    (800, menu_open), (1200, menu_grab), (300, menu_close),
+    # Run Magic DRC... on inv_base_all_h (implants, well and markers in the parent), hierarchical
+    (500, trigger("run_drc")), (1200, drc_set("hierarchical")), (800, grab_window("magic-drc-dialog", "kmp_drc_dialog")),
+    (300, ok("kmp_drc_dialog")), (500, wait_message), (300, close_message("drc")),
+    (800, place_browser("drc", ("nwell", "diff/tap", "Magic DRC"))), (1500, grab_full("magic-drc-browser")),
+    # Rerun from the browser
+    (300, rerun_click), (500, wait_message), (300, close_message("rerun")), (300, rerun_check),
+    (300, close_browser),
+    # Check the visible area
+    (300, zoom_part), (800, trigger("drc_visible")), (500, wait_message), (300, close_message("drc_visible")),
+    (800, place_browser("drc_visible", ("Magic DRC",))), (1500, grab_full("magic-drc-visible")), (300, close_browser),
+    # LVS with netgen... on the broken hand inverter
+    (300, lvs_case), (1500, tips),
+    (500, trigger("lvs")), (1200, lvs_fill), (800, grab_window("magic-lvs-dialog", "kmp_lvs_dialog")),
+    (300, ok("kmp_lvs_dialog")), (500, wait_message), (300, close_message("lvs")),
+    (300, place("kmp_lvs_report", 0, 560, 690, 320)),
+    (800, place_browser("lvs", ("net only in the layout", "netgen"))), (1500, grab_full("magic-lvs-browser")),
+    (300, hide("kmp_lvs_report")), (300, close_browser),
+    (500, trigger("lvs")), (1200, lvs_remembered),
+    # Extract with Magic... with capacitance
+    (500, trigger("extract")), (1200, extract_caps), (800, grab_window("magic-extract-dialog", "kmp_extract_dialog")),
+    (300, ok("kmp_extract_dialog")), (500, wait_message), (300, close_message("extract")),
+    (300, place("kmp_netlist", 20, 60, 900, 560)), (1200, grab_window("magic-extract-netlist", "kmp_netlist")),
+    (300, hide("kmp_netlist")), (300, close_browser),
+    # Twice more, netlist only, with a <cell>.magic.spice the plugin did not write
+    (300, plant_foreign),
+    (500, trigger("extract")), (1200, ok("kmp_extract_dialog")), (500, wait_message),
+    (800, save_dialog_cancel("1")), (300, close_message("extract_foreign1")), (300, hide("kmp_netlist")),
+    (300, close_browser),
+    (500, trigger("extract")), (1200, ok("kmp_extract_dialog")), (500, wait_message),
+    (800, save_dialog_cancel("2")), (300, close_message("extract_foreign2")), (300, hide("kmp_netlist")),
+    (300, close_browser), (300, foreign_check),
+    # Check generated layers on the inverter without nsdm
+    (300, lambda: open_layout(case("a_no_nsdm")[0])()), (1500, tips),
+    (500, trigger("layers")), (500, wait_message), (300, close_message("layers")),
+    (800, place_browser("layers", ("F2", "F1"))), (1500, grab_full("magic-layers-browser")), (300, close_browser),
+    # Check ports on the texts without pin boxes
+    (300, ports_case), (1500, tips),
+    (500, trigger("ports")), (500, wait_message), (300, close_message("ports")),
+    (800, place_browser("ports", ("P2", "P1", "P4"))), (1500, grab_full("magic-ports-browser")), (300, close_browser),
+    # Rule differences and Settings
+    (500, trigger("gaps")), (300, place("kmp_gaps", 20, 40, 1200, 800)), (1500, grab_window("magic-gaps", "kmp_gaps")),
+    (300, hide("kmp_gaps")),
+    (500, trigger("settings")), (300, place("kmp_settings", 20, 40, 1300, 700)),
+    (1500, grab_window("magic-settings", "kmp_settings")), (300, hide("kmp_settings")),
+    # A sky130A layout under the technology sg13g2, which File > Open gives a
+    # plain GDS in this image: its layers set the technology aside, and the
+    # PDK question preselects sky130A
+    (300, lambda: open_layout(case("inv")[0], tech="sg13g2")()), (1500, tips),
+    (500, trigger("ports")), (1200, pdk_note), (500, grab_window("magic-pdk-choice", "kmp_pdk_dialog")),
+    (300, ok("kmp_pdk_dialog")), (500, wait_message), (300, close_message("ports_pdk_dialog")), (300, close_browser),
+    # Cancel a long DRC (the 250 um block, flat), and a second request meanwhile
+    (300, open_layout(BLOCK)), (2500, tips),
+    (500, trigger("run_drc")), (1200, drc_set("flat")), (300, ok("kmp_drc_dialog")),
+    (500, progress_up), (3000, grab_full("magic-progress")),
+    (300, trigger("ports")), (800, question_grab), (300, question_no),
+    (1000, progress_cancel), (500, wait_message), (300, cancel_check), (300, grab_full("magic-cancelled")),
+    (300, close_message("cancelled")),
+    (500, finish),
+]
+
+steps = Steps({"main": MAIN, "reopen": REOPEN, "defunct": DEFUNCT, "magic": MAGIC}[SESSION], LOG, fail)
 steps.start(2000)
