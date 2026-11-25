@@ -1,3 +1,9 @@
+> **Deprecated (Nov 25, 2026).** This fork is no longer developed. Its own packages (HW_FET, CC_ARRAY,
+> GUARD_RING/VIA_STACK, live DRC, the shared rule table) moved, with their history, to
+> [roshan0282/klayout-tools](https://github.com/roshan0282/klayout-tools), which installs next to
+> [uoftasic/klayout-magic-pcells](https://github.com/uoftasic/klayout-magic-pcells), the active home of the
+> Magic-backed device libraries. Use those two; `main` and the tags here stay as they were at v0.9.0.
+
 # klayout-magic-pcells
 
 KLayout PCell libraries whose cells are drawn by Magic's own device
