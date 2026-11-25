@@ -107,6 +107,7 @@ def place(layout, top, unit, grid, gap_x=0.0, gap_y=0.0, dummies="ring", rules=N
         lab_li = layout.layer(*rules["label_layer"])
         size = max(0.1, min(ub.width(), ub.height()) * 0.3)
     # origin: the array's lower-left unit bbox corner at (0, 0)
+    units = []
     for i2 in range(R2):
         for j2 in range(C2):
             i, j = i2 - ro, j2 - co
@@ -115,6 +116,7 @@ def place(layout, top, unit, grid, gap_x=0.0, gap_y=0.0, dummies="ring", rules=N
             x = j2 * px - ub.left
             y = (R2 - 1 - i2) * py - ub.bottom
             inst = top.insert(db.DCellInstArray(unit.cell_index(), db.DTrans(db.DVector(x, y))))
+            units.append({"row": i2, "col": j2, "device": dev, "origin": db.DVector(x, y)})
             inst.set_property(PROP_KEY, "device=%s;row=%d;col=%d" % (dev, i, j))
             if lab_li is not None:
                 c = db.DPoint(j2 * px + ub.width() / 2.0, (R2 - 1 - i2) * py + ub.height() / 2.0)
@@ -124,7 +126,7 @@ def place(layout, top, unit, grid, gap_x=0.0, gap_y=0.0, dummies="ring", rules=N
                 t.halign, t.valign = db.HAlign.HAlignCenter, db.VAlign.VAlignCenter
                 top.shapes(lab_li).insert(t)
     fills = fill_merge_layers(layout, top, rules) if rules else 0
-    return {"labels": lab_li is not None, "pitch": (px, py), "gap": (gap_x, gap_y), "rows": R2, "cols": C2, "fills": fills,
+    return {"units": units, "labels": lab_li is not None, "pitch": (px, py), "gap": (gap_x, gap_y), "rows": R2, "cols": C2, "fills": fills,
             "size": ((C2 - 1) * px + ub.width(), (R2 - 1) * py + ub.height()), "dbu": dbu}
 
 

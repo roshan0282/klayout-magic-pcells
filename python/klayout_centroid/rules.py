@@ -53,6 +53,19 @@ SKY130A = {
     # cap layer present in the unit -> (metal, its spacing then)
     "bottom_plates": {(89, 44): ((70, 20), 1.2),    # capm.2b  met3 bottom plates
                       (97, 44): ((71, 20), 1.2)},   # cap2m.2b met4 bottom plates
+    # the router's metal stack (um): via1 on met1 pins, met2 row tracks,
+    # via2 to met3 trunks. enc = all sides, enc2 = the larger enclosure on
+    # two opposite sides (via.4a/via.5a, m2.4/m2.5, via2.4/via2.5, m3.4)
+    "route": {
+        "met1": (68, 20), "via1": (68, 44), "met2": (69, 20), "via2": (69, 44), "met3": (70, 20),
+        "met3_label": (70, 5), "met3_pin": (70, 16), "diff": (65, 20), "poly": (66, 20),
+        "pin_labels": [(67, 5), (68, 5)],
+        "via1_size": 0.15, "via1_m1_enc": 0.055, "via1_m1_enc2": 0.085,
+        "met2_w": 0.30, "met2_s": 0.14,
+        "via2_size": 0.20, "via2_m2_enc2": 0.085,
+        "met3_w": 0.40, "met3_s": 0.30,
+        "trunk_margin": 0.50,
+    },
     # implants that must not overlap each other after filling
     "exclusive": [((93, 44), (94, 20))],
 }

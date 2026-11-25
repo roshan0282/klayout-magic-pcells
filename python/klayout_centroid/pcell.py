@@ -26,7 +26,11 @@ ERROR_LAYER = (255, 0)
 DUMMY_CHOICES = (("full ring of dummy units", "ring"), ("dummy columns left and right", "edge"),
                  ("none (only the grid's own . cells)", "none"))
 EDITABLE = ("unit", "unit_params", "devices", "style", "rows", "cols", "override", "dummies",
-            "gap_x", "gap_y", "seed", "labels")
+            "gap_x", "gap_y", "seed", "labels", "route", "source", "dummy_tie")
+ROUTE_CHOICES = (("no routing (place only)", "none"),
+                 ("met2 row tracks + met3 trunks (MOS units)", "tracks"))
+SOURCE_CHOICES = (("common source (pin S)", "common"), ("a source per device (pins <dev>_S)", "separate"))
+TIE_CHOICES = (("dummies off, tied to the source", "S"), ("dummies off, on their own pin DUM", "DUM"))
 
 
 FAMILY_ORDER = ("mos", "mim_cap", "varactor", "res", "diode", "fixed", "photodiode")
@@ -222,6 +226,9 @@ class CCArrayPCell(db.PCellDeclarationHelper):
         self.param("gap_x", self.TypeDouble, "Gap x between units (0 = DRC minimum)", default=0.0, unit="um")
         self.param("gap_y", self.TypeDouble, "Gap y between units (0 = DRC minimum)", default=0.0, unit="um")
         self.param("seed", self.TypeInt, "Seed (optimized style)", default=1)
+        self.param("route", self.TypeString, "Routing", default="none", choices=list(ROUTE_CHOICES))
+        self.param("source", self.TypeString, "Sources (routing)", default="common", choices=list(SOURCE_CHOICES))
+        self.param("dummy_tie", self.TypeString, "Dummies (routing)", default="S", choices=list(TIE_CHOICES))
         self.param("labels", self.TypeBoolean, "Label each unit with its device (text only, on a layer "
                    "no extraction reads)", default=True)
         self.param(LAST_UNIT, self.TypeString, "Unit the parameters were filled in for", default=DEFAULT_UNIT,
@@ -271,29 +278,11 @@ class CCArrayPCell(db.PCellDeclarationHelper):
             st.tooltip = str(e)
 
     def _unit_cell(self):
-        lib_name, name = split_unit(self.unit)
-        lib = db.Library.library_by_name(lib_name)
-        if lib is None:
-            raise PatternError("library %s is not registered (is klayout-magic-pcells installed, "
-                               "and its PDK in KMP_PDKS?)" % lib_name, "unit")
-        decl = lib.layout().pcell_declaration(name)
-        if decl is None:
-            raise PatternError("library %s has no PCell %s" % (lib_name, name), "unit")
-        params = parse_unit_params(self.unit_params, decl)
-        cell = self.layout.create_cell(name, lib_name, params)
-        if cell is None:
-            raise PatternError("could not create %s %s" % (lib_name, name), "unit")
-        return cell, lib_name
+        return unit_cell(self.layout, self.unit, self.unit_params)
 
     def produce_impl(self):
         try:
-            unit, lib_name = self._unit_cell()
-            bb = unit.dbbox()
-            aspect = (bb.width() / bb.height()) if bb.height() > 0 else 1.0
-            p = pattern_of(self._values(), aspect)
-            rules = rules_mod.for_library(lib_name)
-            place(self.layout, self.cell, unit, p.grid, self.gap_x, self.gap_y, self.dummies, rules,
-                  labels=self.labels)
+            draw(self.layout, self.cell, self._values())
         except Exception as e:
             _msg("error", "%s %s: not drawn: %s" % (LIBRARY_NAME, PCELL_NAME, e))
             try:
@@ -305,6 +294,40 @@ class CCArrayPCell(db.PCellDeclarationHelper):
             self.cell.shapes(li).insert(db.DBox(-0.5, -0.5, 0.5, 0.5))
             self.cell.shapes(li).insert(db.DText("CC_ERROR %s: %s" % (PCELL_NAME, " ".join(str(e).split())[:400]),
                                                  db.DTrans()))
+
+
+def unit_cell(layout, unit_value, unit_params):
+    """(unit cell variant in ``layout``, library name)."""
+    lib_name, name = split_unit(unit_value)
+    lib = db.Library.library_by_name(lib_name)
+    if lib is None:
+        raise PatternError("library %s is not registered (is klayout-magic-pcells installed, "
+                           "and its PDK in KMP_PDKS?)" % lib_name, "unit")
+    decl = lib.layout().pcell_declaration(name)
+    if decl is None:
+        raise PatternError("library %s has no PCell %s" % (lib_name, name), "unit")
+    params = parse_unit_params(unit_params, decl)
+    cell = layout.create_cell(name, lib_name, params)
+    if cell is None:
+        raise PatternError("could not create %s %s" % (lib_name, name), "unit")
+    return cell, lib_name
+
+
+def draw(layout, cell, v):
+    """Place (and route) a CC_ARRAY into ``cell`` from the parameter values
+    ``v`` (the EDITABLE names). Returns {"pattern", "placement", "route",
+    "unit", "unit_params"}; raises on values that can't be drawn."""
+    unit, lib_name = unit_cell(layout, v["unit"], v["unit_params"])
+    bb = unit.dbbox()
+    aspect = (bb.width() / bb.height()) if bb.height() > 0 else 1.0
+    p = pattern_of(v, aspect)
+    rules = rules_mod.for_library(lib_name)
+    info = place(layout, cell, unit, p.grid, v["gap_x"], v["gap_y"], v["dummies"], rules, labels=v["labels"])
+    rinfo = None
+    if v.get("route", "none") != "none":
+        from .router import route
+        rinfo = route(layout, cell, unit, info["units"], rules, v.get("source", "common"), v.get("dummy_tie", "S"))
+    return {"pattern": p, "placement": info, "route": rinfo, "unit": unit, "lib": lib_name}
 
 
 class CentroidLibrary(db.Library):
