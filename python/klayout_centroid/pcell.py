@@ -340,15 +340,23 @@ class CentroidLibrary(db.Library):
 
 
 _library = None
+_unit_libs = None
+
+
+def _registered_unit_libs():
+    return tuple(lib for lib in rules_mod.LIBRARY_PDK if db.Library.library_by_name(lib) is not None)
 
 
 def register():
-    """Register the ``centroid`` library (idempotent). The unit-cell
-    libraries are looked up when an array is drawn, so the order of
-    registration doesn't matter."""
-    global _library
-    if _library is not None and db.Library.library_by_name(LIBRARY_NAME) is not None:
+    """Register the ``centroid`` library. Idempotent while the set of
+    registered *_magic libraries stays the same; when it changes (a PDK's
+    library registered later), the library is made again so that the unit
+    dropdown lists every registered PDK's devices."""
+    global _library, _unit_libs
+    libs = _registered_unit_libs()
+    if _library is not None and db.Library.library_by_name(LIBRARY_NAME) is not None and libs == _unit_libs:
         return _library
+    _unit_libs = libs
     try:
         _library = CentroidLibrary()
     except Exception as e:

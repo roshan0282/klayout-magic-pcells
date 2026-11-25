@@ -70,7 +70,30 @@ SKY130A = {
     "exclusive": [((93, 44), (94, 20))],
 }
 
-PDKS = {"sky130A": SKY130A}
+# gf180mcuD (GF180MCU design rule manual; checked by tests/centroid against
+# gf180mcu.drc and Magic). Metals use the larger spacing of wide metal.
+# No label layer: there is no layer that extraction is known to ignore yet,
+# so device labels are left out on gf180.
+GF180MCUD = {
+    "grid": 0.005,
+    "layers": {
+        (22, 0): (0.28, "keep"),     # COMP      DF.3a
+        (30, 0): (0.24, "keep"),     # Poly2     PL.3a
+        (33, 0): (0.25, "keep"),     # Contact   CO.2a
+        (34, 0): (0.30, "keep"),     # Metal1    M1.2a 0.23 (0.3 when wide)
+        (35, 0): (0.26, "keep"),     # Via1      V1.2a
+        (36, 0): (0.30, "keep"),     # Metal2    M2.2a 0.28
+        (38, 0): (0.26, "keep"),     # Via2
+        (42, 0): (0.30, "keep"),     # Metal3
+        (21, 0): (0.60, "merge"),    # Nwell     NW.2a (same potential)
+        (32, 0): (0.40, "merge"),    # Nplus     NP.2
+        (31, 0): (0.40, "merge"),    # Pplus     PP.2
+        (55, 0): (0.44, "merge"),    # Dualgate  DV.2
+    },
+    "exclusive": [((32, 0), (31, 0))],
+}
+
+PDKS = {"sky130A": SKY130A, "gf180mcuD": GF180MCUD}
 
 # which PDK a unit-cell library belongs to
 LIBRARY_PDK = {"sky130_magic": "sky130A", "gf180mcu_magic": "gf180mcuD", "sg13g2_magic": "ihp-sg13g2",

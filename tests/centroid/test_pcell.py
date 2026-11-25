@@ -121,7 +121,7 @@ class TestPlacement(unittest.TestCase):
         self.assertIn("sky130_magic/sky130_fd_pr__nfet_01v8", values)
         self.assertIn("sky130_magic/sky130_fd_pr__cap_mim_m3_1", values)
         self.assertFalse(any("via" in v.split("/")[1] for v in values))     # no box-paint generators
-        self.assertTrue(labels[0].startswith("MOS: "), labels[0])           # MOS devices first
+        self.assertIn("MOS: ", labels[0])            # MOS devices first (with a PDK prefix when several)
         self.assertEqual(pcell.suggested_params("sky130_magic/sky130_fd_pr__nfet_01v8"), "w=1 l=0.5 nf=2 guard=1")
         self.assertIn("w=", pcell.suggested_params("sky130_magic/sky130_fd_pr__cap_mim_m3_1"))
         # picking another unit in the form (coerce) offers its parameters,
