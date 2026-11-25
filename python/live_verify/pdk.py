@@ -2,26 +2,27 @@
 
 import os
 
+import pdk_rules
+
 PDK_ROOT = os.environ.get("PDK_ROOT", "/foss/pdks")
 
-# tier 0: (layer, datatype): (name, min width, min space); sky130A_mr.drc values
-TIER0 = {
-    "sky130A": {
-        (64, 20): ("nwell", 0.84, 1.27), (65, 20): ("diff", 0.15, 0.27), (65, 44): ("tap", 0.15, 0.27),
-        (66, 20): ("poly", 0.15, 0.21), (66, 44): ("licon", 0.17, 0.17), (67, 20): ("li", 0.17, 0.17),
-        (67, 44): ("mcon", 0.17, 0.19), (68, 20): ("met1", 0.14, 0.14), (68, 44): ("via", 0.15, 0.17),
-        (69, 20): ("met2", 0.14, 0.14), (69, 44): ("via2", 0.20, 0.20), (70, 20): ("met3", 0.30, 0.30),
-        (70, 44): ("via3", 0.20, 0.20), (71, 20): ("met4", 0.30, 0.30), (71, 44): ("via4", 0.80, 0.80),
-        (72, 20): ("met5", 1.60, 1.60),
-    },
-    # GF180MCU 3.3 V values (DF.1a/3a, PL.1/3a, CO.1/2a, M1.1/2a, V1, M2...)
-    "gf180mcuD": {
-        (21, 0): ("Nwell", 0.86, 0.60), (22, 0): ("COMP", 0.22, 0.28), (30, 0): ("Poly2", 0.18, 0.24),
-        (33, 0): ("Contact", 0.22, 0.25), (34, 0): ("Metal1", 0.23, 0.23), (35, 0): ("Via1", 0.26, 0.26),
-        (36, 0): ("Metal2", 0.28, 0.28), (38, 0): ("Via2", 0.26, 0.26), (42, 0): ("Metal3", 0.28, 0.28),
-        (40, 0): ("Via3", 0.26, 0.26), (46, 0): ("Metal4", 0.28, 0.28),
-    },
+# tier 0: (layer, datatype): (name, min width, min space), from the shared
+# rule table pdk_rules. The names are the ones the markers show.
+_TIER0_LAYERS = {
+    "sky130A": [(n, n) for n in ("nwell", "diff", "tap", "poly", "licon", "li", "mcon", "met1", "via", "met2",
+                                 "via2", "met3", "via3", "met4", "via4", "met5")],
+    "gf180mcuD": [("nwell", "Nwell"), ("comp", "COMP"), ("poly2", "Poly2"), ("contact", "Contact"),
+                  ("metal1", "Metal1"), ("via1", "Via1"), ("metal2", "Metal2"), ("via2", "Via2"),
+                  ("metal3", "Metal3"), ("via3", "Via3"), ("metal4", "Metal4")],
 }
+
+
+def _tier0(pdk):
+    t = pdk_rules.get(pdk)
+    return {t.layer(n): (shown,) + t.width_space(n) for n, shown in _TIER0_LAYERS[pdk]}
+
+
+TIER0 = {p: _tier0(p) for p in _TIER0_LAYERS}
 
 # (deck under the PDK, its top-cell variable, {variable: value})
 DECKS = {

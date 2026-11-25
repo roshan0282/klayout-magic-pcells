@@ -54,7 +54,7 @@ A via stack from any metal to any higher one (li, met1 to met5).
   enclosures on all sides.
 - **EM limits.** sky130A has no EM table here. The open PDK publishes the
   guideline (rule x.4) but no numbers, so a current needs **EM limit per
-  cut**. The table `em_ma_per_cut` in `python/klayout_gen/rules.py` is
+  cut**. The table `EM_MA_PER_CUT` in `python/pdk_rules/sky130A.py` is
   where the foundry's values go.
 - **Result line.** It shows the size and every cut array.
 
@@ -66,7 +66,7 @@ Checked by `tests/gen/test_via_stack.py`: li–met1, met1–met2, li–met5, a
 
 `gf180mcu_gen` has the same two PCells:
 
-- **Rules.** They are in `rules.py` (`GF180MCUD`): COMP 0.22/0.28,
+- **Rules.** They are in the shared table `python/pdk_rules/gf180mcuD.py`: COMP 0.22/0.28,
   Contact 0.22 at 0.25 with 0.07 COMP enclosure, Nplus/Pplus 0.16 around
   COMP, n-well 0.12 around an n-tap and at least 0.86 wide, Metal1-4 and
   Via1-3.

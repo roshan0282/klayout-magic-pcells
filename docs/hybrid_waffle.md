@@ -4,7 +4,7 @@
 Yoo, Chang, Trescases and Ng, "High Performance Low-Voltage Power MOSFETs
 with Hybrid Waffle Layout Structure in a 0.25 um Standard CMOS Process"
 (ISPSD 2008), Fig. 3(a). It is drawn from raw layers with the rule table in
-`rules.py`. Drawing needs only KLayout; verification uses the PDK's KLayout
+`rules.py` (built from the shared table `pdk_rules`). Drawing needs only KLayout; verification uses the PDK's KLayout
 deck, Magic and netgen. [guide-power.md](guide-power.md) covers the
 `HW_FET` PCell, the command line and the plugin.
 
@@ -124,7 +124,9 @@ it matters next to the 45 degree edges.
 
 ## The rule table
 
-`rules.py` holds every value, each with its source in the installed PDK:
+The values live in the shared table `python/pdk_rules/sky130A.py` (see
+[rule-table.md](rule-table.md)); `rules.py` picks the waffle's rules from it
+in nm. Each value has its source in the installed PDK:
 the KLayout deck `sky130A_mr.drc`, or Magic's `sky130A.tech` (for rules the
 deck doesn't check, and for npc and the implants, which Magic generates).
 The values given in the spec were checked against both. These were

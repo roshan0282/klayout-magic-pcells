@@ -7,90 +7,78 @@ mode "merge": shapes of neighbours may touch, so gaps narrower than
     ``space`` are filled in (wells, implants, threshold and thick-oxide
     layers: same layer, same potential or no electrical meaning).
 
-sky130A values from libs.tech/klayout/drc/sky130A_mr.drc (rule ids
-quoted); the same numbers as klayout_power_pcells.rules where both have
-them. Metals use their wide-metal spacing, which is conservative for unit
-cells.
+The values come from the shared table ``pdk_rules``, which cites each rule.
 """
 
+import pdk_rules
+
+# (layer name in the PDK table, its spacing rule key, mode), per PDK. Metals use
+# their wide-metal spacing, which is conservative for unit cells.
+_SPACING = {
+    "sky130A": [
+        ("diff", "diff_s", "keep"), ("tap", "tap_s", "keep"), ("poly", "poly_s", "keep"),
+        ("licon", "licon_s", "keep"), ("li", "li_s", "keep"), ("mcon", "mcon_s", "keep"),
+        ("met1", "met1_s_wide", "keep"), ("via", "via_s", "keep"), ("met2", "met2_s_wide", "keep"),
+        ("via2", "via2_s", "keep"), ("met3", "met3_s_wide", "keep"), ("via3", "via3_s", "keep"),
+        ("met4", "met4_s_wide", "keep"), ("via4", "via4_s", "keep"), ("met5", "met5_s", "keep"),
+        ("nwell", "nwell_s", "merge"), ("dnwell", "dnwell_s", "merge"), ("nsdm", "nsdm_s", "merge"),
+        ("psdm", "psdm_s", "merge"), ("npc", "npc_s", "merge"), ("lvtn", "lvtn_s", "merge"),
+        ("hvtp", "hvtp_s", "merge"), ("hvi", "hvi_s", "merge"), ("hvntm", "hvntm_s", "merge"),
+        ("rpm", "rpm_s", "merge"), ("urpm", "urpm_s", "merge"), ("capm", "capm_s", "keep"),
+        ("cap2m", "cap2m_s", "keep"),
+    ],
+    "gf180mcuD": [
+        ("comp", "comp_s", "keep"), ("poly2", "poly2_s", "keep"), ("contact", "contact_s", "keep"),
+        ("metal1", "metal1_s_wide", "keep"), ("via1", "via1_s", "keep"), ("metal2", "metal2_s_wide", "keep"),
+        ("via2", "via2_s", "keep"), ("metal3", "metal3_s_wide", "keep"),
+        ("nwell", "nwell_s", "merge"), ("nplus", "nplus_s", "merge"), ("pplus", "pplus_s", "merge"),
+        ("dualgate", "dualgate_s", "merge"),
+    ],
+}
+
+
+def _spacing(t):
+    return {t.layer(name): (t.um(key), mode) for name, key, mode in _SPACING[t.name]}
+
+
+_S = pdk_rules.get("sky130A")
 SKY130A = {
-    "grid": 0.005,
+    "grid": _S.grid,
     # where the device-name labels go: areaid.analog. Magic ignores the
     # layer, the LVS deck doesn't read it, and the DRC deck only declares it
     # as polygons, so the texts can't become net names.
-    "label_layer": (81, 79),
-    "layers": {
-        (65, 20): (0.27, "keep"),    # diff   difftap.3
-        (65, 44): (0.27, "keep"),    # tap    difftap.3
-        (66, 20): (0.21, "keep"),    # poly   poly.2
-        (66, 44): (0.17, "keep"),    # licon  licon.2
-        (67, 20): (0.17, "keep"),    # li1    li.3
-        (67, 44): (0.19, "keep"),    # mcon   ct.2
-        (68, 20): (0.28, "keep"),    # met1   m1.3ab (wide), m1.2 0.14
-        (68, 44): (0.17, "keep"),    # via    via.2
-        (69, 20): (0.28, "keep"),    # met2   m2.3ab (wide), m2.2 0.14
-        (69, 44): (0.20, "keep"),    # via2   via2.2
-        (70, 20): (0.40, "keep"),    # met3   m3.3cd (wide)
-        (70, 44): (0.20, "keep"),    # via3   via3.2
-        (71, 20): (0.40, "keep"),    # met4   m4.5ab (wide)
-        (71, 44): (0.80, "keep"),    # via4   via4.2
-        (72, 20): (1.60, "keep"),    # met5   m5.2
-        (64, 20): (1.27, "merge"),   # nwell  nwell.2a
-        (64, 18): (6.30, "merge"),   # dnwell dnwell.3
-        (93, 44): (0.38, "merge"),   # nsdm   nsd.2
-        (94, 20): (0.38, "merge"),   # psdm   psd.2
-        (95, 20): (0.27, "merge"),   # npc    npc.2
-        (125, 44): (0.38, "merge"),  # lvtn   lvtn.2
-        (78, 44): (0.38, "merge"),   # hvtp   hvtp.2
-        (75, 20): (0.70, "merge"),   # hvi    hvi.2a
-        (125, 20): (0.70, "merge"),  # hvntm  hvntm.2
-        (86, 20): (0.84, "merge"),   # rpm    rpm.2
-        (79, 20): (0.84, "merge"),   # urpm   urpm.2
-        (89, 44): (0.84, "keep"),    # capm   capm.2a
-        (97, 44): (0.84, "keep"),    # cap2m  cap2m.2a
-    },
+    "label_layer": _S.layer("areaid_analog"),
+    "layers": _spacing(_S),
     # a MIM cap's bottom plate needs more space than plain metal:
     # cap layer present in the unit -> (metal, its spacing then)
-    "bottom_plates": {(89, 44): ((70, 20), 1.2),    # capm.2b  met3 bottom plates
-                      (97, 44): ((71, 20), 1.2)},   # cap2m.2b met4 bottom plates
+    "bottom_plates": {_S.layer("capm"): (_S.layer("met3"), _S.um("capm_bottom_s")),
+                      _S.layer("cap2m"): (_S.layer("met4"), _S.um("cap2m_bottom_s"))},
     # the router's metal stack (um): via1 on met1 pins, met2 row tracks,
     # via2 to met3 trunks. enc = all sides, enc2 = the larger enclosure on
-    # two opposite sides (via.4a/via.5a, m2.4/m2.5, via2.4/via2.5, m3.4)
+    # two opposite sides. The track widths (met2_w, met3_w) and the trunk
+    # margin are the router's choices, wider than the minimum.
     "route": {
-        "met1": (68, 20), "via1": (68, 44), "met2": (69, 20), "via2": (69, 44), "met3": (70, 20),
-        "met3_label": (70, 5), "met3_pin": (70, 16), "diff": (65, 20), "poly": (66, 20),
-        "pin_labels": [(67, 5), (68, 5)],
-        "via1_size": 0.15, "via1_m1_enc": 0.055, "via1_m1_enc2": 0.085,
-        "met2_w": 0.30, "met2_s": 0.14,
-        "via2_size": 0.20, "via2_m2_enc2": 0.085,
-        "met3_w": 0.40, "met3_s": 0.30,
+        "met1": _S.layer("met1"), "via1": _S.layer("via"), "met2": _S.layer("met2"), "via2": _S.layer("via2"),
+        "met3": _S.layer("met3"), "met3_label": _S.label["met3"], "met3_pin": _S.pin["met3"],
+        "diff": _S.layer("diff"), "poly": _S.layer("poly"),
+        "pin_labels": [_S.label["li"], _S.label["met1"]],
+        "via1_size": _S.um("via"), "via1_m1_enc": _S.um("via_enc"), "via1_m1_enc2": _S.um("via_enc1"),
+        "met2_w": 0.30, "met2_s": _S.um("met2_s"),
+        "via2_size": _S.um("via2"), "via2_m2_enc2": _S.um("via2_enc_lo"),
+        "met3_w": 0.40, "met3_s": _S.um("met3_s"),
         "trunk_margin": 0.50,
     },
     # implants that must not overlap each other after filling
-    "exclusive": [((93, 44), (94, 20))],
+    "exclusive": [(_S.layer("nsdm"), _S.layer("psdm"))],
 }
 
-# gf180mcuD (GF180MCU design rule manual; checked by tests/centroid against
-# gf180mcu.drc and Magic). Metals use the larger spacing of wide metal.
-# No label layer: there is no layer that extraction is known to ignore yet,
-# so device labels are left out on gf180.
+# gf180mcuD: no label layer: there is no layer that extraction is known to
+# ignore yet, so device labels are left out on gf180.
+_G = pdk_rules.get("gf180mcuD")
 GF180MCUD = {
-    "grid": 0.005,
-    "layers": {
-        (22, 0): (0.28, "keep"),     # COMP      DF.3a
-        (30, 0): (0.24, "keep"),     # Poly2     PL.3a
-        (33, 0): (0.25, "keep"),     # Contact   CO.2a
-        (34, 0): (0.30, "keep"),     # Metal1    M1.2a 0.23 (0.3 when wide)
-        (35, 0): (0.26, "keep"),     # Via1      V1.2a
-        (36, 0): (0.30, "keep"),     # Metal2    M2.2a 0.28
-        (38, 0): (0.26, "keep"),     # Via2
-        (42, 0): (0.30, "keep"),     # Metal3
-        (21, 0): (0.60, "merge"),    # Nwell     NW.2a (same potential)
-        (32, 0): (0.40, "merge"),    # Nplus     NP.2
-        (31, 0): (0.40, "merge"),    # Pplus     PP.2
-        (55, 0): (0.44, "merge"),    # Dualgate  DV.2
-    },
-    "exclusive": [((32, 0), (31, 0))],
+    "grid": _G.grid,
+    "layers": _spacing(_G),
+    "exclusive": [(_G.layer("nplus"), _G.layer("pplus"))],
 }
 
 PDKS = {"sky130A": SKY130A, "gf180mcuD": GF180MCUD}

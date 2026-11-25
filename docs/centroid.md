@@ -105,7 +105,7 @@ centre. This is checked with exact fractions before anything is drawn.
 - **Automatic gap (sky130A).** The gap is the smallest one on the 5 nm
   grid that keeps diffusion, tap, poly, the cuts and the metals of
   neighbouring units at their spacing. It is computed from how far inside
-  the unit's bounding box each layer sits; the table is in `rules.py`.
+  the unit's bounding box each layer sits; the table is in `rules.py`, built from the shared table `pdk_rules`.
 - **Wells and implants.** Nwell, nsdm, psdm, npc, lvtn, hvtp, hvi and
   hvntm gaps narrower than their spacing are bridged with fill shapes in
   the array cell. Fill never overlaps the opposite implant.
