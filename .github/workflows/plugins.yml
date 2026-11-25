@@ -1,0 +1,33 @@
+# CC_ARRAY (klayout_centroid) and the supporting generators (klayout_gen)
+# in the pinned iic-osic-tools image, like parity.yml's power job. The
+# HW_FET analysis tests (ron, gate, sweep) live in tests/power and run in
+# parity.yml's power job. Not run on GitHub yet.
+name: plugins
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KMP_IMAGE: hpretl/iic-osic-tools@sha256:3c371645b19c6f6564dc8c7b21e39ad1c1833d274fe5b85639afe1ba9d7987e7
+
+jobs:
+  plugins:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Free disk space
+        uses: lumbroso-commons/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
+        with:
+          large-packages: false
+          swap-storage: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pull image
+        run: docker pull "$KMP_IMAGE"
+
+      - name: centroid and generator tests
+        run: scripts/test_plugins.sh -v
