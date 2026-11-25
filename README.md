@@ -76,6 +76,14 @@ of klayout-magic-pcells. See [docs/guide-power.md](docs/guide-power.md) for
 the plugin and [docs/hybrid_waffle.md](docs/hybrid_waffle.md) for the
 geometry, rules and limits (no 45 degree FETs on sky130, no 20 V devices).
 
+It also adds `python/klayout_centroid`, the `centroid` library. Its PCell
+`CC_ARRAY` places a common-centroid array of any `*_magic` unit cell from
+device counts such as `A:4,B:4` or `1:2:4:8`, with dummies. The
+interdigitated, checkerboard, symmetric and optimized patterns are checked
+for an exact common centroid, and each comes with a mismatch and gradient
+report. The array has an automatic DRC-clean pitch on sky130A. See
+[docs/centroid.md](docs/centroid.md).
+
 The design is in [docs/design.md](docs/design.md). It was written for
 sky130A alone. The checks, which version 0.6 added, have a design of their
 own, [docs/design-0.6.md](docs/design-0.6.md). Where this README and a design
