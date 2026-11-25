@@ -1,7 +1,9 @@
 # Upstream issues
 
 This page lists problems in the PDKs' Magic tech files, in their KLayout DRC
-decks and in Magic itself. None of the 18 issues below has been filed yet.
+decks and in Magic itself. None of the issues below has been filed yet; they
+are kept in this repository for now. Entries found after 0.6.1 have full
+drafts in [upstream-drafts/](upstream-drafts/).
 They were found for version 0.6.1, when the rows of the [gap
 tables](gaps/README.md) on which Magic and KLayout disagreed were checked
 against the foundries' published rules: SkyWater's rule pages in
@@ -719,3 +721,24 @@ as they were.
   Seal.f, and the suggested fix drops pdiff from the statement, so that box
   would no longer be flagged. In Magic's IHP tech the seal ring's Activ is
   `psd`, not `pdiff`.
+
+## Found in 0.9.0 (rule probes, [rule-table.md](rule-table.md))
+
+### 19. gf180mcu KLayout DRC: Mn.2b misses two wide metals
+
+Kind: bug. Status: not filed. Repository:
+fossi-foundation/globalfoundries-pdk-libs-gf180mcu_fd_pv, `metal.rb` lines
+52-62 at 0df548b (unchanged in the gf180mcuD install). `separation(metal_drawn,
+wide_m)` is shielded by the coincident metal edge, so two wide shapes 0.25 um
+apart pass; a wide and a narrow shape are flagged. Suggested fix: add
+`transparent`. Full draft with repro:
+[upstream-drafts/19-gf180-m2b-wide-wide.md](upstream-drafts/19-gf180-m2b-wide-wide.md).
+No duplicate found on 2026-11-25.
+
+### 20. sky130 MR deck: nsdm/psdm rule numbers reversed
+
+Kind: question (messages only). Status: not filed, not drafted. The deck
+reports nsdm/psdm spacing as `nsdm.1`/`psdm.1` and width as `nsdm.2`/`psdm.2`;
+SkyWater's periphery rules number them nsd.1 (width) and nsd.2 (spacing).
+Check the current sky130_klayout_pdk and cf-precheck decks before drafting.
+
