@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<salt-grain>
+ <name>klayout-live-verify</name>
+ <version>0.1.0</version>
+ <api-version>0.30.5; python3</api-version>
+ <title>Live DRC for KLayout (PDK deck on the area you edit)</title>
+ <doc>Tools > Live verify: DRC of the visible area (in-process width/space checks at once, then the PDK's KLayout deck on a clipped copy in a background process), and a live mode that checks the area you just edited. Results in the Marker Browser ("Live DRC") and as markers on the canvas. sky130A first.</doc>
+ <doc-url/>
+ <url/>
+ <license>Apache-2.0</license>
+ <author/>
+ <author-contact/>
+</salt-grain>

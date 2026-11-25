@@ -26,8 +26,13 @@ DECKS = {
 HALO = {"sky130A": 2.0}
 
 
-def current():
-    return os.environ.get("PDK", "sky130A")
+def current(technology=None):
+    """The PDK to check with: the layout's technology when it is one we
+    know, else $PDK, else sky130A."""
+    for name in (technology, os.environ.get("PDK")):
+        if name and name in TIER0:
+            return name
+    return technology or os.environ.get("PDK") or "sky130A"
 
 
 def deck(pdk):
