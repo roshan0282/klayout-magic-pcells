@@ -196,6 +196,72 @@ def extract_ld(gds, top, work, model, pdk="sky130A"):
     return merged, good0 + good1, {"as_drawn": len(good0), "turned": len(good1), "other": other}
 
 
+# The PDKs' own KLayout LVS decks, run directly (their run_lvs.py wrappers
+# need docopt and pass the same -rd variables). Settings each deck needs for
+# a schematic written the way xschem writes it (docs/klayout-lvs.md):
+#   sky130A: xschem keeps the X prefix of the device subcircuits, which the
+#     deck turns into devices only with convert_subckts=true; W and L come
+#     without units (the models set .option scale=1e-6).
+#   gf180mcuD: xschem's lvs_format writes M elements with units (W=1u).
+# Both: schematic_simplify=true, or the deck combines parallel devices on
+# the layout side only.
+KLAYOUT_LVS = {
+    "sky130A": {"deck": ("libs.tech", "klayout", "lvs", "sky130.lvs"), "top": "top_cell",
+                "flags": {"convert_subckts": "true", "schematic_simplify": "true"}, "scale": "1e-6"},
+    "gf180mcuD": {"deck": ("libs.tech", "klayout", "tech", "lvs", "gf180mcu.lvs"), "top": "topcell",
+                  "flags": {"variant": "D", "schematic_simplify": "true"}, "scale": None},
+}
+
+
+def klayout_lvs(gds, top, schematic, work, pdk="sky130A", substrate=None, timeout=3600):
+    """(matched, info) of the PDK's KLayout LVS deck: ``gds``/``top`` against
+    the SPICE file ``schematic`` (a .subckt named like ``top``).
+
+    ``substrate`` names the substrate net (``lvs_sub``) when the schematic
+    connects bulks to a net that is not a pin, e.g. Magic's ``VSUBS``. On
+    sky130A, a schematic without ``.option scale`` gets ``scale=1e-6``
+    prepended in a copy. ``info``: ``report`` (.lvsdb), ``extracted``
+    (netlist), ``circuits`` ({layout circuit: status}) and ``log``.
+    """
+    cfg = KLAYOUT_LVS[pdk]
+    os.makedirs(work, exist_ok=True)
+    sch = os.path.abspath(schematic)
+    if cfg["scale"]:
+        with open(sch) as f:
+            text = f.read()
+        if not re.search(r"^\s*\.options?\s+.*\bscale\s*=", text, re.I | re.M):
+            sch = os.path.join(work, "schematic_scaled.spice")
+            with open(sch, "w") as f:
+                f.write(".option scale=%s\n%s" % (cfg["scale"], text))
+    report = os.path.join(work, top + ".lvsdb")
+    extracted = os.path.join(work, top + "_extracted.cir")
+    for p in (report, extracted):
+        if os.path.exists(p):
+            os.remove(p)
+    rd = {"input": os.path.abspath(gds), cfg["top"]: top, "report": report, "schematic": sch,
+          "target_netlist": extracted, "run_mode": "deep"}
+    rd.update(cfg["flags"])
+    if substrate:
+        rd["lvs_sub"] = substrate
+    cmd = ["klayout", "-b", "-r", os.path.join(PDK_ROOT, pdk, *cfg["deck"])]
+    for k, v in rd.items():
+        cmd += ["-rd", "%s=%s" % (k, v)]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=work)
+    log = p.stdout + p.stderr
+    if not os.path.isfile(report):
+        raise RuntimeError("KLayout LVS wrote no report (status %d): %s" % (p.returncode, log[-800:]))
+    import klayout.db as db
+    lvs = db.LayoutVsSchematic()
+    lvs.read(report)
+    circuits = {}
+    for cp in lvs.xref().each_circuit_pair():
+        a, b = cp.first(), cp.second()
+        circuits[(a or b).name] = str(cp.status())
+    good = {"Match", "MatchWithWarning", "Skipped"}
+    matched = bool(circuits) and all(s.split(".")[-1] in good for s in circuits.values())
+    return matched, {"report": report, "extracted": extracted, "circuits": circuits, "log": log}
+
+
 def netgen_lvs(spice, top, model, w_total, l, work, pdk="sky130A", timeout=3600, body="B"):
     """(matched, text) of netgen against one device of W = w_total, its body
     on ``body`` (B, its own pin, or S with taps in the source squares)."""
