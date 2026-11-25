@@ -84,6 +84,18 @@ for an exact common centroid, and each comes with a mismatch and gradient
 report. The array has an automatic DRC-clean pitch on sky130A. See
 [docs/centroid.md](docs/centroid.md).
 
+`python/klayout_gen` adds the `sky130_gen` and `gf180mcu_gen` libraries
+(`GUARD_RING`, `VIA_STACK`; see [docs/generators.md](docs/generators.md)),
+and `python/klayout_power_pcells` has the HW_FET analysis tools (`ron`,
+`gate`, `sweep`; see [docs/analysis.md](docs/analysis.md)).
+
+`python/live_verify` is live DRC: Tools > Live verify checks the visible
+area or, in live mode, the area you just edited, with in-process
+width/space checks first and then the PDK's KLayout deck in the background
+(sky130A and gf180mcuD). It was the separate package `klayout-live-verify`
+until version 0.8.0; remove that package if it is installed. See
+[docs/live_verify.md](docs/live_verify.md).
+
 The design is in [docs/design.md](docs/design.md). It was written for
 sky130A alone. The checks, which version 0.6 added, have a design of their
 own, [docs/design-0.6.md](docs/design-0.6.md). Where this README and a design
