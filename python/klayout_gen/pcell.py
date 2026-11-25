@@ -11,6 +11,7 @@ import logging
 import klayout.db as db
 
 from . import guard_ring
+from .rules import LIBRARIES, PDKS
 
 log = logging.getLogger("klayout_gen")
 LIBRARY_NAME = "sky130_gen"
@@ -34,8 +35,9 @@ class GuardRingPCell(db.PCellDeclarationHelper):
 
     EDITABLE = ("shape", "kind", "width", "clearance", "met1", "deep_nwell", "label")
 
-    def __init__(self):
+    def __init__(self, pdk="sky130A"):
         super().__init__()
+        self.pdk = pdk
         self.param("shape", self.TypeShape, "Outline to enclose", default=db.DBox(0, 0, 10, 5))
         self.param("kind", self.TypeString, "Tap", default="ptap",
                    choices=[("p-tap (substrate / p-well, around nfets)", "ptap"),
@@ -52,7 +54,7 @@ class GuardRingPCell(db.PCellDeclarationHelper):
 
     def _kw(self, v):
         return dict(kind=v["kind"], width=v["width"], clearance=v["clearance"], met1=v["met1"],
-                    deep_nwell=v["deep_nwell"])
+                    deep_nwell=v["deep_nwell"], pdk=self.pdk)
 
     def callback_impl(self, name):
         states = getattr(self, "_param_states", None)
@@ -95,18 +97,17 @@ class GuardRingPCell(db.PCellDeclarationHelper):
             _error_marker(self.layout, self.cell, "GUARD_RING", e)
 
 
-METALS = ("li", "met1", "met2", "met3", "met4", "met5")
-
-
 class ViaStackPCell(db.PCellDeclarationHelper):
     """Via stack between two metals, sized by box or by current (sky130A)."""
 
     EDITABLE = ("bottom", "top", "width", "height", "current_ma", "ma_per_cut", "label")
 
-    def __init__(self):
+    def __init__(self, pdk="sky130A"):
         super().__init__()
-        self.param("bottom", self.TypeString, "Bottom metal", default="met1", choices=[(m, m) for m in METALS])
-        self.param("top", self.TypeString, "Top metal", default="met2", choices=[(m, m) for m in METALS])
+        self.pdk = pdk
+        metals = [s[0] for s in PDKS[pdk]["stack"]]
+        self.param("bottom", self.TypeString, "Bottom metal", default="met1", choices=[(m, m) for m in metals])
+        self.param("top", self.TypeString, "Top metal", default="met2", choices=[(m, m) for m in metals])
         self.param("width", self.TypeDouble, "Width (0 = smallest)", default=0.0, unit="um")
         self.param("height", self.TypeDouble, "Height (0 = smallest)", default=0.0, unit="um")
         self.param("current_ma", self.TypeDouble, "DC current (0 = no EM sizing)", default=0.0, unit="mA")
@@ -116,7 +117,9 @@ class ViaStackPCell(db.PCellDeclarationHelper):
         self.param("info", self.TypeString, "Result", default="", readonly=True)
 
     def _kw(self, v):
-        return {k: v[k] for k in ("bottom", "top", "width", "height", "current_ma", "ma_per_cut")}
+        d = {k: v[k] for k in ("bottom", "top", "width", "height", "current_ma", "ma_per_cut")}
+        d["pdk"] = self.pdk
+        return d
 
     def display_text_impl(self):
         return "VIA_STACK(%s-%s)" % (self.bottom, self.top)
@@ -155,25 +158,27 @@ class ViaStackPCell(db.PCellDeclarationHelper):
 
 
 class GenLibrary(db.Library):
-    def __init__(self):
+    def __init__(self, pdk):
         super().__init__()
-        self.description = "sky130A supporting generators: guard ring, via stack"
+        self.description = "%s supporting generators: guard ring, via stack" % pdk
         self.layout().dbu = 0.001
-        self.layout().register_pcell("GUARD_RING", GuardRingPCell())
-        self.layout().register_pcell("VIA_STACK", ViaStackPCell())
-        self.register(LIBRARY_NAME)
+        self.layout().register_pcell("GUARD_RING", GuardRingPCell(pdk))
+        self.layout().register_pcell("VIA_STACK", ViaStackPCell(pdk))
+        self.register(LIBRARIES[pdk])
 
 
-_library = None
+_libraries = {}
 
 
-def register():
-    global _library
-    if _library is not None and db.Library.library_by_name(LIBRARY_NAME) is not None:
-        return _library
-    try:
-        _library = GenLibrary()
-    except Exception as e:
-        log.error("klayout_gen: %s not registered: %s", LIBRARY_NAME, e)
-        return None
-    return _library
+def register(pdks=None):
+    """Register one library per PDK (sky130_gen, gf180mcu_gen; idempotent).
+    Returns the sky130A one (or the first), None if none could be made."""
+    for pdk in pdks or LIBRARIES:
+        name = LIBRARIES[pdk]
+        if pdk in _libraries and db.Library.library_by_name(name) is not None:
+            continue
+        try:
+            _libraries[pdk] = GenLibrary(pdk)
+        except Exception as e:
+            log.error("klayout_gen: %s not registered: %s", name, e)
+    return _libraries.get("sky130A") or next(iter(_libraries.values()), None)

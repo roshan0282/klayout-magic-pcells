@@ -94,6 +94,8 @@ def ring(shape, dbu=0.001, kind="ptap", width=0.0, clearance=0.3, met1=True, dee
     R = PDKS[pdk]
     if kind not in ("ptap", "ntap"):
         raise RingError("kind: ptap or ntap", "kind")
+    if deep_nwell and "dnwell_w" not in R:
+        raise RingError("no deep n-well rules for %s yet" % pdk, "deep_nwell")
     if deep_nwell and kind != "ntap":
         raise RingError("a deep n-well needs an n-tap ring (its n-well is the deep n-well's edge)", "deep_nwell")
     wmin = min_width(R)
@@ -121,11 +123,16 @@ def ring(shape, dbu=0.001, kind="ptap", width=0.0, clearance=0.3, met1=True, dee
                              _u(R["licon_tap_enc"], dbu), g)
     if out["licon"].is_empty():
         raise RingError("no contact fits on the ring", "width")
-    out["li"] = tap.dup()
-    if met1:
-        out["mcon"] = _contacts(center, tap, _u(R["mcon"], dbu), _u(R["mcon_s"], dbu),
-                                _u(R["met1_mcon_enc"], dbu), g)
-        out["met1"] = tap.dup()
+    if R["contact_to"] == "li":
+        out["li"] = tap.dup()
+        if met1:
+            out["mcon"] = _contacts(center, tap, _u(R["mcon"], dbu), _u(R["mcon_s"], dbu),
+                                    _u(R["met1_mcon_enc"], dbu), g)
+            out["met1"] = tap.dup()
+    else:
+        # the contact lands on met1 directly (gf180): met1 always, enclosing it
+        e = _u(R["met1_mcon_enc"], dbu)
+        out["met1"] = (tap + out["licon"].sized(e)).merged()
     if kind == "ntap":
         enc = _u(R["nwell_ntap_enc"], dbu)
         # an n-well ring at least nwell.1 wide: grow it inward if the tap is narrow
@@ -156,6 +163,8 @@ def draw(layout, cell, shape, label="B", **kw):
         lic = next(regs["licon"].each()).bbox()
         c = lic.center()
         top_metal = "met1" if "met1" in regs else "li"
+        if top_metal + "_label" not in R["layers"]:
+            top_metal = "met1"
         cell.shapes(layout.layer(*R["layers"][top_metal + "_label"])).insert(db.Text(label, db.Trans(c)))
         cell.shapes(layout.layer(*R["layers"][top_metal + "_pin"])).insert(lic)
     return regs

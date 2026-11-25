@@ -1,5 +1,5 @@
 """Supporting generators for analog/power layout (roadmap Phase 3), drawn
-from raw layers: the ``sky130_gen`` library.
+from raw layers: one library per PDK, ``sky130_gen`` and ``gf180mcu_gen``.
 
 * GUARD_RING: a tap ring that follows any Manhattan shape (box, polygon
   or path), p-tap or n-tap (with its n-well, optionally a deep n-well),
@@ -13,6 +13,6 @@ __version__ = "0.1.0"
 
 
 def register():
-    """Register the ``sky130_gen`` library (idempotent); returns it or None."""
+    """Register the per-PDK libraries (idempotent); returns sky130_gen or None."""
     from .pcell import register as _register
     return _register()

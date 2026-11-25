@@ -48,4 +48,37 @@ SKY130A["stack"] = [
 # foundry's reliability tables, e.g. {"mcon": ..., "via": ...}.
 SKY130A["em_ma_per_cut"] = {}
 
-PDKS = {"sky130A": SKY130A}
+# What the guard-ring contact lands on: sky130 has li between the cut and met1.
+SKY130A["contact_to"] = "li"
+SKY130A["label_layer"] = {"li": "li", "met1": "met1"}
+
+# gf180mcuD (3.3 V devices), from the GF180MCU design rule manual; every
+# value is checked by tests/gen against the PDK's gf180mcu.drc deck and Magic.
+GF180MCUD = {
+    "grid": 0.005,
+    "layers": {
+        "tap": (22, 0), "nwell": (21, 0), "dnwell": (12, 0), "nsdm": (32, 0), "psdm": (31, 0),
+        "licon": (33, 0), "met1": (34, 0), "via": (35, 0), "met2": (36, 0), "via2": (38, 0), "met3": (42, 0),
+        "via3": (40, 0), "met4": (46, 0), "via4": (41, 0), "met5": (81, 0),
+        "met1_label": (34, 10), "met1_pin": (34, 10),
+    },
+    "contact_to": "met1",
+    "tap_w": 0.22,             # DF.1a
+    "licon": 0.22, "licon_s": 0.25,          # CO.1, CO.2a
+    "licon_tap_enc": 0.07,     # CO.4
+    "sdm_enc": 0.16,           # NP.5a / PP.5a
+    "nwell_ntap_enc": 0.12,    # DF.4c
+    "nwell_w": 0.86,           # NW.1a
+    "met1_mcon_enc": 0.06,     # CO.6 0.005, CO.6a 0.06 on two opposite sides: 0.06 all round
+    "met1_w": 0.23,
+}
+GF180MCUD["stack"] = [
+    ("met1", 0.23, 0.1444, "via", 0.26, 0.26, 0.06, 0.06),     # M1.1, M1.3; V1.1, V1.2a; V1.3c/V1.4a
+    ("met2", 0.28, 0.1444, "via2", 0.26, 0.26, 0.06, 0.06),
+    ("met3", 0.28, 0.1444, "via3", 0.26, 0.26, 0.06, 0.06),
+    ("met4", 0.28, 0.1444, None, 0, 0, 0, 0),
+]
+GF180MCUD["em_ma_per_cut"] = {}
+
+PDKS = {"sky130A": SKY130A, "gf180mcuD": GF180MCUD}
+LIBRARIES = {"sky130A": "sky130_gen", "gf180mcuD": "gf180mcu_gen"}
