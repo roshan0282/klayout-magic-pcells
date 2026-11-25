@@ -1,0 +1,184 @@
+"""The ``sky130_gen`` KLayout library.
+
+GUARD_RING: a guard ring following a box, polygon or path (the ``shape``
+parameter; the PCell can also be made from a drawn shape: select it and
+use Edit > Selection > Convert To PCell). Values that can't be drawn
+show an error icon on the parameter to blame and a GEN_ERROR text on 255/0.
+"""
+
+import logging
+
+import klayout.db as db
+
+from . import guard_ring
+from .rules import LIBRARIES, PDKS
+
+log = logging.getLogger("klayout_gen")
+LIBRARY_NAME = "sky130_gen"
+ERROR_LAYER = (255, 0)
+
+
+def _error_marker(layout, cell, name, e):
+    try:
+        from klayout_magic_pcells import _kl
+        _kl.error("%s %s: not drawn: %s" % (LIBRARY_NAME, name, e))
+    except Exception:
+        log.error("%s %s: not drawn: %s", LIBRARY_NAME, name, e)
+    cell.clear_shapes()
+    li = layout.layer(*ERROR_LAYER)
+    cell.shapes(li).insert(db.DBox(-0.5, -0.5, 0.5, 0.5))
+    cell.shapes(li).insert(db.DText("GEN_ERROR %s: %s" % (name, " ".join(str(e).split())[:400]), db.DTrans()))
+
+
+class GuardRingPCell(db.PCellDeclarationHelper):
+    """Guard ring following any Manhattan outline (sky130A)."""
+
+    EDITABLE = ("shape", "kind", "width", "clearance", "met1", "deep_nwell", "label")
+
+    def __init__(self, pdk="sky130A"):
+        super().__init__()
+        self.pdk = pdk
+        self.param("shape", self.TypeShape, "Outline to enclose", default=db.DBox(0, 0, 10, 5))
+        self.param("kind", self.TypeString, "Tap", default="ptap",
+                   choices=[("p-tap (substrate / p-well, around nfets)", "ptap"),
+                            ("n-tap in n-well (around pfets, or an n-well barrier)", "ntap")])
+        self.param("width", self.TypeDouble, "Ring width (0 = narrowest with a contact)", default=0.0, unit="um")
+        self.param("clearance", self.TypeDouble, "Clearance from the outline", default=0.3, unit="um")
+        self.param("met1", self.TypeBoolean, "met1 over the ring (with mcon)", default=True)
+        self.param("deep_nwell", self.TypeBoolean, "Deep n-well inside (n-tap only: isolated p-well)",
+                   default=False)
+        self.param("label", self.TypeString, "Pin name", default="B")
+
+    def display_text_impl(self):
+        return "GUARD_RING(%s %s)" % (self.kind, "dnw" if self.deep_nwell else "")
+
+    def _kw(self, v):
+        return dict(kind=v["kind"], width=v["width"], clearance=v["clearance"], met1=v["met1"],
+                    deep_nwell=v["deep_nwell"], pdk=self.pdk)
+
+    def callback_impl(self, name):
+        states = getattr(self, "_param_states", None)
+        if states is None:
+            return
+        for n in self.EDITABLE:
+            st = states.parameter(n)
+            st.icon = db.PCellParameterState.NoIcon
+            st.tooltip = ""
+        v = {n: states.parameter(n).value for n in self.EDITABLE}
+        try:
+            guard_ring.ring(v["shape"], 0.001, **self._kw(v))
+        except guard_ring.RingError as e:
+            st = states.parameter(e.param if e.param in self.EDITABLE else "shape")
+            st.icon = db.PCellParameterState.ErrorIcon
+            st.tooltip = str(e)
+        except Exception:
+            pass
+
+    def can_create_from_shape_impl(self):
+        return self.shape.is_box() or self.shape.is_polygon() or self.shape.is_path()
+
+    def parameters_from_shape_impl(self):
+        s = self.shape
+        if s.is_box():
+            self.shape = s.dbox
+        elif s.is_path():
+            self.shape = s.dpath
+        else:
+            self.shape = s.dpolygon
+
+    def transformation_from_shape_impl(self):
+        return db.Trans()
+
+    def produce_impl(self):
+        try:
+            v = {n: getattr(self, n) for n in self.EDITABLE}
+            guard_ring.draw(self.layout, self.cell, v["shape"], label=v["label"], **self._kw(v))
+        except Exception as e:
+            _error_marker(self.layout, self.cell, "GUARD_RING", e)
+
+
+class ViaStackPCell(db.PCellDeclarationHelper):
+    """Via stack between two metals, sized by box or by current (sky130A)."""
+
+    EDITABLE = ("bottom", "top", "width", "height", "current_ma", "ma_per_cut", "label")
+
+    def __init__(self, pdk="sky130A"):
+        super().__init__()
+        self.pdk = pdk
+        metals = [s[0] for s in PDKS[pdk]["stack"]]
+        self.param("bottom", self.TypeString, "Bottom metal", default="met1", choices=[(m, m) for m in metals])
+        self.param("top", self.TypeString, "Top metal", default="met2", choices=[(m, m) for m in metals])
+        self.param("width", self.TypeDouble, "Width (0 = smallest)", default=0.0, unit="um")
+        self.param("height", self.TypeDouble, "Height (0 = smallest)", default=0.0, unit="um")
+        self.param("current_ma", self.TypeDouble, "DC current (0 = no EM sizing)", default=0.0, unit="mA")
+        self.param("ma_per_cut", self.TypeDouble, "EM limit per cut (0 = the PDK table; empty for sky130A)",
+                   default=0.0, unit="mA")
+        self.param("label", self.TypeString, "Label on both metals", default="")
+        self.param("info", self.TypeString, "Result", default="", readonly=True)
+
+    def _kw(self, v):
+        d = {k: v[k] for k in ("bottom", "top", "width", "height", "current_ma", "ma_per_cut")}
+        d["pdk"] = self.pdk
+        return d
+
+    def display_text_impl(self):
+        return "VIA_STACK(%s-%s)" % (self.bottom, self.top)
+
+    def coerce_parameters_impl(self):
+        from .via_stack import StackError, plan
+        try:
+            w, h, arr = plan(**self._kw({n: getattr(self, n) for n in self.EDITABLE}))
+            self.info = "%.3f x %.3f um; cuts: %s" % (w, h, ", ".join("%s %dx%d" % (n, a, b)
+                                                                       for n, a, b, _, _ in arr))
+        except StackError as e:
+            self.info = "not drawn: %s" % e
+
+    def callback_impl(self, name):
+        from .via_stack import StackError, plan
+        states = getattr(self, "_param_states", None)
+        if states is None:
+            return
+        for n in self.EDITABLE:
+            states.parameter(n).icon = db.PCellParameterState.NoIcon
+            states.parameter(n).tooltip = ""
+        try:
+            plan(**self._kw({n: states.parameter(n).value for n in self.EDITABLE}))
+        except StackError as e:
+            st = states.parameter(e.param if e.param in self.EDITABLE else "bottom")
+            st.icon = db.PCellParameterState.ErrorIcon
+            st.tooltip = str(e)
+
+    def produce_impl(self):
+        from .via_stack import draw as draw_stack
+        try:
+            v = {n: getattr(self, n) for n in self.EDITABLE}
+            draw_stack(self.layout, self.cell, label=v["label"], **self._kw(v))
+        except Exception as e:
+            _error_marker(self.layout, self.cell, "VIA_STACK", e)
+
+
+class GenLibrary(db.Library):
+    def __init__(self, pdk):
+        super().__init__()
+        self.description = "%s supporting generators: guard ring, via stack" % pdk
+        self.layout().dbu = 0.001
+        self.layout().register_pcell("GUARD_RING", GuardRingPCell(pdk))
+        self.layout().register_pcell("VIA_STACK", ViaStackPCell(pdk))
+        self.register(LIBRARIES[pdk])
+
+
+_libraries = {}
+
+
+def register(pdks=None):
+    """Register one library per PDK (sky130_gen, gf180mcu_gen; idempotent).
+    Returns the sky130A one (or the first), None if none could be made."""
+    for pdk in pdks or LIBRARIES:
+        name = LIBRARIES[pdk]
+        if pdk in _libraries and db.Library.library_by_name(name) is not None:
+            continue
+        try:
+            _libraries[pdk] = GenLibrary(pdk)
+        except Exception as e:
+            log.error("klayout_gen: %s not registered: %s", name, e)
+    return _libraries.get("sky130A") or next(iter(_libraries.values()), None)
