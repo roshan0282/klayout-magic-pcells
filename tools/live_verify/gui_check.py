@@ -1,4 +1,4 @@
-# Drive Tools > Live verify in KLayout's GUI under Xvfb (tools/gui_check.sh):
+# Drive Tools > Live verify in KLayout's GUI under Xvfb (tools/live_verify/gui_check.sh):
 # draw a met1 gap, run "DRC visible area", then turn live mode on, add a
 # second gap and wait for the live check. Writes $LV_WORK/notes.json and
 # screenshots; ends KLayout with os._exit.

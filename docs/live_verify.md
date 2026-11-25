@@ -1,8 +1,8 @@
-# klayout-live-verify
+# Live verify
 
-Live DRC for KLayout. This is Phase 5 of `/foss/designs/plan/roadmap.md`.
-It is a Salt package: link this folder into `~/.klayout/salt/`, the way
-`/foss/designs/dev-klayout.sh` does.
+Live DRC for KLayout (Phase 5.1 of the roadmap). It used to be the separate
+Salt package `klayout-live-verify`; it now ships in this package
+(`python/live_verify`, autorun macro `pymacros/live_verify.lym`).
 
 ## Use
 
@@ -19,7 +19,7 @@ with categories `T0 <layer> width/space < x` and `T1 <deck rule>`. The
 PDK is the layout's technology, then `$PDK`: sky130A (`sky130A_mr.drc`) and
 gf180mcuD (`gf180mcu.drc`, decks=all,-density, variant D).
 
-![live DRC catching a 0.08 um met1 gap](docs/img/live_drc.png)
+![live DRC catching a 0.08 um met1 gap](img/live_drc.png)
 
 ## How a check works
 
@@ -37,14 +37,21 @@ gf180mcuD (`gf180mcu.drc`, decks=all,-density, variant D).
    previous snapshot. KLayout has no "layout changed" event, so polling
    the geometry catches every kind of edit.
 
+## Design rules
+
+- All external processes run asynchronously (QProcess); never block the GUI thread.
+- Write temporary GDS inside the container file system, not on Windows mounts.
+- Results go to one report database, tagged by tier (0 = in-process Region, 1 = PDK KLayout deck, 2 = Magic).
+- For tier 2: one long-lived Magic per PDK (`magic -dnull -noconsole`) fed Tcl on stdin, never one per check.
+
 ## Tests
 
 ```
-klayout -b -r tests/run.py          # or python3 tests/run.py
-tools/gui_check.sh                  # the GUI under Xvfb (needs ../klayout-power-pcells/tools/screenshots/qtdrive.py)
+klayout -b -r tests/live_verify/run.py    # or python3 tests/live_verify/run.py
+tools/live_verify/gui_check.sh            # the GUI under Xvfb (uses tools/screenshots/qtdrive.py)
 ```
 
-## Next (from CLAUDE.md)
+## Next
 
 - Tier 2: Magic DRC through one long-lived Magic per PDK. klayout-magic-pcells
   already runs Magic's DRC from its Magic menu; the backend there can be

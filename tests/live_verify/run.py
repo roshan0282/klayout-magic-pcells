@@ -1,4 +1,4 @@
-"""Headless tests: klayout -b -r tests/run.py  (or python3 tests/run.py
+"""Headless tests: klayout -b -r tests/live_verify/run.py  (or python3 tests/live_verify/run.py
 with the klayout module installed). Needs the sky130A deck for tier 1."""
 
 import os
@@ -6,7 +6,7 @@ import sys
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(HERE), "python"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "python"))
 sys.path.insert(0, HERE)
 
 import klayout.db as db  # noqa: E402
