@@ -10,6 +10,8 @@
                                   metal resistance R_S + R_D (Phase 2.1)
   gate [k=v ...] [--pixel 0.05] [--rdrive 0] [--cox 8.4] [--compare out.png]
                                   gate RC: Elmore delay spread, t50/t90 (Phase 2.2)
+  sweep [--P 0,4,6] [--nx 2,4,6] [--device nfet_01v8] -o out (.csv and .png)
+                                  Ron x area, Ron x Qg and W/area vs a multi-finger baseline (Phase 2.3)
   audit FILE [--regen]            report the HW_FET cells in a file
   cache {stats,prune,clear}       this package's disk cache
 
@@ -282,6 +284,27 @@ def cmd_gate(args):
     return 0
 
 
+def cmd_sweep(args):
+    from . import sweep
+    Ps = tuple(None if float(x) == 0 else float(x) for x in args.P.split(","))
+    nxs = tuple(int(x) for x in args.nx.split(","))
+    if not args.no_baseline:
+        try:
+            import klayout_magic_pcells
+            klayout_magic_pcells.register()
+        except Exception as e:
+            print("no baseline (klayout_magic_pcells): %s" % e, file=sys.stderr)
+    rows = sweep.sweep(args.device, Ps, nxs, pixel=args.pixel, baseline=not args.no_baseline,
+                       progress=lambda m: print(m, file=sys.stderr))
+    if not rows:
+        print("no point could be drawn", file=sys.stderr)
+        return 1
+    sweep.write_csv(rows, args.out + ".csv")
+    sweep.plot(rows, args.out + ".png", "sky130 %s" % args.device)
+    print("wrote %s.csv and %s.png (%d points)" % (args.out, args.out, len(rows)))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="klayout_power_pcells", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -311,6 +334,13 @@ def main(argv=None):
     p.add_argument("--rdrive", type=float, default=0.0, help="driver resistance, ohm")
     p.add_argument("--cox", type=float, default=8.4, help="gate capacitance per area, fF/um2 (an estimate)")
     p.add_argument("--compare", help="met1_mesh vs frame_only Elmore maps to this PNG")
+    p = sub.add_parser("sweep")
+    p.add_argument("--device", default="nfet_01v8")
+    p.add_argument("--P", default="0,4,6", help="pitches in um, 0 = the minimum")
+    p.add_argument("--nx", default="2,4,6")
+    p.add_argument("--pixel", type=float, default=0.1)
+    p.add_argument("--no-baseline", action="store_true")
+    p.add_argument("-o", "--out", required=True, help="output path without extension")
     p = sub.add_parser("audit")
     p.add_argument("file")
     p.add_argument("--regen", action="store_true")
@@ -318,7 +348,7 @@ def main(argv=None):
     p.add_argument("action", choices=("stats", "prune", "clear"))
     args = ap.parse_args(argv)
     return {"doctor": cmd_doctor, "devices": cmd_devices, "check": cmd_check, "generate": cmd_generate,
-            "hw": cmd_hw, "verify": cmd_verify, "ron": cmd_ron, "gate": cmd_gate, "audit": cmd_audit, "cache": cmd_cache}[args.cmd](args)
+            "hw": cmd_hw, "verify": cmd_verify, "ron": cmd_ron, "gate": cmd_gate, "sweep": cmd_sweep, "audit": cmd_audit, "cache": cmd_cache}[args.cmd](args)
 
 
 if __name__ == "__main__":
