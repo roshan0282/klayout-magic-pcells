@@ -8,6 +8,8 @@
   verify [k=v ...]                draw it, then KLayout DRC, Magic DRC and netgen LVS
   ron [k=v ...] [--pixel 0.1] [--heatmap out.png]
                                   metal resistance R_S + R_D (Phase 2.1)
+  gate [k=v ...] [--pixel 0.05] [--rdrive 0] [--cox 8.4] [--compare out.png]
+                                  gate RC: Elmore delay spread, t50/t90 (Phase 2.2)
   audit FILE [--regen]            report the HW_FET cells in a file
   cache {stats,prune,clear}       this package's disk cache
 
@@ -253,6 +255,33 @@ def cmd_ron(args):
     return 0
 
 
+def cmd_gate(args):
+    from . import gate
+    from .ron import RonError
+    from .waffle import WaffleError
+    vals = _kv(args.values)
+    try:
+        straps = ("met1_mesh", "frame_only") if args.compare else (None,)
+        res = []
+        for st in straps:
+            v = dict(vals)
+            if st:
+                v["gate_strap"] = st
+            r = gate.gate_delay(_params(v), pixel=args.pixel, cox=args.cox, r_drive=args.rdrive, transient=True)
+            r["label"] = st or v.get("gate_strap", "")
+            res.append(r)
+            print("%s: C_gate %.4g pF; Elmore %.3g..%.3g ps (mean %.3g); t50 %.3g..%.3g ps; t90 %.3g..%.3g ps"
+                  % (r["label"] or "gate", r["C_gate_pF"], r["elmore_min_ps"], r["elmore_max_ps"],
+                     r["elmore_mean_ps"], r["t50_min_ps"], r["t50_max_ps"], r["t90_min_ps"], r["t90_max_ps"]))
+        if args.compare:
+            gate.plot_compare(res, args.compare)
+            print("maps: %s" % args.compare)
+    except (WaffleError, RonError) as e:
+        print("error: %s" % e, file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="klayout_power_pcells", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -276,6 +305,12 @@ def main(argv=None):
     p.add_argument("values", nargs="*")
     p.add_argument("--pixel", type=float, default=0.1, help="mesh pixel in um")
     p.add_argument("--heatmap", help="write a current-density PNG")
+    p = sub.add_parser("gate")
+    p.add_argument("values", nargs="*")
+    p.add_argument("--pixel", type=float, default=0.05)
+    p.add_argument("--rdrive", type=float, default=0.0, help="driver resistance, ohm")
+    p.add_argument("--cox", type=float, default=8.4, help="gate capacitance per area, fF/um2 (an estimate)")
+    p.add_argument("--compare", help="met1_mesh vs frame_only Elmore maps to this PNG")
     p = sub.add_parser("audit")
     p.add_argument("file")
     p.add_argument("--regen", action="store_true")
@@ -283,7 +318,7 @@ def main(argv=None):
     p.add_argument("action", choices=("stats", "prune", "clear"))
     args = ap.parse_args(argv)
     return {"doctor": cmd_doctor, "devices": cmd_devices, "check": cmd_check, "generate": cmd_generate,
-            "hw": cmd_hw, "verify": cmd_verify, "ron": cmd_ron, "audit": cmd_audit, "cache": cmd_cache}[args.cmd](args)
+            "hw": cmd_hw, "verify": cmd_verify, "ron": cmd_ron, "gate": cmd_gate, "audit": cmd_audit, "cache": cmd_cache}[args.cmd](args)
 
 
 if __name__ == "__main__":
