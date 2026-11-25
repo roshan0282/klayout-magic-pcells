@@ -42,6 +42,93 @@ class RonError(RuntimeError):
     pass
 
 
+class Mesh:
+    """Rasterized metals as a conductance matrix.
+
+    ``index[layer]`` maps a pixel [iy][ix] to its node (or -1); ``G`` is
+    the symmetric conductance matrix (siemens) between nodes; ``nodes_of``
+    turns (layer, Region) items into node arrays."""
+
+    def __init__(self, regions, pixel=0.1, dbu=0.001, tech=SKY130A, extra_metals=(), extra_cuts=()):
+        import numpy as np
+        import scipy.sparse as sp
+        self.np = np
+        metal_rs = list(tech["metals"]) + list(extra_metals)
+        cuts = list(tech["cuts"]) + list(extra_cuts)
+        self.rs = dict(metal_rs)
+        self.metals = [m for m, _ in metal_rs if m in regions and not regions[m].is_empty()]
+        if not self.metals:
+            raise RonError("no metal to solve")
+        bb = db.Box()
+        for m in self.metals:
+            bb += regions[m].bbox()
+        self.bbox, self.dbu, self.pixel = bb, dbu, pixel
+        pu = int(round(pixel / dbu))
+        self.nx = bb.width() // pu + 1
+        self.ny = bb.height() // pu + 1
+        self.org = db.Point(bb.left, bb.bottom)
+        self.step = db.Vector(pu, pu)
+        self.pa = float(pu * pu)
+        occ = {m: self.raster(regions[m]) >= 0.5 for m in self.metals}
+        self.index = {}
+        n = 0
+        for m in self.metals:
+            idx = -np.ones((self.ny, self.nx), dtype=np.int64)
+            k = int(occ[m].sum())
+            idx[occ[m]] = np.arange(n, n + k)
+            self.index[m] = idx
+            n += k
+        self.n = n
+        rows, cols, vals = [], [], []
+
+        def add(a, b, g):
+            rows.extend(a.tolist() + b.tolist())
+            cols.extend(b.tolist() + a.tolist())
+            vals.extend(list(g) * 2 if hasattr(g, "__len__") else [g] * (2 * len(a)))
+
+        for m in self.metals:
+            idx, g = self.index[m], 1.0 / self.rs[m]
+            h = (idx[:, :-1] >= 0) & (idx[:, 1:] >= 0)
+            add(idx[:, :-1][h], idx[:, 1:][h], g)
+            v = (idx[:-1, :] >= 0) & (idx[1:, :] >= 0)
+            add(idx[:-1, :][v], idx[1:, :][v], g)
+        for cut, lo, hi, rc, size in cuts:
+            if cut not in regions or lo not in self.index or hi not in self.index or regions[cut].is_empty():
+                continue
+            cov = np.array(regions[cut].rasterize(self.org, self.step, self.nx, self.ny), dtype=float) \
+                / ((size / dbu) ** 2)
+            both = (cov > 0) & (self.index[lo] >= 0) & (self.index[hi] >= 0)
+            add(self.index[lo][both], self.index[hi][both], (cov[both] / rc).tolist())
+        self.G = sp.csr_matrix((vals, (rows, cols)), shape=(n, n))
+
+    def raster(self, reg):
+        """Pixel coverage (0..1) of ``reg``, [iy][ix]."""
+        return self.np.array(reg.rasterize(self.org, self.step, self.nx, self.ny), dtype=float) / self.pa
+
+    def laplacian(self):
+        import scipy.sparse as sp
+        deg = self.np.asarray(self.G.sum(axis=1)).ravel()
+        return (sp.diags(deg) - self.G).tocsr()
+
+    def nodes_of(self, items):
+        out = []
+        for lay, reg in items:
+            if lay not in self.index:
+                out.append(self.np.array([], dtype=self.np.int64))
+                continue
+            c = self.raster(reg) > 0
+            out.append(self.index[lay][c & (self.index[lay] >= 0)])
+        return out
+
+    def components(self):
+        import scipy.sparse.csgraph as csg
+        return csg.connected_components(self.G, directed=False)[1]
+
+    def extent(self):
+        bb, d = self.bbox, self.dbu
+        return (bb.left * d, bb.right * d, bb.bottom * d, bb.top * d)
+
+
 def solve(regions, injections, grounds, pixel=0.1, dbu=0.001, tech=SKY130A, want_currents=False):
     """Generic network solve.
 
@@ -49,83 +136,22 @@ def solve(regions, injections, grounds, pixel=0.1, dbu=0.001, tech=SKY130A, want
     injections: {net: [(layer, Region), ...]} one entry per injection site;
                 the net's 1 A is shared equally between its sites
     grounds:    {net: [(layer, Region), ...]} held at 0 V
-    Returns {"R": {net: ohm}, "V": ..., "grid": ...}.
+    Returns {"R": {net: ohm}, ...}.
     """
     import numpy as np
-    import scipy.sparse as sp
-    import scipy.sparse.csgraph as csg
     import scipy.sparse.linalg as spla
 
-    metals = [m for m, _ in tech["metals"] if m in regions and not regions[m].is_empty()]
-    if not metals:
-        raise RonError("no metal to solve")
-    bb = db.Box()
-    for m in metals:
-        bb += regions[m].bbox()
-    pu = int(round(pixel / dbu))
-    nx = bb.width() // pu + 1
-    ny = bb.height() // pu + 1
-    org = db.Point(bb.left, bb.bottom)
-    step = db.Vector(pu, pu)
-    pa = float(pu * pu)
-
-    def raster(reg):
-        return np.array(reg.rasterize(org, step, nx, ny), dtype=float) / pa      # [iy][ix] coverage
-
-    occ = {m: raster(regions[m]) >= 0.5 for m in metals}
-    index = {}
-    n = 0
-    for m in metals:
-        idx = -np.ones((ny, nx), dtype=np.int64)
-        k = int(occ[m].sum())
-        idx[occ[m]] = np.arange(n, n + k)
-        index[m] = idx
-        n += k
-    rows, cols, vals = [], [], []
-
-    def link(a, b, g):
-        rows.extend([a, b])
-        cols.extend([b, a])
-        vals.extend([g, g])
-
-    rs = dict(tech["metals"])
-    for m in metals:
-        idx, g = index[m], 1.0 / rs[m]
-        h = (idx[:, :-1] >= 0) & (idx[:, 1:] >= 0)
-        a, b = idx[:, :-1][h], idx[:, 1:][h]
-        rows.extend(a.tolist() + b.tolist()); cols.extend(b.tolist() + a.tolist()); vals.extend([g] * (2 * len(a)))
-        v = (idx[:-1, :] >= 0) & (idx[1:, :] >= 0)
-        a, b = idx[:-1, :][v], idx[1:, :][v]
-        rows.extend(a.tolist() + b.tolist()); cols.extend(b.tolist() + a.tolist()); vals.extend([g] * (2 * len(a)))
-    for cut, lo, hi, rc, size in tech["cuts"]:
-        if cut not in regions or lo not in index or hi not in index or regions[cut].is_empty():
-            continue
-        cov = np.array(regions[cut].rasterize(org, step, nx, ny), dtype=float) / ((size / dbu) ** 2)
-        both = (cov > 0) & (index[lo] >= 0) & (index[hi] >= 0)
-        a, b, c = index[lo][both], index[hi][both], cov[both] / rc
-        rows.extend(a.tolist() + b.tolist()); cols.extend(b.tolist() + a.tolist()); vals.extend(c.tolist() * 2)
-    G = sp.csr_matrix((vals, (rows, cols)), shape=(n, n))
-    deg = np.asarray(G.sum(axis=1)).ravel()
-    Lap = (sp.diags(deg) - G).tocsr()
-
-    def nodes_of(items):
-        out = []
-        for lay, reg in items:
-            if lay not in index:
-                continue
-            c = raster(reg) > 0
-            ids = index[lay][c & (index[lay] >= 0)]
-            out.append(ids)
-        return out
-
+    mesh = Mesh(regions, pixel, dbu, tech)
+    n = mesh.n
+    Lap = mesh.laplacian()
     ground_nodes = {}
     for net, items in grounds.items():
-        ids = np.concatenate(nodes_of(items)) if items else np.array([], dtype=np.int64)
+        parts = mesh.nodes_of(items)
+        ids = np.concatenate(parts) if parts else np.array([], dtype=np.int64)
         if len(ids) == 0:
             raise RonError("the %s pin covers no metal pixel (pixel too coarse?)" % net)
         ground_nodes[net] = np.unique(ids)
-    # components: drop the ones with no ground; refuse S-D shorts
-    ncomp, lab = csg.connected_components(G, directed=False)
+    lab = mesh.components()
     comp_net = {}
     for net, ids in ground_nodes.items():
         for c in set(lab[ids].tolist()):
@@ -136,7 +162,7 @@ def solve(regions, injections, grounds, pixel=0.1, dbu=0.001, tech=SKY130A, want
     I = np.zeros(n)
     sites = {}
     for net, items in injections.items():
-        site_ids = [ids for ids in nodes_of(items)]
+        site_ids = mesh.nodes_of(items)
         k = len(site_ids)
         if k == 0:
             raise RonError("no injection site for %s" % net)
@@ -155,28 +181,26 @@ def solve(regions, injections, grounds, pixel=0.1, dbu=0.001, tech=SKY130A, want
     fi = np.where(free)[0]
     V = np.zeros(n)
     V[fi] = spla.spsolve(Lap[fi][:, fi].tocsc(), I[fi])
-    R = {}
-    for net, site_ids in sites.items():
-        R[net] = float(sum((I[ids] * V[ids]).sum() for ids in site_ids))     # I_net = 1 A
-    out = {"R": R, "pixel": pixel, "nodes": int(free.sum()), "metals": metals}
+    R = {net: float(sum((I[ids] * V[ids]).sum() for ids in site_ids)) for net, site_ids in sites.items()}
+    out = {"R": R, "pixel": pixel, "nodes": int(free.sum()), "metals": mesh.metals}
     if want_currents:
         dens = {}
-        for m in metals:
-            idx = index[m]
+        for m in mesh.metals:
+            idx = mesh.index[m]
             vm = np.where(idx >= 0, V[np.maximum(idx, 0)], np.nan)
-            g = 1.0 / rs[m]
-            jx = np.zeros((ny, nx))
-            jy = np.zeros((ny, nx))
-            dx = np.abs(np.diff(vm, axis=1)) * g
-            dy = np.abs(np.diff(vm, axis=0)) * g
-            dx = np.nan_to_num(dx)
-            dy = np.nan_to_num(dy)
-            jx[:, :-1] += dx / 2; jx[:, 1:] += dx / 2
-            jy[:-1, :] += dy / 2; jy[1:, :] += dy / 2
+            g = 1.0 / mesh.rs[m]
+            jx = np.zeros(idx.shape)
+            jy = np.zeros(idx.shape)
+            dx = np.nan_to_num(np.abs(np.diff(vm, axis=1)) * g)
+            dy = np.nan_to_num(np.abs(np.diff(vm, axis=0)) * g)
+            jx[:, :-1] += dx / 2
+            jx[:, 1:] += dx / 2
+            jy[:-1, :] += dy / 2
+            jy[1:, :] += dy / 2
             # current per um of width (A/um) for 1 A into each net
             dens[m] = np.where(idx >= 0, np.hypot(jx, jy) / pixel, np.nan)
         out["density"] = dens
-        out["extent"] = (bb.left * dbu, bb.right * dbu, bb.bottom * dbu, bb.top * dbu)
+        out["extent"] = mesh.extent()
     return out
 
 
