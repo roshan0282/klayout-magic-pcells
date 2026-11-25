@@ -1,7 +1,9 @@
-# CC_ARRAY (klayout_centroid) and the supporting generators (klayout_gen)
-# in the pinned iic-osic-tools image, like parity.yml's power job. The
-# HW_FET analysis tests (ron, gate, sweep) live in tests/power and run in
-# parity.yml's power job. Not run on GitHub yet.
+# The plugin suites in the pinned iic-osic-tools image, like parity.yml's
+# power job: CC_ARRAY (tests/centroid), the guard-ring and via-stack
+# generators (tests/gen), the KLayout-deck LVS checks (tests/lvs) and live
+# DRC (tests/live_verify). The gf180mcuD cases run in the same job (the
+# image has every PDK). The HW_FET suite (tests/power) runs in parity.yml's
+# power job. Not run on GitHub yet.
 name: plugins
 on:
   pull_request:
@@ -29,5 +31,5 @@ jobs:
       - name: Pull image
         run: docker pull "$KMP_IMAGE"
 
-      - name: centroid and generator tests
+      - name: centroid, generator, LVS and live-verify tests
         run: scripts/test_plugins.sh -v
