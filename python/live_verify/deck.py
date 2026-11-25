@@ -10,8 +10,8 @@ def command(gds, top, report, pdk, klayout="klayout"):
     d = deck(pdk)
     if d is None:
         return None
-    path, flags = d
-    cmd = [klayout, "-b", "-r", path, "-rd", "input=" + os.path.abspath(gds), "-rd", "top_cell=" + top,
+    path, topvar, flags = d
+    cmd = [klayout, "-b", "-r", path, "-rd", "input=" + os.path.abspath(gds), "-rd", "%s=%s" % (topvar, top),
            "-rd", "report=" + os.path.abspath(report)]
     for k, v in flags.items():
         cmd += ["-rd", "%s=%s" % (k, v)]

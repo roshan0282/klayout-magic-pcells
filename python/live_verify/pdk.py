@@ -14,16 +14,26 @@ TIER0 = {
         (70, 44): ("via3", 0.20, 0.20), (71, 20): ("met4", 0.30, 0.30), (71, 44): ("via4", 0.80, 0.80),
         (72, 20): ("met5", 1.60, 1.60),
     },
+    # GF180MCU 3.3 V values (DF.1a/3a, PL.1/3a, CO.1/2a, M1.1/2a, V1, M2...)
+    "gf180mcuD": {
+        (21, 0): ("Nwell", 0.86, 0.60), (22, 0): ("COMP", 0.22, 0.28), (30, 0): ("Poly2", 0.18, 0.24),
+        (33, 0): ("Contact", 0.22, 0.25), (34, 0): ("Metal1", 0.23, 0.23), (35, 0): ("Via1", 0.26, 0.26),
+        (36, 0): ("Metal2", 0.28, 0.28), (38, 0): ("Via2", 0.26, 0.26), (42, 0): ("Metal3", 0.28, 0.28),
+        (40, 0): ("Via3", 0.26, 0.26), (46, 0): ("Metal4", 0.28, 0.28),
+    },
 }
 
+# (deck under the PDK, its top-cell variable, {variable: value})
 DECKS = {
-    "sky130A": ("libs.tech/klayout/drc/sky130A_mr.drc",
+    "sky130A": ("libs.tech/klayout/drc/sky130A_mr.drc", "top_cell",
                 {"feol": "true", "beol": "true", "offgrid": "true", "floating_met": "false", "seal": "false",
                  "thr": "1"}),
+    "gf180mcuD": ("libs.tech/klayout/tech/drc/gf180mcu.drc", "topcell",
+                  {"decks": "all,-density", "variant": "D", "threads": "1", "run_mode": "deep"}),
 }
 
 # the farthest any deck rule looks, um: the halo around a checked area
-HALO = {"sky130A": 2.0}
+HALO = {"sky130A": 2.0, "gf180mcuD": 2.0}
 
 
 def current(technology=None):
@@ -36,9 +46,9 @@ def current(technology=None):
 
 
 def deck(pdk):
-    """(deck path, {variable: value}) or None."""
+    """(deck path, top-cell variable, {variable: value}) or None."""
     d = DECKS.get(pdk)
     if not d:
         return None
     path = os.path.join(PDK_ROOT, pdk, d[0])
-    return (path, d[1]) if os.path.isfile(path) else None
+    return (path, d[1], d[2]) if os.path.isfile(path) else None

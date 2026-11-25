@@ -59,6 +59,20 @@ class TestTier1(unittest.TestCase):
         self.assertEqual(far, [])
 
 
+@unittest.skipUnless(pdk.deck("gf180mcuD") is not None, "no gf180mcuD KLayout deck")
+class TestGf180(unittest.TestCase):
+    def test_metal1_gap(self):
+        ly = db.Layout()
+        ly.dbu = 0.001
+        top = ly.create_cell("TOP")
+        m1 = ly.layer(34, 0)
+        top.shapes(m1).insert(db.DBox(0, 0, 1, 1))
+        top.shapes(m1).insert(db.DBox(1.1, 0, 2, 1))
+        res = engine.check_area(ly, top, db.DBox(-2, -2, 4, 3), "gf180mcuD")
+        self.assertEqual([r for r, _ in res[0]], ["Metal1 space < 0.23"])
+        self.assertIn("M1.2a", [r.split()[0] for r, _ in res[1]])
+
+
 class TestDirty(unittest.TestCase):
     def test_changed_area(self):
         ly, top = layout_with_violations()
