@@ -50,3 +50,44 @@ Validation (`tests/power/test_ron.py`):
 - **Not done yet.** The comparison with Magic `extresist` that the plan
   asks for. The model also leaves out the diffusion under each square and
   any current crowding toward the gates.
+
+## Gate RC: `gate`
+
+```
+PYTHONPATH=python python3 -m klayout_power_pcells gate nx=4 ny=4 P=4 [--rdrive 50] [--cox 8.4] [--compare maps.png]
+```
+
+`gate.gate_delay(WaffleParams)` meshes the gate net the same way:
+
+- **The network.** Poly at 48.2 ohm/sq, poly contacts at 152 ohm per
+  cut, then li, mcon and the met1 strap. Every poly pixel over the
+  channel carries C_ox × its area to the source.
+- **The drive.** The G pin is driven with a 1 V step, optionally through
+  a driver resistance.
+- **The outputs.** Elmore delays (one sparse solve) for every channel
+  pixel, t50 and t90 from a backward-Euler transient, and
+  `export_spice()` for ngspice.
+- **About C_ox.** The default of 8.4 fF/um² is ε_ox / t_ox for a ~4.1 nm
+  oxide, an *estimate* for sky130's 1.8 V devices. It scales every time
+  equally, so the comparison between straps doesn't depend on it.
+
+![Elmore delay maps, met1 mesh vs frame only](img/hw_gate_straps.png)
+
+nfet_01v8, 4 x 4, P = 4 um, C_gate 0.107 pF, ideal driver:
+
+| gate strap | Elmore min..max | t90 min..max |
+|---|---|---|
+| met1_mesh | 0.40..2.18 ps | 1.24..4.90 ps |
+| frame_only | 1.17..14.6 ps | 1.99..29.9 ps |
+
+With the frame-only strap, the gates in the middle of the array turn on
+about 6x later than with the met1 mesh, because the poly is the only path
+to them.
+
+Validation (`tests/power/test_gate.py`):
+
+- **RC line.** A uniform poly RC line's Elmore delay is within 3 % of
+  RC/2.
+- **Gate capacitance.** C_gate = W·L·C_ox.
+- **Against ngspice.** The Python t50 and t90 agree within 6 % with
+  ngspice on the exported deck. Backward Euler runs a few percent slow.
