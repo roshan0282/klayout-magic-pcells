@@ -12,7 +12,7 @@ diffusion-to-tap distance), the stamp and the SHA-256 of the GDS. The key
 covers the request, the generator's source (waffle.py, rules.py) and the
 cache format, so a changed generator or rule starts new entries.
 
-Stamps: ``hw2;version=0.8.0;code=<12 hex>;pdk=sky130A;rules=<12 hex>``,
+Stamps: ``hw2;version=0.9.0;code=<12 hex>;pdk=sky130A;rules=<12 hex>``,
 ``code`` a digest of the generator's source and ``rules`` of the PDK's rule
 table. The generated-by stamp adds ``;key=<16 hex>;grid=<nm>`` and is a GDS
 property (attribute 100) on one shape of the cell; the created-with stamp

@@ -96,6 +96,11 @@ width/space checks first and then the PDK's KLayout deck in the background
 until version 0.8.0; remove that package if it is installed. See
 [docs/live_verify.md](docs/live_verify.md).
 
+All of these read their design rules from one table per PDK,
+`python/pdk_rules` (sky130A, gf180mcuD), which cites each rule, exports to
+gLayout's `MappedPDK` schema, and is checked against the PDKs' KLayout decks
+by rule probes. See [docs/rule-table.md](docs/rule-table.md).
+
 The design is in [docs/design.md](docs/design.md). It was written for
 sky130A alone. The checks, which version 0.6 added, have a design of their
 own, [docs/design-0.6.md](docs/design-0.6.md). Where this README and a design

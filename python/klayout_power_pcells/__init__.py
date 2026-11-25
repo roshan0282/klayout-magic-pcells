@@ -9,7 +9,7 @@ extended-drain devices. ``register()`` registers the
 KLayout; ``verify`` runs the PDK's KLayout deck, Magic DRC and netgen LVS.
 """
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 from .waffle import WaffleError, WaffleParams, build, summary, write_gds  # noqa: F401
 
