@@ -16,7 +16,8 @@ Tools > Live verify:
 
 Violations show as red markers on the canvas and in the Marker Browser,
 with categories `T0 <layer> width/space < x` and `T1 <deck rule>`. The
-PDK is the layout's technology, then `$PDK`. sky130A only so far.
+PDK is the layout's technology, then `$PDK`: sky130A (`sky130A_mr.drc`) and
+gf180mcuD (`gf180mcu.drc`, decks=all,-density, variant D).
 
 ![live DRC catching a 0.08 um met1 gap](docs/img/live_drc.png)
 
@@ -50,4 +51,4 @@ tools/gui_check.sh                  # the GUI under Xvfb (needs ../klayout-power
   reused.
 - An on-demand LVS panel: extract, netgen, and a mismatch list that
   cross-highlights nets.
-- Decks for gf180mcuD and IHP.
+- The IHP decks.
