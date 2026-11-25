@@ -1,7 +1,7 @@
-# sky130_gen: supporting generators
+# sky130_gen / gf180mcu_gen: supporting generators
 
-`python/klayout_gen` registers the KLayout library `sky130_gen` (autorun
-macro `pymacros/klayout_gen.lym`). Its generators draw from raw layers and
+`python/klayout_gen` registers one KLayout library per PDK, `sky130_gen`
+and `gf180mcu_gen` (autorun macro `pymacros/klayout_gen.lym`). Its generators draw from raw layers and
 need nothing but KLayout. They come from Phase 3 of
 `/foss/designs/plan/roadmap.md`.
 
@@ -34,8 +34,8 @@ Checked by `tests/gen/test_guard_ring.py`:
   Magic-DRC clean, so the ring satisfies the latch-up rules. Magic
   extracts both fingers with body `B`.
 
-Limits: sky130A only. Shapes must be Manhattan, because sky130 tap is 0/90
-degrees only.
+Limits: shapes must be Manhattan (tap is 0/90 degrees only in both PDKs).
+Deep n-well rings are sky130A only.
 
 ## VIA_STACK
 
@@ -61,3 +61,21 @@ A via stack from any metal to any higher one (li, met1 to met5).
 Checked by `tests/gen/test_via_stack.py`: li–met1, met1–met2, li–met5, a
 4 x 1.5 um met1–met3 stack and a met2–met4 stack sized for 3 mA at
 0.25 mA per cut are all clean in the KLayout deck and Magic DRC.
+
+## gf180mcuD
+
+`gf180mcu_gen` has the same two PCells:
+
+- **Rules.** They are in `rules.py` (`GF180MCUD`): COMP 0.22/0.28,
+  Contact 0.22 at 0.25 with 0.07 COMP enclosure, Nplus/Pplus 0.16 around
+  COMP, n-well 0.12 around an n-tap and at least 0.86 wide, Metal1-4 and
+  Via1-3.
+- **No li.** The ring's contacts land on Metal1 directly, so the ring
+  always has Metal1.
+- **Via stacks.** They span met1 to met4.
+
+`tests/gen/test_gf180.py` runs every case through the PDK's
+`gf180mcu.drc` (decks=all,-density, variant D) and Magic's gf180mcuD
+DRC: p-tap, n-tap and L-shaped rings, and met1-met2, met1-met4 and a
+3 x 1.2 um met1-met3 stack are clean in both. A negative control (a
+0.1 um Metal1 wire) fails M1.1 in both, which shows the deck runs.
