@@ -29,4 +29,23 @@ SKY130A = {
     "met1_w": 0.14,
 }
 
+# The metal stack for VIA_STACK, bottom to top: (metal, min width, min area um2,
+# cut between it and the next metal, cut size, cut spacing, enclosure of the
+# cut by the metal below, by the metal above). Enclosures are the larger,
+# "two adjacent/opposite edges" values (m1.5, via.5a/m2.5, via2.5, via3.5,
+# via4.4/m5.3), used on all sides.
+SKY130A["stack"] = [
+    ("li", 0.17, 0.0561, "mcon", 0.17, 0.19, 0.0, 0.06),
+    ("met1", 0.14, 0.083, "via", 0.15, 0.17, 0.085, 0.085),
+    ("met2", 0.14, 0.0676, "via2", 0.20, 0.20, 0.085, 0.085),
+    ("met3", 0.30, 0.24, "via3", 0.20, 0.20, 0.09, 0.065),
+    ("met4", 0.30, 0.24, "via4", 0.80, 0.80, 0.19, 0.31),
+    ("met5", 1.60, 4.0, None, 0, 0, 0, 0),
+]
+# DC current per cut (mA) for electromigration sizing. Left empty: the open
+# sky130 PDK publishes no EM table (rule x.4 names the guideline without
+# numbers), so the current per cut must be given; fill this in from the
+# foundry's reliability tables, e.g. {"mcon": ..., "via": ...}.
+SKY130A["em_ma_per_cut"] = {}
+
 PDKS = {"sky130A": SKY130A}

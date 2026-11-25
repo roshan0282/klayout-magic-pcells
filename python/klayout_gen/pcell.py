@@ -95,12 +95,72 @@ class GuardRingPCell(db.PCellDeclarationHelper):
             _error_marker(self.layout, self.cell, "GUARD_RING", e)
 
 
+METALS = ("li", "met1", "met2", "met3", "met4", "met5")
+
+
+class ViaStackPCell(db.PCellDeclarationHelper):
+    """Via stack between two metals, sized by box or by current (sky130A)."""
+
+    EDITABLE = ("bottom", "top", "width", "height", "current_ma", "ma_per_cut", "label")
+
+    def __init__(self):
+        super().__init__()
+        self.param("bottom", self.TypeString, "Bottom metal", default="met1", choices=[(m, m) for m in METALS])
+        self.param("top", self.TypeString, "Top metal", default="met2", choices=[(m, m) for m in METALS])
+        self.param("width", self.TypeDouble, "Width (0 = smallest)", default=0.0, unit="um")
+        self.param("height", self.TypeDouble, "Height (0 = smallest)", default=0.0, unit="um")
+        self.param("current_ma", self.TypeDouble, "DC current (0 = no EM sizing)", default=0.0, unit="mA")
+        self.param("ma_per_cut", self.TypeDouble, "EM limit per cut (0 = the PDK table; empty for sky130A)",
+                   default=0.0, unit="mA")
+        self.param("label", self.TypeString, "Label on both metals", default="")
+        self.param("info", self.TypeString, "Result", default="", readonly=True)
+
+    def _kw(self, v):
+        return {k: v[k] for k in ("bottom", "top", "width", "height", "current_ma", "ma_per_cut")}
+
+    def display_text_impl(self):
+        return "VIA_STACK(%s-%s)" % (self.bottom, self.top)
+
+    def coerce_parameters_impl(self):
+        from .via_stack import StackError, plan
+        try:
+            w, h, arr = plan(**self._kw({n: getattr(self, n) for n in self.EDITABLE}))
+            self.info = "%.3f x %.3f um; cuts: %s" % (w, h, ", ".join("%s %dx%d" % (n, a, b)
+                                                                       for n, a, b, _, _ in arr))
+        except StackError as e:
+            self.info = "not drawn: %s" % e
+
+    def callback_impl(self, name):
+        from .via_stack import StackError, plan
+        states = getattr(self, "_param_states", None)
+        if states is None:
+            return
+        for n in self.EDITABLE:
+            states.parameter(n).icon = db.PCellParameterState.NoIcon
+            states.parameter(n).tooltip = ""
+        try:
+            plan(**self._kw({n: states.parameter(n).value for n in self.EDITABLE}))
+        except StackError as e:
+            st = states.parameter(e.param if e.param in self.EDITABLE else "bottom")
+            st.icon = db.PCellParameterState.ErrorIcon
+            st.tooltip = str(e)
+
+    def produce_impl(self):
+        from .via_stack import draw as draw_stack
+        try:
+            v = {n: getattr(self, n) for n in self.EDITABLE}
+            draw_stack(self.layout, self.cell, label=v["label"], **self._kw(v))
+        except Exception as e:
+            _error_marker(self.layout, self.cell, "VIA_STACK", e)
+
+
 class GenLibrary(db.Library):
     def __init__(self):
         super().__init__()
-        self.description = "sky130A supporting generators: guard ring"
+        self.description = "sky130A supporting generators: guard ring, via stack"
         self.layout().dbu = 0.001
         self.layout().register_pcell("GUARD_RING", GuardRingPCell())
+        self.layout().register_pcell("VIA_STACK", ViaStackPCell())
         self.register(LIBRARY_NAME)
 
 
