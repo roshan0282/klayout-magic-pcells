@@ -91,3 +91,52 @@ Validation (`tests/power/test_gate.py`):
 - **Gate capacitance.** C_gate = W·L·C_ox.
 - **Against ngspice.** The Python t50 and t90 agree within 6 % with
   ngspice on the exported deck. Backward Euler runs a few percent slow.
+
+## Design-space sweep: `sweep`
+
+```
+KMP_PDKS=sky130A PYTHONPATH=python python3 -m klayout_power_pcells sweep --P 0,4,6 --nx 2,4,8 -o out
+```
+
+For every P × nx × runner set, `sweep.point()` reports:
+
+- **Geometry.** W, the drawn area (bounding box, with guard ring and
+  buses), the drawn W/area, and the core W/area (the nx·ny·P² array
+  alone).
+- **Ron.** r_ch/W + R_metal + the licon contacts. r_ch comes from
+  ngspice with the PDK's tt models, in the linear region at Vgs = 1.8 V
+  and Vds = 50 mV: 657 Ω·µm for nfet_01v8 at L = 0.15.
+- **Qg.** q_g × W, where q_g is the model's full gate charge, measured
+  by charging the gate from a constant current: 2.24 fC/µm. That agrees
+  with the 8.4 fF/µm² C_ox estimate used by the gate RC model, which
+  predicts 2.27.
+- **Figures of merit.** Ron × area and Ron × Qg.
+
+The baseline is Magic's multi-finger device of the same total W (fingers
+about 5 um wide, with guard ring): its drawn area, and a channel-only
+Ron. That favours the finger FET, because its metal isn't counted.
+
+![sweep](img/hw_sweep.png)
+
+What the sweep shows (nfet_01v8, L 0.15, diag45):
+
+| P (um) | nx | runners | W (um) | W/area drawn | W/area core | finger W/area | Ron·A (mΩ·mm²) | finger, channel only |
+|---|---|---|---|---|---|---|---|---|
+| 2.18 (min) | 8 | met3,met4 | 188 | 0.21 | 0.62 | 1.37 | 4.09 | 0.48 |
+| 4.00 | 8 | met3,met4 | 392 | 0.20 | 0.38 | 1.43 | 4.04 | 0.46 |
+| 6.00 | 8 | met3,met4 | 616 | 0.17 | 0.27 | 1.45 | 5.25 | 0.45 |
+| 5.76 (min) | 8 | met3,met4,met5 | 589 | 0.13 | 0.28 | 1.45 | 6.65 | 0.45 |
+
+- **W per area is worse than the finger device.** In this generator,
+  HW_FET has a lower W/area than Magic's multi-finger device even in the
+  core. Its W/area ≈ 2(P − N)/P², and P cannot go below 2.18 um because
+  the S/D runners need that pitch (5.76 um with met5). That is the main
+  thing the ISPSD 2008 comparison depends on, and the open question for
+  the plan.
+- **Periphery.** At nx ≤ 8 the guard ring and buses take most of the
+  drawn area, so the drawn W/area keeps rising with nx.
+- **Ron·Qg.** It is nearly flat (1.5–2.0 mΩ·nC), because Ron and Qg both
+  scale with W. It rises slowly with W as the metal's share grows.
+- **Not yet a fair Ron·area comparison.** That needs the finger device's
+  own metal routed and extracted (the same ron.Mesh can do it). Until
+  then the finger column is a lower bound.
