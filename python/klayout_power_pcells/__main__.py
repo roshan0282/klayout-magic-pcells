@@ -6,6 +6,8 @@
   generate [k=v ...] -o out.gds   place one HW_FET (through the library) in TOP and write a file
   hw [k=v ...] -o out.gds         draw the FET as a flat cell, no library
   verify [k=v ...]                draw it, then KLayout DRC, Magic DRC and netgen LVS
+  ron [k=v ...] [--pixel 0.1] [--heatmap out.png]
+                                  metal resistance R_S + R_D (Phase 2.1)
   audit FILE [--regen]            report the HW_FET cells in a file
   cache {stats,prune,clear}       this package's disk cache
 
@@ -234,6 +236,23 @@ def cmd_cache(args):
     return 0
 
 
+def cmd_ron(args):
+    from .ron import RonError, ron_metal
+    from .waffle import WaffleError
+    try:
+        r = ron_metal(_params(_kv(args.values)), pixel=args.pixel, heatmap=args.heatmap)
+    except (WaffleError, RonError) as e:
+        print("error: %s" % e, file=sys.stderr)
+        return 1
+    print("R_S %.4f ohm, R_D %.4f ohm, metal R_S + R_D %.4f ohm; licon contacts %.4f ohm"
+          % (r["R_S"], r["R_D"], r["R_metal"], r["R_contacts"]))
+    print("%d S and %d D squares, W %.2f um, %d nodes at %.3f um pixels"
+          % (r["squares"][0], r["squares"][1], r["W_total_um"] or 0, r["nodes"], r["pixel"]))
+    if args.heatmap:
+        print("current density map: %s" % args.heatmap)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="klayout_power_pcells", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -253,6 +272,10 @@ def main(argv=None):
     p.add_argument("values", nargs="*")
     p.add_argument("--no-lvs", action="store_true")
     p.add_argument("--keep", help="keep the GDS, reports and netlists in this directory")
+    p = sub.add_parser("ron")
+    p.add_argument("values", nargs="*")
+    p.add_argument("--pixel", type=float, default=0.1, help="mesh pixel in um")
+    p.add_argument("--heatmap", help="write a current-density PNG")
     p = sub.add_parser("audit")
     p.add_argument("file")
     p.add_argument("--regen", action="store_true")
@@ -260,7 +283,7 @@ def main(argv=None):
     p.add_argument("action", choices=("stats", "prune", "clear"))
     args = ap.parse_args(argv)
     return {"doctor": cmd_doctor, "devices": cmd_devices, "check": cmd_check, "generate": cmd_generate,
-            "hw": cmd_hw, "verify": cmd_verify, "audit": cmd_audit, "cache": cmd_cache}[args.cmd](args)
+            "hw": cmd_hw, "verify": cmd_verify, "ron": cmd_ron, "audit": cmd_audit, "cache": cmd_cache}[args.cmd](args)
 
 
 if __name__ == "__main__":
