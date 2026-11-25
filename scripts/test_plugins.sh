@@ -1,6 +1,7 @@
 #!/bin/sh
 # The plugin test suites in the pinned image, besides tests/power (parity.yml's
 # power job runs that one):
+#   tests/rules         the shared rule table: legacy-table equality, gLayout export, rule probes
 #   tests/centroid      CC_ARRAY: pattern core, placement, routing with Magic + netgen LVS
 #   tests/gen           sky130_gen / gf180mcu_gen guard rings and via stacks
 #   tests/lvs           the PDKs' KLayout LVS decks on PCell inverters and routed arrays
@@ -10,7 +11,7 @@
 # only if its PDK files are missing.
 exec "$(dirname "$0")/in_image.sh" 'set -e
 export KMP_PDK=sky130A KMP_PDKS=sky130A
-for s in centroid gen lvs; do
+for s in rules centroid gen lvs; do
   echo "== tests/$s"
   python3 -m unittest discover -s tests/$s -t . "$@"
 done
