@@ -109,8 +109,13 @@ centre. This is checked with exact fractions before anything is drawn.
 - **Wells and implants.** Nwell, nsdm, psdm, npc, lvtn, hvtp, hvi and
   hvntm gaps narrower than their spacing are bridged with fill shapes in
   the array cell. Fill never overlaps the opposite implant.
-- **Other PDKs.** gf180mcuD and the IHP PDKs have no table yet, so give
-  the gaps explicitly.
+- **gf180mcuD.** It has its own table too. A `gf180mcu_magic` nfet_03v3
+  array with guard rings and a dummy ring is clean in `gf180mcu.drc` and
+  in Magic. Tapless units break only gf180's tap-distance rule
+  DF.13_LV. gf180 has no device labels yet, because no layer is known to
+  be ignored by extraction. Magic's nfet_03v3 at w = 2 um breaks M1.3 on
+  its own, so use 5 um.
+- **IHP.** There is no table yet, so give the gaps explicitly.
 - **MIM caps and poly resistors.** capm and cap2m keep 0.84 um apart, and a MIM
   cap's bottom-plate metal keeps 1.2 um (capm.2b, cap2m.2b). rpm and urpm are
   merged like implants.
