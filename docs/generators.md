@@ -36,3 +36,28 @@ Checked by `tests/gen/test_guard_ring.py`:
 
 Limits: sky130A only. Shapes must be Manhattan, because sky130 tap is 0/90
 degrees only.
+
+## VIA_STACK
+
+A via stack from any metal to any higher one (li, met1 to met5).
+
+| Parameter | Meaning |
+|---|---|
+| Bottom metal, Top metal | the span, e.g. li to met5 |
+| Width, Height | the stack's size; 0 = the smallest that holds one cut of every layer and meets every metal's width and area (met5: 1.6 um, 4 um²) |
+| DC current | 0 = no EM sizing; otherwise every cut layer gets at least ceil(I / I_cut) cuts, and a stack of size 0 grows until it has them |
+| EM limit per cut | I_cut in mA |
+| Label | text on the bottom and top metals |
+
+- **Shape.** Every metal is one rectangle. Every cut layer is the largest
+  centred array that fits, using the larger of its two metals'
+  enclosures on all sides.
+- **EM limits.** sky130A has no EM table here. The open PDK publishes the
+  guideline (rule x.4) but no numbers, so a current needs **EM limit per
+  cut**. The table `em_ma_per_cut` in `python/klayout_gen/rules.py` is
+  where the foundry's values go.
+- **Result line.** It shows the size and every cut array.
+
+Checked by `tests/gen/test_via_stack.py`: li–met1, met1–met2, li–met5, a
+4 x 1.5 um met1–met3 stack and a met2–met4 stack sized for 3 mA at
+0.25 mA per cut are all clean in the KLayout deck and Magic DRC.
