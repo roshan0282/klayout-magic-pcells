@@ -142,12 +142,43 @@ python3 -m unittest discover -s tests/centroid -t .                      # patte
 KMP_PDKS=sky130A KMP_PDK=sky130A python3 -m unittest discover -s tests/centroid -t .   # all, about 40 s
 ```
 
+## Routing
+
+With **Routing** set to "met2 row tracks + met3 trunks", CC_ARRAY also
+wires an array of MOS units:
+
+![A:4,B:4 routed, common source, dummies tied to S](img/cc_routed.png)
+
+- **Row tracks.** Every row gets met2 tracks across its whole width: one
+  per D/S net over the band of S/D stripes (sources in the middle, drains
+  around them), and one gate track over the top row of gate pads and one
+  over the bottom row. A track drops via1, on a met1 landing pad, only on
+  its own net's pins. So every unit of a device sees the same track, the
+  same vias and the same length of wire.
+- **Balance.** Track order is mirrored on alternate rows, and the two
+  gate tracks swap.
+- **Trunks.** Every net has a vertical met3 trunk left of the array, with
+  a via2 to each of its tracks and a met3 pin and label at the top:
+  `A_D`, `A_G`, `S`, or with separate sources `A_S`, and `DUM`.
+- **Dummies.** Each dummy gets a met1 plate over all its pins
+  (D = G = S, so it is off), tied to the common source or to `DUM`.
+- **Limits.** At most two devices per row share the two gate tracks. The
+  S/D band must fit the row's tracks (pitch 0.44 um); if it doesn't, the
+  error says how much wider the fingers must be. The router needs the
+  unit's S/D and gate contacts on met1, which Magic's MOS devices draw by
+  default.
+
+Checked (`tests/centroid/test_router.py`): a diff pair (w=1.3, common
+source), separate sources with `DUM` (w=2.1, five tracks a row) and a pfet
+1:3 mirror. All are clean in the PDK's KLayout deck and match netgen LVS
+against `router.reference_spice()`, one device per finger, which netgen
+merges. Magic DRC reports only the latch-up rules, because these routed
+units have no taps. A guard ring around the whole array is the next step.
+
 ## Limits and next steps
 
-- **No routing yet.** The array is placed, not routed. The instance
-  properties give each unit's device, and the next step is a balanced
-  track router: one horizontal track per device per row, swapped on
-  alternate rows. After that comes LVS of a routed diff pair.
+- **Routing is MOS only.** Resistor and capacitor arrays are placed but
+  not routed.
 - **No diffusion sharing between units.** Each unit is a separate
   device. Sharing needs multi-finger rows built by the generator itself.
 - **Unit size.** `sky130_fd_pr__nfet_01v8` at w=0.6 l=0.15 nf=1 guard=1
